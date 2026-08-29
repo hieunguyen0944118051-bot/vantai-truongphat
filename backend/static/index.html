@@ -1,0 +1,957 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>CÔNG TY TNHH DV VẬN TẢI TRƯỜNG PHÁT — Giám Sát Đội Xe & Vận Hành</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Font Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', sans-serif; -webkit-tap-highlight-color: transparent; }
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; height: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col pb-16 md:pb-0">
+
+  <!-- LOGIN SCREEN (BẢO MẬT BẮT BUỘC NHẬP MẬT KHẨU KHI MỞ LINK/IP) -->
+  <div id="loginScreen" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-800/20">
+      <div class="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 p-8 text-white text-center">
+        <div class="inline-flex p-3.5 bg-blue-500/15 rounded-2xl border border-blue-400/20 mb-3 shadow-inner">
+          <i data-lucide="shield-check" class="w-8 h-8 text-blue-400"></i>
+        </div>
+        <h1 class="text-lg font-black tracking-tight uppercase">VẬN TẢI TRƯỜNG PHÁT</h1>
+        <p class="text-blue-300/80 text-xs mt-1 font-medium">Hệ Thống Quản Lý Đội Xe & Giám Sát Vận Hành</p>
+      </div>
+      
+      <form id="loginForm" autocomplete="off" class="p-8 space-y-5">
+        <div id="loginAlert" class="hidden p-3.5 rounded-xl bg-red-50 text-red-600 text-xs border border-red-200 flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
+          <span id="loginAlertText">Sai thông tin đăng nhập</span>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Tài khoản</label>
+          <div class="relative">
+            <i data-lucide="user" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="text" id="loginUsername" required autocomplete="username" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none text-sm transition" placeholder="Nhập tài khoản quản trị..." />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Mật khẩu</label>
+          <div class="relative">
+            <i data-lucide="lock" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+            <input type="password" id="loginPassword" required autocomplete="current-password" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none text-sm transition" placeholder="Nhập mật khẩu..." />
+          </div>
+        </div>
+
+        <button type="submit" id="btnLogin" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-blue-700/25 transition flex items-center justify-center gap-2 text-sm">
+          <span>Đăng Nhập An Toàn</span>
+          <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </button>
+
+        <div class="pt-3 border-t border-slate-100 flex items-center justify-center gap-2 text-xs text-slate-400 text-center">
+          <i data-lucide="lock" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span>Bảo mật Bcrypt — Bắt buộc xác thực tài khoản & mật khẩu</span>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MAIN APP WRAPPER -->
+  <div id="appScreen" class="hidden flex-1 flex flex-col md:flex-row min-h-screen overflow-hidden">
+    
+    <!-- DESKTOP SIDEBAR -->
+    <aside class="hidden md:flex w-64 bg-slate-900 text-slate-200 flex-col shrink-0 border-r border-slate-800">
+      <div class="p-5 border-b border-slate-800/80 flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-lg shadow-blue-600/30">
+          <i data-lucide="truck" class="w-5 h-5"></i>
+        </div>
+        <div>
+          <h2 class="font-black text-white text-base leading-tight tracking-tight">TRƯỜNG PHÁT</h2>
+          <span class="text-[11px] text-blue-400 font-medium">15 Xe Ben • 11 Xe Thùng</span>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar text-xs font-semibold">
+        <button onclick="switchTab('dashboard')" id="nav-dashboard" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="layout-dashboard" class="w-4 h-4 text-blue-400"></i>
+          <span>Tổng Quan Vận Hành</span>
+        </button>
+
+        <!-- MỤC MỚI: TỰ CHECK PHẠT NGUỘI TOÀN ĐOÀN XE -->
+        <button onclick="switchTab('fines')" id="nav-fines" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="shield-alert" class="w-4 h-4 text-rose-400"></i>
+          <span class="flex-1 text-left">Tra Cứu Phạt Nguội (CSGT)</span>
+          <span id="badgeFinesCount" class="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">26 Xe</span>
+        </button>
+
+        <button onclick="switchTab('trips')" id="nav-trips" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
+          <span class="flex-1 text-left">Lệnh Điều Xe & Bảng Kê</span>
+          <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">Sheets</span>
+        </button>
+
+        <button onclick="switchTab('vehicles')" id="nav-vehicles" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="truck" class="w-4 h-4 text-sky-400"></i>
+          <span>Đội Xe & Mooc (Ben & Thùng)</span>
+        </button>
+
+        <button onclick="switchTab('drivers')" id="nav-drivers" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="users" class="w-4 h-4 text-indigo-400"></i>
+          <span class="flex-1 text-left">Đội Tài Xế & Cự Ly Km</span>
+          <span class="text-[10px] bg-indigo-500/20 text-indigo-300 px-1.5 py-0.5 rounded font-bold">25 TX</span>
+        </button>
+
+        <button onclick="switchTab('maintenance')" id="nav-maintenance" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="wrench" class="w-4 h-4 text-amber-400"></i>
+          <span>Bảo Dưỡng Thay Nhớt (15k)</span>
+        </button>
+
+        <button onclick="switchTab('gps')" id="nav-gps" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="satellite" class="w-4 h-4 text-purple-400"></i>
+          <span class="flex-1 text-left">GPS Bình Anh (26 Xe)</span>
+          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        </button>
+
+        <button onclick="switchTab('tires')" id="nav-tires" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="disc" class="w-4 h-4 text-amber-400"></i>
+          <span>Thay Vỏ & Bạt Phùng Lĩnh</span>
+        </button>
+
+        <button onclick="switchTab('barges')" id="nav-barges" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="ship" class="w-4 h-4 text-cyan-400"></i>
+          <span>Đội Sà Lan (10)</span>
+        </button>
+      </nav>
+
+      <!-- User & Settings & Logout -->
+      <div class="p-4 border-t border-slate-800/80 bg-slate-950/40 space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-2.5 overflow-hidden">
+            <div class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 border border-blue-500/30 flex items-center justify-center font-bold text-xs shrink-0">
+              TP
+            </div>
+            <div class="truncate">
+              <p id="userNameDisplay" class="text-xs font-semibold text-white truncate">Ban Giám Đốc</p>
+              <p id="userRoleDisplay" class="text-[10px] text-blue-400 capitalize">Quản trị viên</p>
+            </div>
+          </div>
+          <button onclick="logout()" title="Đăng xuất bảo mật" class="p-1.5 text-slate-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition">
+            <i data-lucide="log-out" class="w-4 h-4"></i>
+          </button>
+        </div>
+        
+        <button onclick="openChangePasswordModal()" class="w-full py-1.5 px-2.5 text-[11px] font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg flex items-center justify-center gap-1.5 transition border border-slate-800">
+          <i data-lucide="key" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Đổi Mật Khẩu</span>
+        </button>
+      </div>
+    </aside>
+
+    <!-- MOBILE TOP BAR -->
+    <header class="md:hidden bg-slate-900 text-white px-3 py-2.5 border-b border-slate-800 flex flex-col gap-2 sticky top-0 z-30 shadow-md">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <div class="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-black text-xs shadow-md">
+            TP
+          </div>
+          <div>
+            <h2 class="font-black text-xs leading-none">TRƯỜNG PHÁT</h2>
+            <span class="text-[9px] text-blue-400">15 Ben • 11 Thùng</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button onclick="switchTab('fines')" title="Tra cứu phạt nguội" class="p-1.5 bg-rose-950/80 text-rose-300 border border-rose-800/60 rounded-lg text-xs">
+            <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="openChangePasswordModal()" title="Đổi mật khẩu" class="p-1.5 bg-slate-800 text-amber-300 rounded-lg text-xs">
+            <i data-lucide="key" class="w-3.5 h-3.5"></i>
+          </button>
+          <button onclick="logout()" title="Đăng xuất" class="p-1.5 bg-slate-800 text-red-400 rounded-lg text-xs">
+            <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Mobile Date Picker & Quick Actions -->
+      <div class="flex items-center gap-1 bg-slate-800/80 p-1.5 rounded-xl border border-slate-700">
+        <input type="date" id="mobileDatePicker" class="text-xs py-1 px-2 bg-slate-900 border border-slate-700 text-white rounded-lg focus:outline-none flex-1 font-bold" />
+        <button onclick="handleDateSelect(document.getElementById('mobileDatePicker').value)" class="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg text-xs flex items-center gap-1">
+          <i data-lucide="search" class="w-3 h-3"></i>
+          <span>Xem</span>
+        </button>
+      </div>
+      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 custom-scrollbar text-[10px]">
+        <button onclick="handleDateSelect('2026-08-29')" class="px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold shrink-0">Hôm nay (29)</button>
+        <button onclick="handleDateSelect('2026-08-28')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Hôm qua (28)</button>
+        <button onclick="handleDateSelect('2026-08-27')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Ngày 27</button>
+        <button onclick="handleDateSelect('2026-08-26')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Ngày 26</button>
+      </div>
+    </header>
+
+    <!-- CONTENT AREA -->
+    <main class="flex-1 flex flex-col overflow-hidden bg-slate-50">
+      
+      <!-- DESKTOP TOP NAVBAR -->
+      <header class="hidden md:flex min-h-[4.5rem] bg-white border-b border-slate-200 px-8 py-3 items-center justify-between shrink-0 shadow-sm gap-4">
+        <div class="flex items-center gap-3">
+          <div>
+            <h2 id="pageTitle" class="text-base font-bold text-slate-800 tracking-tight">Tổng Quan Hoạt Động & Giám Sát Vận Hành</h2>
+            <div class="flex items-center gap-2 mt-0.5">
+              <span id="dateBannerText" class="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                Đang xem ngày: 29/08/2026
+              </span>
+              <span id="dateSyncStatus" class="text-[11px] text-slate-500 font-medium"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2.5">
+          <!-- BỘ CHỌN NGÀY XEM SỐ LIỆU VỚI NÚT BẤM RÕ RÀNG & CÁC PHÍM CHỌN NHANH -->
+          <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
+            <div class="flex items-center gap-1 text-xs font-bold text-slate-700 pl-1.5">
+              <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
+              <span>Ngày:</span>
+            </div>
+            <input type="date" id="desktopDatePicker" class="bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600" />
+            <button onclick="handleDateSelect(document.getElementById('desktopDatePicker').value)" id="btnFetchDate" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition shadow-sm flex items-center gap-1">
+              <i data-lucide="search" class="w-3.5 h-3.5"></i>
+              <span>Xem Ngày Này</span>
+            </button>
+          </div>
+
+          <!-- Các Phím Bấm Chọn Nhanh Ngày Cũ -->
+          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold">
+            <button onclick="handleDateSelect('2026-08-29')" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition">
+              Hôm Nay (29)
+            </button>
+            <button onclick="handleDateSelect('2026-08-28')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
+              Hôm Qua (28)
+            </button>
+            <button onclick="handleDateSelect('2026-08-27')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
+              Ngày 27
+            </button>
+            <button onclick="handleDateSelect('2026-08-26')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
+              Ngày 26
+            </button>
+          </div>
+
+          <!-- Google Sheets Live Sync Button -->
+          <button onclick="syncGoogleSheetsTrips()" id="btnSheetsSync" class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-xl border border-emerald-200 transition shadow-sm">
+            <i data-lucide="refresh-cw" id="sheetsSyncIcon" class="w-3.5 h-3.5 text-emerald-600"></i>
+            <span>Đồng Bộ Sheets</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Scrollable Main View -->
+      <div class="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar space-y-6">
+
+        <!-- TAB: DASHBOARD -->
+        <section id="tab-dashboard" class="tab-content space-y-6">
+          
+          <!-- 🤖 AI COPILOT TRỢ LÝ ĐIỀU HÀNH THÔNG MINH -->
+          <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-5 md:p-6 rounded-3xl text-white shadow-xl shadow-blue-900/10 relative overflow-hidden">
+            <div class="relative z-10 space-y-3.5">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="p-2 bg-blue-500/20 rounded-xl border border-blue-400/30 text-blue-300">
+                    <i data-lucide="sparkles" class="w-5 h-5 animate-pulse"></i>
+                  </div>
+                  <div>
+                    <h3 class="text-sm md:text-base font-extrabold tracking-tight">TRỢ LÝ AI ĐIỀU HÀNH & GIÁM SÁT XE TỰ ĐỘNG</h3>
+                    <p class="text-[11px] text-blue-200">Gõ câu hỏi tự nhiên — Tra cứu phạt nguội, vị trí xe, kiểm tra hao dầu, tỷ lệ % xe chạy tức thì!</p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Input bar -->
+              <form id="aiCommandForm" onsubmit="handleAiCommand(event)" class="flex gap-2">
+                <div class="relative flex-1">
+                  <input type="text" id="aiCommandInput" placeholder="Ví dụ: Kiểm tra phạt nguội đoàn xe? Hoặc: Xe 63E-011.18 đang ở đâu?" class="w-full pl-4 pr-11 py-2.5 md:py-3 bg-white/10 border border-white/20 rounded-2xl text-white placeholder:text-slate-400 text-xs focus:outline-none focus:ring-2 focus:ring-blue-400 backdrop-blur-md transition" />
+                  <button type="submit" class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 md:p-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl transition">
+                    <i data-lucide="send" class="w-3.5 h-3.5"></i>
+                  </button>
+                </div>
+              </form>
+
+              <!-- Quick prompt buttons -->
+              <div class="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span class="text-[10px] text-blue-300 font-medium hidden sm:inline">Hỏi nhanh:</span>
+                <button onclick="fillAiPrompt('Kiểm tra phạt nguội đoàn xe')" class="px-2.5 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-[10px] md:text-[11px] text-rose-200 border border-rose-400/30 transition font-bold">
+                  🚦 Check phạt nguội toàn đoàn
+                </button>
+                <button onclick="fillAiPrompt('Xe 63E-011.18 đang ở đâu')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] md:text-[11px] text-blue-200 border border-white/10 transition">
+                  🛰️ Xe 63E-011.18 ở đâu
+                </button>
+                <button onclick="fillAiPrompt('Tỷ lệ xe hoạt động hôm nay bao nhiêu %')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] md:text-[11px] text-emerald-200 border border-white/10 transition">
+                  📈 % Xe hoạt động
+                </button>
+                <button onclick="fillAiPrompt('Báo cáo xe nào hao dầu hôm nay')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] md:text-[11px] text-amber-200 border border-white/10 transition">
+                  ⛽ Xe nào hao dầu
+                </button>
+                <button onclick="fillAiPrompt('Tài xế nào chạy nhiều km nhất hôm nay')" class="px-2.5 py-1 rounded-lg bg-white/5 hover:bg-white/15 text-[10px] md:text-[11px] text-purple-200 border border-white/10 transition">
+                  🏆 Top tài xế chạy nhiều
+                </button>
+              </div>
+
+              <!-- AI Output Message Alert -->
+              <div id="aiResponseBox" class="hidden p-3 rounded-xl bg-blue-950/90 border border-blue-500/40 text-xs text-blue-100 flex items-start gap-2.5">
+                <i data-lucide="bot" class="w-4 h-4 text-blue-400 mt-0.5 shrink-0"></i>
+                <div id="aiResponseText" class="whitespace-pre-line leading-relaxed"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 5 FLEET & FUEL & TRAFFIC FINES KPI CARDS -->
+          <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 md:gap-4">
+            <!-- Card 1: TỶ LỆ XE HOẠT ĐỘNG NGÀY (%) -->
+            <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <p class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">% Xe Hoạt Động Ngày</p>
+                <div class="flex items-baseline gap-2 mt-1">
+                  <h3 id="stat-active-percent" class="text-2xl md:text-3xl font-black text-emerald-600">65.4%</h3>
+                  <span id="stat-active-ratio" class="text-xs font-bold text-slate-600">(17 / 26 Xe)</span>
+                </div>
+              </div>
+              <div class="mt-2 space-y-1">
+                <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+                  <div id="bar-active-percent" class="bg-emerald-500 h-2 rounded-full transition-all duration-500" style="width: 65.4%"></div>
+                </div>
+                <div class="flex items-center justify-between text-[10px] text-slate-500 font-medium">
+                  <span class="text-emerald-700 font-bold" id="text-running-count">17 Xe chạy</span>
+                  <span class="text-slate-500" id="text-off-count">8 Xe nghỉ cả ngày</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card 2: Quãng đường chạy -->
+            <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <p class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng Km Trong Ngày</p>
+                <h3 id="stat-daily-km" class="text-xl md:text-2xl font-black text-blue-600 mt-1">0 km</h3>
+              </div>
+              <div class="mt-2 text-[11px] text-blue-600 font-medium flex items-center justify-between">
+                <span>Quãng đường GPS</span>
+                <i data-lucide="navigation" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+
+            <!-- Card 3: Tiêu hao nhiên liệu -->
+            <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div>
+                <p class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">Tổng Dầu Tiêu Hao</p>
+                <h3 id="stat-consumed-fuel" class="text-xl md:text-2xl font-black text-amber-600 mt-1">0 Lít</h3>
+              </div>
+              <div class="mt-2 text-[11px] text-amber-700 font-medium flex items-center justify-between">
+                <span>Định mức: 40L/100km</span>
+                <i data-lucide="fuel" class="w-3.5 h-3.5 text-amber-500"></i>
+              </div>
+            </div>
+
+            <!-- Card 4: Cảnh báo hút dầu -->
+            <div class="bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between" id="card-drain-alert">
+              <div>
+                <p class="text-[10px] md:text-xs font-bold text-slate-500 uppercase tracking-wider">Cảnh Báo Hút Dầu / Lệch</p>
+                <h3 id="stat-drain-count" class="text-xl md:text-2xl font-black text-emerald-600 mt-1">0 Xe</h3>
+              </div>
+              <div class="mt-2 text-[11px] text-slate-600 font-medium flex items-center gap-1.5" id="text-drain-sub">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                <span>Tất cả xe định mức an toàn</span>
+              </div>
+            </div>
+
+            <!-- Card 5 (MỚI): PHẠT NGUỘI TOÀN ĐOÀN XE -->
+            <div onclick="switchTab('fines')" class="cursor-pointer bg-white hover:bg-rose-50/50 p-4 md:p-5 rounded-2xl border border-rose-200 shadow-sm flex flex-col justify-between transition group col-span-2 lg:col-span-1">
+              <div>
+                <p class="text-[10px] md:text-xs font-bold text-rose-600 uppercase tracking-wider flex items-center justify-between">
+                  <span>Phạt Nguội Đoàn Xe</span>
+                  <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-rose-500"></i>
+                </p>
+                <div class="flex items-baseline gap-1 mt-1">
+                  <h3 id="stat-fines-status" class="text-xl md:text-2xl font-black text-rose-600">1 Cảnh Báo</h3>
+                </div>
+              </div>
+              <div class="mt-2 text-[11px] text-slate-600 flex items-center justify-between group-hover:text-rose-700">
+                <span id="stat-fines-sub" class="font-medium">25/26 Xe An Toàn</span>
+                <i data-lucide="chevron-right" class="w-3.5 h-3.5 text-rose-500"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- ROW 2: BIỂU ĐỒ TOP TUYẾN ĐƯỜNG & CƠ CẤU MẶT HÀNG HÔM NAY (HỮU ÍCH CHO VẬN HÀNH) -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Biểu đồ 1: Top Tuyến Đường Nóng Nhất -->
+            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col lg:col-span-2">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="map" class="w-4 h-4 text-blue-600"></i>
+                  <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Top Tuyến Đường Vận Chuyển Hàng Đầu Hôm Nay</h3>
+                </div>
+                <span class="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">Tần Suất Chuyến</span>
+              </div>
+              <div class="flex-1 relative min-h-[220px]">
+                <canvas id="topRoutesChart"></canvas>
+              </div>
+            </div>
+
+            <!-- Biểu đồ 2: Cơ Cấu Hàng Hóa -->
+            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+              <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="package" class="w-4 h-4 text-emerald-600"></i>
+                  <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Cơ Cấu Hàng Hóa Hôm Nay</h3>
+                </div>
+                <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Loại Hàng</span>
+              </div>
+              <div class="flex-1 relative min-h-[220px]">
+                <canvas id="cargoBreakdownChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- BẢNG CẢNH BÁO XE DỪNG NỔ MÁY QUÁ LÂU (>2H) GÂY HAO DẦU (HỮU ÍCH) -->
+          <div id="idlingAlertContainer" class="hidden bg-amber-50 border border-amber-200 rounded-2xl p-4 md:p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2 text-amber-800">
+                <i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>
+                <h4 class="font-bold text-xs md:text-sm uppercase tracking-wide">Cảnh Báo Vận Hành: Xe Đang Dừng Nổ Máy (Cần Nhắc Nhở Tránh Hao Dầu Không Tải)</h4>
+              </div>
+              <span id="idlingAlertCount" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-200 text-amber-900">0 Xe</span>
+            </div>
+            <div id="idlingAlertList" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 text-xs"></div>
+          </div>
+
+          <!-- BẢNG THEO DÕI TIÊU HAO NHIÊN LIỆU & ĐỊNH MỨC 100KM (TRẠNG THÁI VẬN HÀNH & VỊ TRÍ GPS CHÍNH XÁC) -->
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <i data-lucide="fuel" class="w-5 h-5 text-amber-600"></i>
+                <h3 class="font-black text-slate-800 text-sm md:text-base">BẢNG THEO DÕI TIÊU HAO NHIÊN LIỆU, ĐỊNH MỨC & VỊ TRÍ GPS CHÍNH XÁC</h3>
+              </div>
+              <span class="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[11px]">Định mức chuẩn: 40 L/100km</span>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4">Rơ-Moóc</th>
+                    <th class="py-3 px-4">Tài Xế Quẹt Thẻ</th>
+                    <th class="py-3 px-4">Trạng Thái Vận Hành & Vị Trí GPS Chính Xác</th>
+                    <th class="py-3 px-4 text-right">Km Trong Ngày</th>
+                    <th class="py-3 px-4 text-right">Tiêu Hao (Lít)</th>
+                    <th class="py-3 px-4 text-center">Định Mức Thực Tế</th>
+                    <th class="py-3 px-4 text-center">Định Mức Chuẩn</th>
+                    <th class="py-3 px-4 text-center">Cảnh Báo Dầu / Hút Trộm</th>
+                  </tr>
+                </thead>
+                <tbody id="fuelAnalysisTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 2 CHARTS ROW -->
+          <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+              <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center justify-between mb-4">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="gauge" class="w-4 h-4 text-amber-600"></i>
+                  <span>So Sánh Định Mức Tiêu Hao Lít/100km Các Xe</span>
+                </span>
+                <span class="text-[10px] text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Vạch Chuẩn 40L</span>
+              </h3>
+              <div class="flex-1 relative min-h-[240px]">
+                <canvas id="fuelNormChart"></canvas>
+              </div>
+            </div>
+
+            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
+              <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider flex items-center justify-between mb-4">
+                <span class="flex items-center gap-2">
+                  <i data-lucide="navigation" class="w-4 h-4 text-blue-600"></i>
+                  <span>Quãng Đường Km Chạy Trong Ngày Của Từng Xe</span>
+                </span>
+                <span class="text-[10px] text-blue-700 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">GPS Bình Anh</span>
+              </h3>
+              <div class="flex-1 relative min-h-[240px]">
+                <canvas id="dailyKmChart"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB MỚI: TRA CỨU PHẠT NGUỘI TOÀN ĐOÀN XE (CỤC CSGT) -->
+        <section id="tab-fines" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <div class="flex items-center gap-2">
+                  <div class="p-2 bg-rose-100 text-rose-700 rounded-xl font-bold">
+                    <i data-lucide="shield-alert" class="w-5 h-5"></i>
+                  </div>
+                  <div>
+                    <h3 class="font-black text-slate-800 text-sm md:text-base">HỆ THỐNG TỰ ĐỘNG TRA CỨU PHẠT NGUỘI — ĐOÀN XE 26 ĐẦU KÉO & MOOC</h3>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                      Kết nối dữ liệu Cục Cảnh Sát Giao Thông • Cập nhật lần cuối: <span id="finesLastCheckedText" class="font-bold text-slate-700">Đang kiểm tra...</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button onclick="triggerCheckAllFines()" id="btnCheckFines" class="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-rose-600/25 transition">
+                <i data-lucide="scan" id="finesScanIcon" class="w-4 h-4"></i>
+                <span>🔍 Kiểm Tra Phạt Nguội Toàn Đoàn Ngay</span>
+              </button>
+            </div>
+
+            <!-- 4 SUMMARY BADGES PHẠT NGUỘI -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+              <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-emerald-700">Xe Sạch Lỗi (An Toàn)</p>
+                  <h4 id="fines-count-clean" class="text-xl font-black mt-0.5">25 Xe</h4>
+                </div>
+                <i data-lucide="check-circle" class="w-6 h-6 text-emerald-500"></i>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-rose-700">Xe Có Lỗi Vi Phạm</p>
+                  <h4 id="fines-count-violated" class="text-xl font-black mt-0.5 text-rose-600">1 Xe</h4>
+                </div>
+                <i data-lucide="alert-octagon" class="w-6 h-6 text-rose-500"></i>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-amber-700">Cảnh Báo Chặn Đăng Kiểm</p>
+                  <h4 id="fines-count-warning" class="text-xl font-black mt-0.5 text-amber-700">1 Xe</h4>
+                </div>
+                <i data-lucide="file-warning" class="w-6 h-6 text-amber-500"></i>
+              </div>
+
+              <div class="p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-slate-600">Tổng Tiền Phạt Ước Tính</p>
+                  <h4 id="fines-total-amount" class="text-lg font-black mt-0.5 text-slate-800">5.000.000₫</h4>
+                </div>
+                <i data-lucide="receipt" class="w-6 h-6 text-slate-500"></i>
+              </div>
+            </div>
+
+            <!-- BẢNG TRA CỨU CHI TIẾT 26 XE -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4 text-center">STT</th>
+                    <th class="py-3 px-4">Biển Số Xe</th>
+                    <th class="py-3 px-4">Tài Xế Quản Lý</th>
+                    <th class="py-3 px-4 text-center">Tình Trạng Phạt Nguội</th>
+                    <th class="py-3 px-4">Chi Tiết Lỗi Vi Phạm (Thời Gian • Vị Trí • Hành Vi)</th>
+                    <th class="py-3 px-4 text-center">Cảnh Báo Đăng Kiểm</th>
+                    <th class="py-3 px-4 text-center">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="finesTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: TRIPS -->
+        <section id="tab-trips" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between pb-4 border-b border-slate-100">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <h3 class="font-black text-slate-800 text-sm md:text-base">LỆNH ĐIỀU XE & BẢNG KÊ THỰC TẾ HÀNG NGÀY</h3>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                  Đang xem ngày: <span id="tripsCurrentDateDisplay" class="font-bold text-blue-700">29/08/2026</span> • Cập nhật lúc: <span id="sheetsSyncTimeText" class="font-semibold text-emerald-700">Đang tải...</span>
+                </p>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button onclick="syncGoogleSheetsTrips()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md shadow-emerald-600/20 transition">
+                  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                  <span>Đồng Bộ Sheets</span>
+                </button>
+                <button onclick="exportTripsExcel()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-semibold flex items-center gap-1.5 transition">
+                  <i data-lucide="download" class="w-3.5 h-3.5"></i>
+                  <span>Xuất Excel</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 3 Summary Badges -->
+            <div class="grid grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
+              <div class="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-emerald-700">Xe Đang Hoạt Động</p>
+                  <h4 id="sheet-count-active" class="text-xl font-black mt-0.5">17 Xe</h4>
+                </div>
+                <i data-lucide="truck" class="w-6 h-6 text-emerald-500"></i>
+              </div>
+              <div class="p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-800 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-slate-600">Tài Xế Nghỉ (Nghỉ Cả Ngày)</p>
+                  <h4 id="sheet-count-off" class="text-xl font-black mt-0.5">8 Xe</h4>
+                </div>
+                <i data-lucide="coffee" class="w-6 h-6 text-slate-400"></i>
+              </div>
+              <div class="p-3.5 rounded-xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between col-span-2 md:col-span-1">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-blue-700">Tỷ Lệ Lăn Bánh Ngày</p>
+                  <h4 id="sheet-percent-active" class="text-xl font-black mt-0.5 text-blue-700">65.4%</h4>
+                </div>
+                <i data-lucide="activity" class="w-6 h-6 text-blue-500"></i>
+              </div>
+            </div>
+
+            <!-- Table of Daily Trips -->
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4 text-center">STT</th>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4">Loại Xe</th>
+                    <th class="py-3 px-4">Tuyến Đường (Đi ➔ Đến)</th>
+                    <th class="py-3 px-4">Loại Hàng</th>
+                    <th class="py-3 px-4">Chủ Hàng</th>
+                    <th class="py-3 px-4">Vị Trí GPS Chính Xác & Trạng Thái Máy</th>
+                  </tr>
+                </thead>
+                <tbody id="dailyTripsTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: VEHICLES -->
+        <section id="tab-vehicles" class="tab-content hidden space-y-6">
+          
+          <!-- KHÚC TRÊN: 15 XE BEN -->
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-orange-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-orange-100">
+              <div class="flex items-center gap-2.5">
+                <div class="p-2 bg-orange-100 text-orange-700 rounded-xl font-bold">
+                  <i data-lucide="truck" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-black text-slate-900 text-base">ĐỘI XE BEN (15 XE) — THEO DÕI GIẤY ĐI ĐƯỜNG & ĐĂNG KIỂM</h3>
+                  <p class="text-xs text-slate-500">Đối chiếu trực tiếp bảng theo dõi trang tính công ty (Cảnh báo: Vàng ≤30N, Đỏ ≤14N)</p>
+                </div>
+              </div>
+              <span class="px-3 py-1 bg-orange-50 text-orange-800 border border-orange-200 rounded-xl font-bold text-xs">15 Xe Ben</span>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4 text-center">STT</th>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4">Số Rơ-Moóc</th>
+                    <th class="py-3 px-4 text-center">Hạn GĐĐ Đầu Kéo</th>
+                    <th class="py-3 px-4 text-center">Hạn GĐĐ Rơ-Moóc</th>
+                    <th class="py-3 px-4 text-center">Hạn Đăng Kiểm</th>
+                    <th class="py-3 px-4 text-center">Hạn Bảo Hiểm</th>
+                    <th class="py-3 px-4 text-center">Tình Trạng Giấy Tờ</th>
+                  </tr>
+                </thead>
+                <tbody id="benVehiclesTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- KHÚC DƯỚI: 11 XE THÙNG (XE CÔNG DÀI) -->
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-blue-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-blue-100">
+              <div class="flex items-center gap-2.5">
+                <div class="p-2 bg-blue-100 text-blue-700 rounded-xl font-bold">
+                  <i data-lucide="container" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-black text-slate-900 text-base">ĐỘI XE THÙNG / CÔNG DÀI (11 XE) — THEO DÕI GIẤY ĐI ĐƯỜNG & ĐĂNG KIỂM</h3>
+                  <p class="text-xs text-slate-500">Đối chiếu trực tiếp bảng theo dõi trang tính công ty</p>
+                </div>
+              </div>
+              <span class="px-3 py-1 bg-blue-50 text-blue-800 border border-blue-200 rounded-xl font-bold text-xs">11 Xe Thùng</span>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4 text-center">STT</th>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4">Số Rơ-Moóc</th>
+                    <th class="py-3 px-4 text-center">Hạn GĐĐ Đầu Kéo</th>
+                    <th class="py-3 px-4 text-center">Hạn GĐĐ Rơ-Moóc</th>
+                    <th class="py-3 px-4 text-center">Hạn Đăng Kiểm</th>
+                    <th class="py-3 px-4 text-center">Hạn Bảo Hiểm</th>
+                    <th class="py-3 px-4 text-center">Tình Trạng Giấy Tờ</th>
+                  </tr>
+                </thead>
+                <tbody id="thungVehiclesTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: DRIVERS -->
+        <section id="tab-drivers" class="tab-content hidden space-y-6">
+          <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-5 md:p-6 rounded-3xl text-white shadow-xl space-y-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="p-2 bg-amber-400/20 text-amber-300 rounded-xl border border-amber-400/30">
+                  <i data-lucide="trophy" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-extrabold text-sm md:text-base">BẢNG XẾP HẠNG THI ĐUA TÀI XẾ HÔM NAY</h3>
+                  <p class="text-[11px] text-blue-200">Đo lường quãng đường Km hoạt động thực tế từ GPS để đánh giá năng suất & độ chăm chỉ</p>
+                </div>
+              </div>
+              <button onclick="loadDriversActivity()" class="p-1.5 bg-white/10 hover:bg-white/20 rounded-lg text-xs transition">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+              </button>
+            </div>
+            <div id="topRunnersContainer" class="grid grid-cols-1 sm:grid-cols-3 gap-3"></div>
+          </div>
+
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div>
+                <h3 class="font-black text-slate-800 text-sm md:text-base">BẢNG ĐÁNH GIÁ HIỆU SUẤT CHI TIẾT 26 TÀI XẾ TRƯỜNG PHÁT</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Tên tài xế chính thức • Đánh giá 3 tiêu chí: Năng suất Km, Tiết kiệm dầu, An toàn GPS kèm nhận xét chi tiết</p>
+              </div>
+              <input type="text" id="driverSearchInput" placeholder="Tìm tài xế, SĐT, xe..." oninput="filterDriversActivity()" class="text-xs py-2 px-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none min-w-[220px]" />
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Tài Xế Phụ Trách</th>
+                    <th class="py-3 px-4">Xe Đầu Kéo</th>
+                    <th class="py-3 px-4 text-right">Km Hôm Nay</th>
+                    <th class="py-3 px-4 text-center">Cự Ly Tuyến</th>
+                    <th class="py-3 px-4">Trạng Thái & Vị Trí Hiện Tại</th>
+                    <th class="py-3 px-4 text-center">Năng Suất Km</th>
+                    <th class="py-3 px-4 text-center">Tiết Kiệm Dầu</th>
+                    <th class="py-3 px-4 text-center">An Toàn GPS</th>
+                    <th class="py-3 px-4 text-center">Xếp Loại (%)</th>
+                    <th class="py-3 px-4">Nhận Xét Vận Hành Chi Tiết</th>
+                  </tr>
+                </thead>
+                <tbody id="driversDetailedTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: MAINTENANCE -->
+        <section id="tab-maintenance" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <h3 class="font-bold text-slate-800 text-sm md:text-base">BẢO DƯỠNG ĐỊNH KỲ — THAY NHỚT ĐỘNG CƠ (15.000 KM)</h3>
+                <p class="text-xs text-slate-500 mt-0.5">Đồng bộ chính xác từ Google Trang Tính (Tab: BẢO DƯỠNG XE + MOOC)</p>
+              </div>
+              <button onclick="loadMaintenance()" class="px-3.5 py-1.5 bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Tải lại số liệu</span>
+              </button>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4 text-center">STT</th>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4 text-right">Định Mức</th>
+                    <th class="py-3 px-4 text-right">Km Thay Gần Nhất</th>
+                    <th class="py-3 px-4 text-center">Ngày Thay Gần Nhất</th>
+                    <th class="py-3 px-4 text-right">Km Hiện Tại</th>
+                    <th class="py-3 px-4 text-right">Km Đến Hạn</th>
+                    <th class="py-3 px-4 text-right">Còn Lại (Km)</th>
+                    <th class="py-3 px-4 text-center">Tình Trạng</th>
+                    <th class="py-3 px-4">Ghi Chú Kỹ Thuật</th>
+                  </tr>
+                </thead>
+                <tbody id="maintenanceTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: GPS -->
+        <section id="tab-gps" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <h3 class="font-black text-slate-800 text-sm md:text-base">GIÁM SÁT HÀNH TRÌNH BÌNH ANH (BA GPS) — 26 XE</h3>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">Tài khoản: <span class="font-mono font-bold text-purple-700">truongphat68</span> • Cập nhật lúc: <span id="gpsLastUpdateTime" class="font-semibold text-slate-700">Đang tải...</span></p>
+              </div>
+              <button onclick="loadGpsLive()" class="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-purple-600/20 transition">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                <span>Làm Mới Tức Thì</span>
+              </button>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-4">Số Rơ-Moóc</th>
+                    <th class="py-3 px-4 text-center">Trạng Thái</th>
+                    <th class="py-3 px-4 text-right">Km Hôm Nay</th>
+                    <th class="py-3 px-4">Vị Trí Thực Tế</th>
+                    <th class="py-3 px-4">Lái Xe Phụ Trách</th>
+                    <th class="py-3 px-4 text-center">Thời Gian Cập Nhật</th>
+                  </tr>
+                </thead>
+                <tbody id="gpsTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: TIRES & TARP -->
+        <section id="tab-tires" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <h3 class="font-bold text-slate-800 text-sm">Theo Dõi Thay Vỏ Xe — Cả Đội Xe Năm 2026</h3>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Số Xe</th>
+                    <th class="py-3 px-4 text-center">Quý 1</th>
+                    <th class="py-3 px-4 text-center">Quý 2</th>
+                    <th class="py-3 px-4 text-center">Quý 3</th>
+                    <th class="py-3 px-4 text-center">Quý 4</th>
+                    <th class="py-3 px-4 text-right">Tổng Vỏ (2026)</th>
+                  </tr>
+                </thead>
+                <tbody id="tireTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB: BARGES -->
+        <section id="tab-barges" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+            <h3 class="font-bold text-slate-800 text-sm">Đội Sà Lan Vận Tải (4 Sà Lan Nhà • 6 Sà Lan Thuê Ngoài)</h3>
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-4">Tên Sà Lan</th>
+                    <th class="py-3 px-4">Số Đăng Ký</th>
+                    <th class="py-3 px-4 text-right">Tải Trọng (Tấn)</th>
+                    <th class="py-3 px-4 text-center">Hình Thức</th>
+                    <th class="py-3 px-4">Chủ Sà Lan / Liên Hệ</th>
+                  </tr>
+                </thead>
+                <tbody id="bargesTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- MOBILE BOTTOM NAVIGATION -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-slate-900/95 backdrop-blur-lg border-t border-slate-800 flex justify-around items-center py-2 z-40 px-2 shadow-2xl">
+    <button onclick="switchTab('dashboard')" id="mob-dashboard" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Tổng Quan</span>
+    </button>
+    <button onclick="switchTab('fines')" id="mob-fines" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="shield-alert" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Phạt Nguội</span>
+    </button>
+    <button onclick="switchTab('trips')" id="mob-trips" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Bảng Kê</span>
+    </button>
+    <button onclick="switchTab('vehicles')" id="mob-vehicles" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="truck" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Xe & Mooc</span>
+    </button>
+    <button onclick="switchTab('drivers')" id="mob-drivers" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="users" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Tài Xế</span>
+    </button>
+    <button onclick="switchTab('maintenance')" id="mob-maintenance" class="mobile-nav-btn flex flex-col items-center gap-1 text-slate-400 py-1 px-2 rounded-lg active:scale-95 transition">
+      <i data-lucide="wrench" class="w-4 h-4"></i>
+      <span class="text-[10px] font-bold">Bảo Dưỡng</span>
+    </button>
+  </nav>
+
+  <!-- MODAL: CHANGE PASSWORD -->
+  <div id="modalChangePassword" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-100">
+      <div class="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="key" class="w-4 h-4 text-amber-400"></i>
+          <h3 class="font-bold text-sm">Thiết Lập Đổi Mật Khẩu</h3>
+        </div>
+        <button onclick="closeModal('modalChangePassword')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <form id="changePasswordForm" onsubmit="handleChangePassword(event)" class="p-6 space-y-4 text-xs">
+        <div id="changePasswordAlert" class="hidden p-3 rounded-xl text-xs border"></div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Mật khẩu hiện tại *</label>
+          <input type="password" id="oldPasswordInput" required autocomplete="current-password" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none" placeholder="Nhập mật khẩu đang dùng..." />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Mật khẩu mới (tối thiểu 6 ký tự) *</label>
+          <input type="password" id="newPasswordInput" required minlength="6" autocomplete="new-password" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none" placeholder="Nhập mật khẩu mới..." />
+        </div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Xác nhận mật khẩu mới *</label>
+          <input type="password" id="confirmPasswordInput" required minlength="6" autocomplete="new-password" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none" placeholder="Nhập lại mật khẩu mới..." />
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modalChangePassword')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Hủy</button>
+          <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition">Xác Nhận Đổi</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
