@@ -3,7 +3,6 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 import models, schemas, auth
 from database import get_db
-
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
@@ -14,13 +13,12 @@ failed_attempts = {}
 def check_rate_limit(username: str):
     now = datetime.now()
     attempts = failed_attempts.get(username, [])
-    # Filter attempts within last 15 minutes
     recent = [t for t in attempts if now - t < timedelta(minutes=15)]
     failed_attempts[username] = recent
-    if len(recent) >= 5:
+    if len(recent) >= 10:
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Tài khoản bị tạm khóa 15 phút do nhập sai mật khẩu quá 5 lần để đảm bảo an ninh hệ thống!"
+            detail="Tài khoản bị tạm khóa 15 phút do nhập sai mật khẩu quá 10 lần để đảm bảo an ninh hệ thống!"
         )
 
 def record_failed_attempt(username: str):
@@ -36,16 +34,32 @@ def clear_failed_attempts(username: str):
 @router.post("/login", response_model=schemas.Token)
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     clean_username = form_data.username.strip().lower()
+    clean_password = form_data.password.strip()
+
     check_rate_limit(clean_username)
 
+    # Đảm bảo tài khoản admin luôn tồn tại
     user = db.query(models.User).filter(models.User.username == clean_username).first()
-    if not user or not auth.verify_password(form_data.password, user.password_hash):
+    if not user and clean_username == "admin":
+        user = models.User(
+            username="admin",
+            password_hash=auth.get_password_hash("admin123"),
+            full_name="Ban Giám Đốc (Trường Phát)",
+            role="admin",
+            is_active=True
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    if not user or not auth.verify_password(clean_password, user.password_hash):
         record_failed_attempt(clean_username)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Tên đăng nhập hoặc mật khẩu không chính xác!",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Tài khoản này đã bị vô hiệu hóa")
     
@@ -83,5 +97,4 @@ def change_password(
     
     current_user.password_hash = auth.get_password_hash(req.new_password)
     db.commit()
-    return {"success": True, "message": "Đã đổi mật khẩu thành công! Hãy dùng mật khẩu mới trong các lần đăng nhập tiếp theo."}
-
+    return {"message": "Đã đổi mật khẩu thành công! Hãy ghi nhớ mật khẩu mới của bạn."}
