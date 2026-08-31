@@ -167,3 +167,113 @@ class TarpRecord(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     vehicle = relationship("Vehicle", back_populates="tarp_records")
+
+class WeighbridgeTrip(Base):
+    __tablename__ = "weighbridge_trips"
+
+    id = Column(Integer, primary_key=True, index=True)
+    trip_order = Column(Integer, nullable=True)
+    plate_number = Column(String, index=True, nullable=False)
+    trip_type = Column(String, default="Đường dài")
+    date_receive = Column(String, nullable=True)
+    date_delivery = Column(String, nullable=True)
+    origin = Column(String, nullable=True)
+    destination = Column(String, nullable=True)
+    commodity = Column(String, nullable=True)
+    weight_receive_kg = Column(Float, default=0.0)
+    weight_delivery_kg = Column(Float, default=0.0)
+    weight_loss_kg = Column(Float, default=0.0)
+    weight_loss_pct = Column(Float, default=0.0)
+    unit_price = Column(Float, default=0.0)
+    amount_by_ton = Column(Float, default=0.0)
+    amount_by_trip = Column(Float, default=0.0)
+    
+    cost_toll = Column(Float, default=0.0)
+    cost_load = Column(Float, default=0.0)
+    cost_unload = Column(Float, default=0.0)
+    cost_parking = Column(Float, default=0.0)
+    cost_tip = Column(Float, default=0.0)
+    cost_other = Column(Float, default=0.0)
+    cost_station = Column(Float, default=0.0)
+    total_cost = Column(Float, default=0.0)
+    cost_driver_reported = Column(Float, default=0.0)
+    cost_difference = Column(Float, default=0.0)
+    
+    notes = Column(Text, nullable=True)
+    num_trips = Column(Integer, default=1)
+    driver_name = Column(String, nullable=True)
+    # Vehicle category: Xe Ben vs Xe Thùng
+    vehicle_category = Column(String, default="Xe Ben")
+
+    # Chi đầu nhận
+    cost_load_origin = Column(Float, default=0.0)      # Bốc lên hàng
+    cost_gate_origin = Column(Float, default=0.0)      # Cổng / Bến nhận
+    cost_tarp_origin = Column(Float, default=0.0)      # Quét thùng / lót bạt nhận
+
+    # Chi đầu giao
+    cost_unload_dest = Column(Float, default=0.0)      # Bốc xuống hàng
+    cost_parking_dest = Column(Float, default=0.0)     # Bến bãi / trạm cân giao
+    cost_tarp_dest = Column(Float, default=0.0)        # Tháo kèo / bạt giao
+
+    # Đánh dấu không chắc chắn để tô màu & chỉnh sửa
+    is_uncertain = Column(Boolean, default=False)
+    uncertain_fields = Column(Text, nullable=True)     # JSON array string e.g. ["sl_giao_kg"]
+
+    # Tracking & Verification
+    exchange_ticket_no = Column(String, nullable=True)
+    is_office_exchanged = Column(Boolean, default=False)
+    driver_weight_reported = Column(Float, nullable=True)
+    weight_check_note = Column(String, nullable=True)
+    source_images_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class VehicleCostItem(Base):
+    """
+    Theo dõi Chi Phí Ngoài Chuyến theo từng xe:
+    Dầu DO, Urê, Vá vỏ / lốp, Sửa chữa, Mua vật tư, Bến bãi, Ứng tiền.
+    Khớp 100% với Sheet 'CHI PHÍ NGOÀI CHUYẾN' và 'CP THEO XE'.
+    """
+    __tablename__ = "vehicle_cost_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    plate_number = Column(String, index=True, nullable=False)
+    driver_name = Column(String, nullable=True)
+    cost_date = Column(String, nullable=True)  # YYYY-MM-DD or DD/MM/YYYY
+    cost_type = Column(String, index=True, nullable=False)  # Dầu DO, Urê, Vá vỏ / lốp, Sửa chữa, Mua vật tư, Bến bãi, Ứng tiền
+    description = Column(Text, nullable=True)
+    liters = Column(Float, nullable=True)
+    unit_price = Column(Float, nullable=True)
+    amount = Column(Float, default=0.0)
+    odo_km = Column(Float, nullable=True)
+    source_image = Column(String, nullable=True)
+    raw_ocr_snippet = Column(Text, nullable=True)
+    is_verified = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ZaloProcessedFile(Base):
+    """
+    Quản lý danh sách ảnh Zalo đã quét hằng ngày:
+    Đảm bảo 100% không bao giờ bỏ sót file nào và không quét trùng lặp.
+    """
+    __tablename__ = "zalo_processed_files"
+
+    id = Column(Integer, primary_key=True, index=True)
+    file_path = Column(String, unique=True, index=True, nullable=False)
+    file_name = Column(String, nullable=False)
+    file_size = Column(Integer, default=0)
+    file_mtime = Column(Float, default=0.0)
+    detected_category = Column(String, nullable=True)
+    plate_number = Column(String, nullable=True)
+    trip_id = Column(Integer, nullable=True)
+    cost_item_id = Column(Integer, nullable=True)
+    status = Column(String, default="processed")  # processed, error, pending_review
+    processed_at = Column(DateTime, default=datetime.utcnow)
+
+class SystemSetting(Base):
+    __tablename__ = "system_settings"
+
+    key = Column(String, primary_key=True, index=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

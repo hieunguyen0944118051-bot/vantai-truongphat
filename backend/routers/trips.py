@@ -205,3 +205,27 @@ def export_trips_excel(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+@router.get("/sheets-config")
+def get_sheets_config(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    setting_08 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_08").first()
+    setting_09 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_09").first()
+    return {
+        "sheet_url_month_08": setting_08.value if setting_08 else "https://docs.google.com/spreadsheets/d/1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI/edit",
+        "sheet_url_month_09": setting_09.value if setting_09 else ""
+    }
+
+@router.post("/sheets-config")
+def save_sheets_config(
+    payload: dict,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.require_role(["admin", "manager"]))
+):
+    month = str(payload.get("month", "09")).zfill(2)
+    url = payload.get("url", "").strip()
+    if url:
+        sheets_client.set_sheet_url_for_month(month, url)
+    return {"success": True, "message": f"Đã lưu thành công link Trang tính Tháng {month}!"}

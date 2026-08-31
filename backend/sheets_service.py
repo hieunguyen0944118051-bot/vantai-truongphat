@@ -1,14 +1,21 @@
 import urllib.request
+import urllib.parse
 import csv
 import io
 import re
+import openpyxl
 from datetime import datetime, date
+from database import SessionLocal
+import models
 
-SHEET1_BASE_URL = "https://docs.google.com/spreadsheets/d/1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI/export?format=csv&gid="
-SHEET2_VEHICLES_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv"
-SHEET2_MAINTENANCE_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv&gid=1041617404"
+# Trang tính mặc định
+DEFAULT_SHEET_AUGUST_ID = "1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI"
+DEFAULT_SHEET_SEPTEMBER_ID = "" # Người dùng có thể dán link mới bất cứ lúc nào
 
-# Exact GID mapping for all days of August 2026 in Sheet 1
+SHEET_BASE_CSV = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid="
+SHEET_BASE_XLSX = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+
+# GID các ngày Tháng 08/2026
 AUGUST_DAY_GIDS = {
     "01": "769155513", "02": "471343189", "03": "2083643691", "04": "1808732284",
     "05": "27125077", "06": "366542307", "07": "462758268", "08": "1292525407",
@@ -20,51 +27,154 @@ AUGUST_DAY_GIDS = {
     "29": "51584766", "30": "1210470376", "31": "1716980095"
 }
 
+SHEET2_VEHICLES_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv"
+SHEET2_MAINTENANCE_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv&gid=1041617404"
+
 class GoogleSheetsSyncService:
     def __init__(self):
         self.cached_trips = []
         self.cached_vehicles = {"ben": [], "thung": []}
         self.cached_maintenance = []
         self.last_sync_time = None
+        self._xlsx_cache = {} # sheet_id -> (timestamp, bytes)
+
+    def extract_sheet_id(self, url_or_id: str) -> str:
+        """Trích xuất ID Google Sheet từ URL hoặc chuỗi ID"""
+        if not url_or_id:
+            return ""
+        url_or_id = url_or_id.strip()
+        m = re.search(r'/spreadsheets/d/([a-zA-Z0-9-_]+)', url_or_id)
+        if m:
+            return m.group(1)
+        return url_or_id
+
+    def get_sheet_id_for_month(self, month_str: str) -> str:
+        """Lấy Google Sheet ID cho tháng cụ thể (08, 09...) từ DB hoặc mặc định"""
+        db = SessionLocal()
+        try:
+            setting = db.query(models.SystemSetting).filter(
+                models.SystemSetting.key == f"sheet_url_month_{month_str}"
+            ).first()
+            if setting and setting.value:
+                return self.extract_sheet_id(setting.value)
+        except Exception:
+            pass
+        finally:
+            db.close()
+
+        if month_str == "08":
+            return DEFAULT_SHEET_AUGUST_ID
+        elif month_str == "09":
+            return DEFAULT_SHEET_SEPTEMBER_ID or DEFAULT_SHEET_AUGUST_ID
+        return DEFAULT_SHEET_AUGUST_ID
+
+    def set_sheet_url_for_month(self, month_str: str, sheet_url: str):
+        """Lưu link Google Sheet cho tháng vào cơ sở dữ liệu"""
+        sheet_id = self.extract_sheet_id(sheet_url)
+        db = SessionLocal()
+        try:
+            setting = db.query(models.SystemSetting).filter(
+                models.SystemSetting.key == f"sheet_url_month_{month_str}"
+            ).first()
+            if not setting:
+                setting = models.SystemSetting(
+                    key=f"sheet_url_month_{month_str}",
+                    value=sheet_url
+                )
+                db.add(setting)
+            else:
+                setting.value = sheet_url
+                setting.updated_at = datetime.utcnow()
+            db.commit()
+            return sheet_id
+        finally:
+            db.close()
 
     def fetch_daily_trips(self, target_date=None):
-        today_str = date.today().strftime("%Y-%m-%d")
+        today_obj = date.today()
+        today_str = today_obj.strftime("%Y-%m-%d")
         t_date = target_date or today_str
-        
-        # Determine day of month (e.g. "28" or "29")
+
         try:
-            d_obj = datetime.strptime(t_date, "%Y-%m-%d")
-            day_str = f"{d_obj.day:02d}"
-            display_date = d_obj.strftime("%d/%m/%Y")
+            d_obj = datetime.strptime(t_date, "%Y-%m-%d").date()
         except Exception:
-            day_str = "29"
-            display_date = "29/08/2026"
+            d_obj = today_obj
+            t_date = today_str
 
-        gid = AUGUST_DAY_GIDS.get(day_str, "51584766")
-        sheet_url = f"{SHEET1_BASE_URL}{gid}"
+        day_str = f"{d_obj.day:02d}"
+        month_str = f"{d_obj.month:02d}"
+        display_date = d_obj.strftime("%d/%m/%Y")
 
-        req = urllib.request.Request(sheet_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            content = resp.read().decode("utf-8", errors="ignore")
+        sheet_id = self.get_sheet_id_for_month(month_str)
+        if not sheet_id:
+            sheet_id = DEFAULT_SHEET_AUGUST_ID
 
-        reader = csv.reader(io.StringIO(content))
-        rows = list(reader)
+        rows = []
 
+        # Cách 1: Nếu là Tháng 08 và có GID sẵn trong AUGUST_DAY_GIDS -> Đọc CSV cực nhanh
+        if month_str == "08" and day_str in AUGUST_DAY_GIDS and sheet_id == DEFAULT_SHEET_AUGUST_ID:
+            gid = AUGUST_DAY_GIDS[day_str]
+            url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=12) as resp:
+                    content = resp.read().decode("utf-8", errors="ignore")
+                reader = csv.reader(io.StringIO(content))
+                rows = list(reader)
+            except Exception as e:
+                print(f"Error fetching CSV via GID: {e}")
+                rows = []
+
+        # Cách 2: Nếu chưa có rows (ví dụ Tháng 09 hoặc ngày mới) -> Đọc động toàn bộ sheet qua XLSX
+        if not rows:
+            try:
+                xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+                req = urllib.request.Request(xlsx_url, headers={"User-Agent": "Mozilla/5.0"})
+                with urllib.request.urlopen(req, timeout=20) as resp:
+                    data = resp.read()
+
+                wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True)
+                matching_sheet = None
+
+                # Tìm tab bắt đầu bằng số ngày, ví dụ "01 - T3", "01", "31 - T2"
+                for s_name in wb.sheetnames:
+                    clean_s = s_name.strip()
+                    if clean_s.startswith(day_str) or clean_s.startswith(f"{d_obj.day} "):
+                        matching_sheet = s_name
+                        break
+
+                if not matching_sheet:
+                    # Fallback tìm tab có chứa ngày
+                    for s_name in wb.sheetnames:
+                        if day_str in s_name:
+                            matching_sheet = s_name
+                            break
+
+                if matching_sheet and matching_sheet in wb.sheetnames:
+                    ws = wb[matching_sheet]
+                    for r in ws.iter_rows(values_only=True):
+                        row_vals = [str(c).strip() if c is not None else "" for c in r]
+                        if any(row_vals):
+                            rows.append(row_vals)
+            except Exception as e:
+                print(f"Error fetching dynamic XLSX: {e}")
+
+        # Phân tích các dòng bảng kê
         ben_trips = []
         thung_trips = []
-        current_section = None
+        current_section = "ben"
 
         for row in rows:
-            if not row or len(row) < 3:
+            if not row or len(row) < 2:
                 continue
-            first_col = row[0].strip()
+            first_col = row[0].strip() if len(row) > 0 else ""
             second_col = row[1].strip() if len(row) > 1 else ""
             row_joined = " ".join(row).upper()
 
-            if "XE BEN" in first_col or "XE BEN" in row_joined:
+            if "XE BEN" in first_col.upper() or "XE BEN" in row_joined:
                 current_section = "ben"
                 continue
-            elif "XE CÔNG DÀI" in first_col or "XE THÙNG" in first_col or "XE CÔNG DÀI" in row_joined:
+            elif "XE CÔNG DÀI" in first_col.upper() or "XE THÙNG" in first_col.upper() or "XE CÔNG DÀI" in row_joined:
                 current_section = "thung"
                 continue
 
@@ -79,13 +189,18 @@ class GoogleSheetsSyncService:
                     formatted_plate = raw_plate
 
                 route_str = row[2].strip() if len(row) > 2 else ""
-                col3 = row[3].strip() if len(row) > 3 else ""
-                col4 = row[4].strip() if len(row) > 4 else ""
+                col3 = row[3].strip() if len(row) > 3 else "" # Loại hàng
+                col4 = row[4].strip() if len(row) > 4 else "" # Chủ hàng 1
 
-                is_off = ("NGHỈ" in route_str.upper()) or ("NGHỈ" in col3.upper()) or ("NGHỈ" in col4.upper()) or (route_str == "" and col3 == "" and "NGHỈ" in row_joined)
+                is_off = (
+                    ("NGHỈ" in route_str.upper()) or 
+                    ("NGHỈ" in col3.upper()) or 
+                    ("NGHỈ" in col4.upper()) or 
+                    ("TÀI XẾ NGHỈ" in row_joined) or
+                    (route_str == "" and col3 == "" and "NGHỈ" in row_joined)
+                )
 
                 if is_off:
-                    # User requirement: "phần ghi tài xế nghỉ là nghỉ luôn ngày đó k phải nghỉ ca"
                     status_text = "Tài xế nghỉ (Nghỉ cả ngày)"
                     status_code = "driver_off"
                     route_display = "Tài xế nghỉ cả ngày / Xe đậu bãi"
@@ -97,8 +212,14 @@ class GoogleSheetsSyncService:
                     status_text = "Hoạt động"
                     status_code = "active"
                     route_display = route_str
-                    cargo_type = col3
-                    customer_name = col4
+                    cargo_type = col3 or "Hàng xá"
+                    # Chuẩn hóa tên chủ hàng
+                    raw_cust = col4.strip()
+                    if raw_cust and "NGHỈ" not in raw_cust.upper():
+                        customer_name = raw_cust
+                    else:
+                        customer_name = "Khai Anh" # Default if not specified
+
                     parts = route_str.split("=>")
                     if len(parts) == 2:
                         origin = parts[0].strip()
@@ -125,7 +246,7 @@ class GoogleSheetsSyncService:
 
                 if current_section == "ben":
                     ben_trips.append(trip_item)
-                elif current_section == "thung":
+                else:
                     thung_trips.append(trip_item)
 
         self.cached_trips = ben_trips + thung_trips
@@ -133,6 +254,24 @@ class GoogleSheetsSyncService:
         active_count = len([t for t in self.cached_trips if t["status_code"] == "active"])
         off_count = len([t for t in self.cached_trips if t["status_code"] == "driver_off"])
         active_percent = round((active_count / len(self.cached_trips) * 100), 1) if self.cached_trips else 0.0
+
+        # Thống kê cơ cấu chủ hàng
+        customer_counts = {}
+        for t in self.cached_trips:
+            if t["status_code"] == "active":
+                c = t["customer_name"]
+                if c and c != "—":
+                    customer_counts[c] = customer_counts.get(c, 0) + 1
+
+        total_active_trips = sum(customer_counts.values())
+        customer_breakdown = [
+            {
+                "customer": cust,
+                "trips": cnt,
+                "percent": round((cnt / total_active_trips * 100), 1) if total_active_trips > 0 else 0.0
+            }
+            for cust, cnt in sorted(customer_counts.items(), key=lambda x: x[1], reverse=True)
+        ]
 
         return {
             "all_trips": self.cached_trips,
@@ -142,8 +281,11 @@ class GoogleSheetsSyncService:
             "active_count": active_count,
             "off_count": off_count,
             "active_percent": active_percent,
+            "customer_breakdown": customer_breakdown,
             "selected_date": t_date,
             "selected_date_display": display_date,
+            "month": month_str,
+            "sheet_id": sheet_id,
             "sync_time": self.last_sync_time.strftime("%H:%M:%S %d/%m/%Y")
         }
 
@@ -163,37 +305,31 @@ class GoogleSheetsSyncService:
                     continue
                 raw_plate = r[2].strip()
                 norm = r[3].strip() if len(r) > 3 else "15.000"
-                last_km = r[4].strip() if len(r) > 4 else ""
+                last_odo = r[4].strip() if len(r) > 4 else "0"
                 last_date = r[5].strip() if len(r) > 5 else ""
-                current_km = r[6].strip() if len(r) > 6 else ""
-                due_km = r[8].strip() if len(r) > 8 else ""
-                remaining_km = r[9].strip() if len(r) > 9 else ""
-                status = r[10].strip() if len(r) > 10 else "Thiếu số liệu"
-                notes = r[11].strip() if len(r) > 11 else ""
-
-                clean_p = raw_plate.replace(".", "").replace("-", "").replace(" ", "").upper()
-                if len(clean_p) == 8:
-                    fmt_p = f"{clean_p[:3]}-{clean_p[3:6]}.{clean_p[6:]}"
-                else:
-                    fmt_p = raw_plate
+                next_odo = r[6].strip() if len(r) > 6 else "0"
+                actual_odo = r[7].strip() if len(r) > 7 else "0"
+                diff_km = r[8].strip() if len(r) > 8 else "0"
+                status_text = r[9].strip() if len(r) > 9 else "Bình thường"
+                notes = r[10].strip() if len(r) > 10 else ""
 
                 maintenance_list.append({
                     "stt": stt,
-                    "plate_number": fmt_p,
-                    "norm_km": norm or "15.000",
-                    "last_km": last_km or "—",
-                    "last_date": last_date or "—",
-                    "current_km": current_km or "—",
-                    "due_km": due_km or "—",
-                    "remaining_km": remaining_km or "—",
-                    "status": status or "Thiếu số liệu",
-                    "notes": notes or ""
+                    "plate_number": raw_plate,
+                    "norm": norm,
+                    "last_odo": last_odo,
+                    "last_date": last_date,
+                    "next_odo": next_odo,
+                    "actual_odo": actual_odo,
+                    "diff_km": diff_km,
+                    "status_text": status_text,
+                    "notes": notes
                 })
 
         self.cached_maintenance = maintenance_list
         return maintenance_list
 
-    def fetch_vehicles_grouped(self):
+    def fetch_vehicles_sheet(self):
         req = urllib.request.Request(SHEET2_VEHICLES_URL, headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=15) as resp:
             content = resp.read().decode("utf-8", errors="ignore")
@@ -201,41 +337,43 @@ class GoogleSheetsSyncService:
         reader = csv.reader(io.StringIO(content))
         rows = list(reader)
 
-        ben_list = []
-        thung_list = []
+        ben_vehicles = []
+        thung_vehicles = []
         current_type = "ben"
 
-        for row in rows:
-            if not row or len(row) < 3:
+        for r in rows:
+            if not r or len(r) < 2:
                 continue
-            row_str = " ".join(row).upper()
-            if "XE THÙNG" in row_str or "CÔNG DÀI" in row_str:
+            r_str = " ".join(r).upper()
+            if "XE BEN" in r_str:
+                current_type = "ben"
+                continue
+            elif "XE THÙNG" in r_str or "XE CÔNG DÀI" in r_str:
                 current_type = "thung"
                 continue
 
-            matches = re.findall(r'(63[A-Z]-\d{3}\.\d{2}|66[A-Z]-\d{3}\.\d{2}|63[A-Z]\d{5}|66[A-Z]\d{5})', row_str)
-            if matches:
-                plate = matches[0]
-                if "-" not in plate and len(plate) >= 8:
-                    plate = f"{plate[:3]}-{plate[3:6]}.{plate[6:]}"
-
-                trailer_matches = re.findall(r'(63R-\d{3}\.\d{2}|63R\d{5})', row_str)
-                trailer = trailer_matches[0] if trailer_matches else None
-                if trailer and "-" not in trailer:
-                    trailer = f"{trailer[:3]}-{trailer[3:6]}.{trailer[6:]}"
-
-                item = {
-                    "plate_number": plate,
-                    "trailer_number": trailer,
+            if len(r) > 1 and r[1].strip().isdigit():
+                stt = int(r[1].strip())
+                if stt > 26:
+                    continue
+                v_item = {
+                    "stt": stt,
+                    "plate_number": r[2].strip() if len(r) > 2 else "",
+                    "trailer_number": r[3].strip() if len(r) > 3 else "",
+                    "driver_name": r[4].strip() if len(r) > 4 else "",
+                    "driver_phone": r[5].strip() if len(r) > 5 else "",
+                    "gdd_head": r[6].strip() if len(r) > 6 else "",
+                    "gdd_trailer": r[7].strip() if len(r) > 7 else "",
+                    "registration_expiry": r[8].strip() if len(r) > 8 else "",
+                    "insurance_expiry": r[9].strip() if len(r) > 9 else "",
                     "vehicle_type": "Xe Ben" if current_type == "ben" else "Xe Thùng"
                 }
+                if current_type == "ben":
+                    ben_vehicles.append(v_item)
+                else:
+                    thung_vehicles.append(v_item)
 
-                if current_type == "ben" and len(ben_list) < 15:
-                    ben_list.append(item)
-                elif current_type == "thung" and len(thung_list) < 11:
-                    thung_list.append(item)
-
-        self.cached_vehicles = {"ben": ben_list, "thung": thung_list}
+        self.cached_vehicles = {"ben": ben_vehicles, "thung": thung_vehicles}
         return self.cached_vehicles
 
 sheets_client = GoogleSheetsSyncService()

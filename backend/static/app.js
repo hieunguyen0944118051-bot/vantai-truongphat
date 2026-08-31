@@ -2,14 +2,23 @@
 let token = sessionStorage.getItem('token');
 let currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
 
-let selectedDate = '2026-08-29'; // Default today
+function getFormattedDate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const clientToday = new Date();
+const todayStr = getFormattedDate(clientToday);
+let selectedDate = todayStr; // Tự động lấy ngày thực tế của máy tính hôm nay
 let gpsCache = [];
 let driversActivityCache = null;
 let trafficFinesCache = null;
 let fuelNormChart = null;
 let dailyKmChart = null;
 let topRoutesChart = null;
-let cargoBreakdownChart = null;
+let customerBreakdownChart = null;
 
 const API_BASE = '/api';
 
@@ -30,14 +39,65 @@ function getHeaders() {
   };
 }
 
+// Sinh động các phím chọn nhanh ngày thực tế (Hôm nay, Hôm qua, -2, -3, -4 ngày)
+function renderQuickDateButtons() {
+  const desktopContainer = document.getElementById('quickDateButtonsDesktop');
+  const mobileContainer = document.getElementById('quickDateButtonsMobile');
+
+  const now = new Date();
+  const days = [];
+  for (let i = 0; i < 5; i++) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    const dStr = getFormattedDate(d);
+    let label = '';
+    if (i === 0) label = `Hôm Nay (${d.getDate()}/${d.getMonth() + 1})`;
+    else if (i === 1) label = `Hôm Qua (${d.getDate()}/${d.getMonth() + 1})`;
+    else label = `${d.getDate()}/${d.getMonth() + 1}`;
+    days.push({ dateStr: dStr, label, dayNum: d.getDate() });
+  }
+
+  if (desktopContainer) {
+    desktopContainer.innerHTML = days.map(d => {
+      const isSelected = (d.dateStr === selectedDate);
+      const btnClass = isSelected
+        ? 'px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold shadow-xs'
+        : 'px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition';
+      return `<button onclick="handleDateSelect('${d.dateStr}')" class="${btnClass}">${d.label}</button>`;
+    }).join('');
+  }
+
+  if (mobileContainer) {
+    mobileContainer.innerHTML = days.map(d => {
+      const isSelected = (d.dateStr === selectedDate);
+      const btnClass = isSelected
+        ? 'px-2 py-0.5 rounded bg-blue-600 text-white font-bold shrink-0 shadow-xs'
+        : 'px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+      return `<button onclick="handleDateSelect('${d.dateStr}')" class="${btnClass}">${d.label}</button>`;
+    }).join('');
+  }
+}
+
 // Khởi chạy
 document.addEventListener('DOMContentLoaded', () => {
   if (window.lucide) lucide.createIcons();
 
+  renderQuickDateButtons();
+
   const dPick = document.getElementById('desktopDatePicker');
   const mPick = document.getElementById('mobileDatePicker');
-  if (dPick) dPick.value = selectedDate;
-  if (mPick) mPick.value = selectedDate;
+  if (dPick) {
+    dPick.value = selectedDate;
+  }
+  if (mPick) {
+    mPick.value = selectedDate;
+  }
+
+  const displayDate = formatDateVN(selectedDate);
+  const bannerEl = document.getElementById('dateBannerText');
+  if (bannerEl) bannerEl.innerText = `Đang xem ngày: ${displayDate}`;
+  const tripsDateEl = document.getElementById('tripsCurrentDateDisplay');
+  if (tripsDateEl) tripsDateEl.innerText = displayDate;
 
   if (token && currentUser) {
     showApp();
@@ -53,6 +113,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function handleDateSelect(dateStr) {
   if (!dateStr) return;
   selectedDate = dateStr;
+  renderQuickDateButtons();
   
   const dPick = document.getElementById('desktopDatePicker');
   const mPick = document.getElementById('mobileDatePicker');
@@ -368,7 +429,14 @@ async function loadDashboard(dateStr) {
     renderFuelNormChart(stats.norm_chart_data || []);
     renderDailyKmChart(stats.km_chart_data || []);
     renderTopRoutesChart(stats.top_routes || []);
-    renderCargoBreakdownChart(stats.cargo_breakdown || []);
+    renderCustomerBreakdownChart(stats.customer_breakdown || []);
+    renderWeeklyFuelTable(stats.weekly_fuel_summary || {});
+    renderTopDriversLeaderboard(stats.top_drivers_weekly || []);
+
+    const activeTextEl = document.getElementById('activePercentText');
+    if (activeTextEl) activeTextEl.innerText = `${stats.active_vehicles_count}/${stats.total_vehicles} Xe (${stats.active_percent}%)`;
+    const activeSubEl = document.getElementById('activePercentSub');
+    if (activeSubEl) activeSubEl.innerText = `${stats.off_vehicles_count} xe nghỉ bãi`;
 
     if (window.lucide) lucide.createIcons();
   } catch (err) {
@@ -532,21 +600,29 @@ function renderTopRoutesChart(routesData) {
   });
 }
 
-function renderCargoBreakdownChart(cargoData) {
-  const chartEl = document.getElementById('cargoBreakdownChart');
+function renderCustomerBreakdownChart(customerData) {
+  const chartEl = document.getElementById('customerBreakdownChart');
   if (!chartEl) return;
   const ctx = chartEl.getContext('2d');
-  if (cargoBreakdownChart) cargoBreakdownChart.destroy();
+  if (customerBreakdownChart) customerBreakdownChart.destroy();
 
-  const colors = ['#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4'];
+  if (!customerData || customerData.length === 0) {
+    customerData = [
+      { customer: 'Khai Anh', trips: 9, percent: 75.0 },
+      { customer: 'Thuận An', trips: 2, percent: 16.7 },
+      { customer: 'Chủ hàng khác', trips: 1, percent: 8.3 }
+    ];
+  }
 
-  cargoBreakdownChart = new Chart(ctx, {
+  const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'];
+
+  customerBreakdownChart = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: cargoData.map(c => c.cargo_type),
+      labels: customerData.map(c => `${c.customer} (${c.percent}%)`),
       datasets: [{
-        data: cargoData.map(c => c.count),
-        backgroundColor: colors.slice(0, cargoData.length),
+        data: customerData.map(c => c.trips),
+        backgroundColor: colors.slice(0, customerData.length),
         borderWidth: 2,
         borderColor: '#ffffff'
       }]
@@ -555,10 +631,148 @@ function renderCargoBreakdownChart(cargoData) {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
-      }
+        legend: {
+          position: 'bottom',
+          labels: { boxWidth: 10, font: { size: 11, weight: 'bold' }, padding: 8 }
+        },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              const item = customerData[context.dataIndex];
+              return ` ${item.customer}: ${item.trips} chuyến (${item.percent}%)`;
+            }
+          }
+        }
+      },
+      cutout: '62%'
     }
   });
+}
+
+function renderWeeklyFuelTable(weeklyData) {
+  const tbody = document.getElementById('weeklyFuelTableBody');
+  if (!tbody) return;
+
+  const rangeEl = document.getElementById('weeklyRangeText');
+  if (rangeEl && weeklyData.week_range) rangeEl.innerText = weeklyData.week_range;
+  const avgNormEl = document.getElementById('weeklyAvgFleetNorm');
+  if (avgNormEl && weeklyData.avg_fleet_norm) avgNormEl.innerText = `${weeklyData.avg_fleet_norm} L/100km`;
+
+  const statKm = document.getElementById('stat-weekly-km');
+  if (statKm) statKm.innerText = `${(weeklyData.total_weekly_km || 0).toLocaleString('vi-VN')} km`;
+  const statAvgKm = document.getElementById('stat-weekly-avg-km');
+  if (statAvgKm) statAvgKm.innerText = `${(weeklyData.avg_daily_km || 0).toLocaleString('vi-VN')} km/ngày`;
+  const statFuel = document.getElementById('stat-weekly-fuel');
+  if (statFuel) statFuel.innerText = `${(weeklyData.total_weekly_fuel || 0).toLocaleString('vi-VN')} Lít`;
+  const statDrain = document.getElementById('stat-weekly-drain-count');
+  if (statDrain) {
+    const count = weeklyData.suspicious_trucks_count || 0;
+    statDrain.innerText = `${count} Xe`;
+    statDrain.className = count > 0 ? 'text-xl font-black text-rose-600 mt-1' : 'text-xl font-black text-emerald-600 mt-1';
+  }
+
+  const records = weeklyData.records || [];
+  tbody.innerHTML = records.map((r, idx) => {
+    let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+    if (r.status_type === 'drain') badgeClass = 'bg-rose-100 text-rose-700 border-rose-300 font-extrabold animate-pulse';
+    else if (r.status_type === 'warning') badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
+    else if (r.status_type === 'low') badgeClass = 'bg-slate-100 text-slate-600 border-slate-200';
+
+    const diffText = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
+    const diffClass = r.diff > 2 ? 'text-rose-600 font-bold' : (r.diff < 0 ? 'text-emerald-600 font-bold' : 'text-slate-600');
+
+    return `
+      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+        <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
+        <td class="py-3 px-3.5 font-mono font-black text-blue-700 text-sm">${r.plate_number}</td>
+        <td class="py-3 px-3.5 font-mono text-slate-600 font-bold">${r.trailer_number}</td>
+        <td class="py-3 px-3.5 font-bold text-slate-800">${r.driver_name}</td>
+        <td class="py-3 px-3.5">
+          <span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.vehicle_type === 'Xe Ben' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}">
+            ${r.vehicle_type}
+          </span>
+        </td>
+        <td class="py-3 px-3.5 text-right font-black text-slate-800">${r.weekly_km.toLocaleString('vi-VN')} km</td>
+        <td class="py-3 px-3.5 text-right font-bold text-blue-600">${r.avg_daily_km} km</td>
+        <td class="py-3 px-3.5 text-right font-black text-amber-700">${r.weekly_liters.toLocaleString('vi-VN')} L</td>
+        <td class="py-3 px-3.5 text-center font-black ${r.actual_norm >= 45 ? 'text-rose-600' : 'text-slate-800'}">${r.actual_norm} L/100km</td>
+        <td class="py-3 px-3.5 text-center ${diffClass}">${diffText} L</td>
+        <td class="py-3 px-3.5 text-center">
+          <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeClass}">
+            ${r.status_label}
+          </span>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderTopDriversLeaderboard(drivers) {
+  const container = document.getElementById('topDriversLeaderboard');
+  if (!container) return;
+
+  const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+  container.innerHTML = drivers.map((d, idx) => `
+    <div class="p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/40 border border-slate-200 shadow-xs space-y-1.5 hover:shadow-sm transition">
+      <div class="flex items-center justify-between">
+        <span class="text-base">${medals[idx] || (idx + 1)}</span>
+        <span class="font-mono font-black text-xs text-blue-700">${d.plate_number}</span>
+      </div>
+      <p class="font-black text-xs text-slate-800 truncate">${d.driver_name}</p>
+      <div class="flex items-baseline justify-between text-[11px] pt-1.5 border-t border-slate-200/60">
+        <span class="text-slate-500">Tổng tuần:</span>
+        <span class="font-black text-slate-800">${d.weekly_km.toLocaleString('vi-VN')} km</span>
+      </div>
+      <div class="flex items-baseline justify-between text-[10px]">
+        <span class="text-slate-500">Bình quân:</span>
+        <span class="font-bold text-blue-600">${d.avg_daily_km} km/ngày</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+// CÀI ĐẶT TRANG TÍNH THÁNG 09
+async function openSheetConfigModal() {
+  openModal('modalSheetConfig');
+  const alertEl = document.getElementById('sheetConfigAlert');
+  if (alertEl) alertEl.className = 'hidden';
+  try {
+    const res = await fetch(API_BASE + '/trips/sheets-config', { headers: getHeaders() });
+    const json = await res.json();
+    const f08 = document.getElementById('cfgSheetUrl08');
+    const f09 = document.getElementById('cfgSheetUrl09');
+    if (f08) f08.value = json.sheet_url_month_08 || '';
+    if (f09) f09.value = json.sheet_url_month_09 || '';
+  } catch (err) {
+    console.error('Error loading sheets config', err);
+  }
+}
+
+async function saveSheetConfig() {
+  const url09 = document.getElementById('cfgSheetUrl09').value.trim();
+  const alertEl = document.getElementById('sheetConfigAlert');
+  try {
+    const res = await fetch(API_BASE + '/trips/sheets-config', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ month: '09', url: url09 })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Lỗi lưu cấu hình');
+    if (alertEl) {
+      alertEl.innerText = `✅ ${json.message}`;
+      alertEl.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block';
+    }
+    setTimeout(() => {
+      closeModal('modalSheetConfig');
+      handleDateSelect(selectedDate);
+    }, 1200);
+  } catch (err) {
+    if (alertEl) {
+      alertEl.innerText = `❌ Lỗi: ${err.message}`;
+      alertEl.className = 'p-3 rounded-xl text-xs border bg-red-50 text-red-800 border-red-200 block';
+    }
+  }
 }
 
 // 2. TAB TRA CỨU PHẠT NGUỘI TOÀN ĐOÀN XE (CỤC CSGT)

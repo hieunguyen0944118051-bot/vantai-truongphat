@@ -105,6 +105,12 @@
           <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">Sheets</span>
         </button>
 
+        <a href="/weighbridge" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition">
+          <i data-lucide="scan-line" class="w-4 h-4 text-amber-400"></i>
+          <span class="flex-1 text-left font-bold text-xs">Đọc Phiếu Cân Zalo (OCR)</span>
+          <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">Mới</span>
+        </a>
+
         <button onclick="switchTab('vehicles')" id="nav-vehicles" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
           <i data-lucide="truck" class="w-4 h-4 text-sky-400"></i>
           <span>Đội Xe & Mooc (Ben & Thùng)</span>
@@ -195,11 +201,8 @@
           <span>Xem</span>
         </button>
       </div>
-      <div class="flex items-center gap-1 overflow-x-auto pb-0.5 custom-scrollbar text-[10px]">
-        <button onclick="handleDateSelect('2026-08-29')" class="px-2 py-0.5 rounded bg-blue-600/30 text-blue-300 border border-blue-500/40 font-bold shrink-0">Hôm nay (29)</button>
-        <button onclick="handleDateSelect('2026-08-28')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Hôm qua (28)</button>
-        <button onclick="handleDateSelect('2026-08-27')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Ngày 27</button>
-        <button onclick="handleDateSelect('2026-08-26')" class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Ngày 26</button>
+      <div id="quickDateButtonsMobile" class="flex items-center gap-1 overflow-x-auto pb-0.5 custom-scrollbar text-[10px]">
+        <!-- Rendered dynamically via app.js based on current date -->
       </div>
     </header>
 
@@ -213,7 +216,7 @@
             <h2 id="pageTitle" class="text-base font-bold text-slate-800 tracking-tight">Tổng Quan Hoạt Động & Giám Sát Vận Hành</h2>
             <div class="flex items-center gap-2 mt-0.5">
               <span id="dateBannerText" class="text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                Đang xem ngày: 29/08/2026
+                Đang xem ngày: Đang tải...
               </span>
               <span id="dateSyncStatus" class="text-[11px] text-slate-500 font-medium"></span>
             </div>
@@ -221,7 +224,7 @@
         </div>
 
         <div class="flex items-center gap-2.5">
-          <!-- BỘ CHỌN NGÀY XEM SỐ LIỆU VỚI NÚT BẤM RÕ RÀNG & CÁC PHÍM CHỌN NHANH -->
+          <!-- BỘ CHỌN NGÀY XEM SỐ LIỆU VỚI NÚT BẤM RÕ RÀNG & CÁC PHÍM CHỌN NHANH ĐỘNG -->
           <div class="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-xl border border-slate-200">
             <div class="flex items-center gap-1 text-xs font-bold text-slate-700 pl-1.5">
               <i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i>
@@ -230,30 +233,25 @@
             <input type="date" id="desktopDatePicker" class="bg-white px-2.5 py-1 rounded-lg border border-slate-300 text-xs font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-600" />
             <button onclick="handleDateSelect(document.getElementById('desktopDatePicker').value)" id="btnFetchDate" class="px-3 py-1 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-bold rounded-lg transition shadow-sm flex items-center gap-1">
               <i data-lucide="search" class="w-3.5 h-3.5"></i>
-              <span>Xem Ngày Này</span>
+              <span>Xem</span>
             </button>
           </div>
 
-          <!-- Các Phím Bấm Chọn Nhanh Ngày Cũ -->
-          <div class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold">
-            <button onclick="handleDateSelect('2026-08-29')" class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-800 font-bold border border-blue-200 transition">
-              Hôm Nay (29)
-            </button>
-            <button onclick="handleDateSelect('2026-08-28')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
-              Hôm Qua (28)
-            </button>
-            <button onclick="handleDateSelect('2026-08-27')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
-              Ngày 27
-            </button>
-            <button onclick="handleDateSelect('2026-08-26')" class="px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition">
-              Ngày 26
-            </button>
+          <!-- Các Phím Bấm Chọn Nhanh (Sinh Động Theo Ngày Thực Tế) -->
+          <div id="quickDateButtonsDesktop" class="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-sm text-xs font-semibold">
+            <!-- Rendered dynamically via app.js based on current date -->
           </div>
 
           <!-- Google Sheets Live Sync Button -->
           <button onclick="syncGoogleSheetsTrips()" id="btnSheetsSync" class="flex items-center gap-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-3 py-2 rounded-xl border border-emerald-200 transition shadow-sm">
             <i data-lucide="refresh-cw" id="sheetsSyncIcon" class="w-3.5 h-3.5 text-emerald-600"></i>
             <span>Đồng Bộ Sheets</span>
+          </button>
+
+          <!-- Button Cài Đặt Sheet Tháng 09 -->
+          <button onclick="openSheetConfigModal()" class="flex items-center gap-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-xl border border-indigo-200 transition shadow-sm" title="Cài đặt liên kết Google Sheets Tháng 09">
+            <i data-lucide="settings-2" class="w-3.5 h-3.5 text-indigo-600"></i>
+            <span>Sheet T09</span>
           </button>
         </div>
       </header>
@@ -409,17 +407,28 @@
               </div>
             </div>
 
-            <!-- Biểu đồ 2: Cơ Cấu Hàng Hóa -->
-            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col">
-              <div class="flex items-center justify-between mb-4">
+            <!-- Biểu đồ 2: Cơ Cấu Chủ Hàng Hôm Nay (%) & Tỷ Lệ Xe Hoạt Động -->
+            <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
+              <div class="flex items-center justify-between mb-3">
                 <div class="flex items-center gap-2">
-                  <i data-lucide="package" class="w-4 h-4 text-emerald-600"></i>
-                  <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Cơ Cấu Hàng Hóa Hôm Nay</h3>
+                  <i data-lucide="pie-chart" class="w-4 h-4 text-emerald-600"></i>
+                  <h3 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Cơ Cấu Chủ Hàng Hôm Nay (%)</h3>
                 </div>
-                <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Loại Hàng</span>
+                <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">% Sản Lượng</span>
               </div>
-              <div class="flex-1 relative min-h-[220px]">
-                <canvas id="cargoBreakdownChart"></canvas>
+              <div class="flex-1 relative min-h-[210px] flex items-center justify-center">
+                <canvas id="customerBreakdownChart"></canvas>
+              </div>
+              <!-- Box Tỷ Lệ Xe Hoạt Động Hôm Nay -->
+              <div class="mt-3 pt-3 border-t border-slate-100 bg-emerald-50/70 p-3 rounded-xl flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                  <div class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping"></div>
+                  <div>
+                    <p class="text-[10px] font-bold text-slate-500 uppercase">Tỷ Lệ Xe Hoạt Động</p>
+                    <p id="activePercentText" class="text-xs font-black text-emerald-800">12/26 Xe (46.2%)</p>
+                  </div>
+                </div>
+                <span id="activePercentSub" class="text-[10px] bg-white text-slate-600 px-2.5 py-1 rounded-lg font-bold border border-emerald-200 shadow-xs">14 xe nghỉ bãi</span>
               </div>
             </div>
           </div>
@@ -464,6 +473,81 @@
                 <tbody id="fuelAnalysisTableBody" class="divide-y divide-slate-100"></tbody>
               </table>
             </div>
+          </div>
+
+          <!-- BẢNG THEO DÕI NHIÊN LIỆU THEO TUẦN (WEEKLY FUEL INTELLIGENCE - BÌNH QUÂN 7 NGÀY & ĐỊNH MỨC) -->
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2.5">
+                <div class="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+                  <i data-lucide="calendar-range" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <h3 class="font-black text-slate-800 text-sm md:text-base">BẢNG THEO DÕI NHIÊN LIỆU THEO TUẦN (BÌNH QUÂN 7 NGÀY & ĐỊNH MỨC TIÊU HAO)</h3>
+                  <p class="text-[11px] text-slate-500 font-medium">
+                    Chu kỳ tuần: <span id="weeklyRangeText" class="font-bold text-indigo-700">25/08 - 31/08/2026</span> • Định mức toàn đoàn: <span id="weeklyAvgFleetNorm" class="font-bold text-slate-700">39.6 L/100km</span>
+                  </p>
+                </div>
+              </div>
+              <span class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold border border-indigo-200 text-xs shrink-0">Định mức chuẩn: 40 L/100km</span>
+            </div>
+
+            <!-- 4 Quick Metric Cards Tuần -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Tổng Km Toàn Đoàn (Tuần)</p>
+                <p id="stat-weekly-km" class="text-xl font-black text-slate-800 mt-1">21.845 km</p>
+                <span class="text-[10px] text-slate-500">7 ngày gần nhất</span>
+              </div>
+              <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Bình Quân Km / Ngày / Xe</p>
+                <p id="stat-weekly-avg-km" class="text-xl font-black text-blue-600 mt-1">120.0 km/ngày</p>
+                <span class="text-[10px] text-slate-500">Mức vận hành đoàn xe</span>
+              </div>
+              <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Tổng Dầu Tiêu Thụ (Tuần)</p>
+                <p id="stat-weekly-fuel" class="text-xl font-black text-amber-600 mt-1">8.642 Lít</p>
+                <span class="text-[10px] text-slate-500">Ước tính tiêu hao</span>
+              </div>
+              <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                <p class="text-[10px] font-bold text-slate-500 uppercase">Cảnh Báo Sụt Dầu Tuần</p>
+                <p id="stat-weekly-drain-count" class="text-xl font-black text-emerald-600 mt-1">0 Xe</p>
+                <span class="text-[10px] text-slate-500">Định mức an toàn</span>
+              </div>
+            </div>
+
+            <div class="overflow-x-auto rounded-xl border border-slate-200">
+              <table class="w-full text-left text-xs whitespace-nowrap">
+                <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                  <tr>
+                    <th class="py-3 px-3.5 text-center">STT</th>
+                    <th class="py-3 px-3.5">Số Xe Đầu Kéo</th>
+                    <th class="py-3 px-3.5">Rơ-Moóc</th>
+                    <th class="py-3 px-3.5">Tài Xế Phụ Trách</th>
+                    <th class="py-3 px-3.5">Phân Loại</th>
+                    <th class="py-3 px-3.5 text-right">Tổng Km Tuần</th>
+                    <th class="py-3 px-3.5 text-right">Bình Quân Km/Ngày</th>
+                    <th class="py-3 px-3.5 text-right">Dầu Tuần (Lít)</th>
+                    <th class="py-3 px-3.5 text-center">Định Mức Thực Tế</th>
+                    <th class="py-3 px-3.5 text-center">So Chuẩn 40L</th>
+                    <th class="py-3 px-3.5 text-center">Đánh Giá Tuần</th>
+                  </tr>
+                </thead>
+                <tbody id="weeklyFuelTableBody" class="divide-y divide-slate-100"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- ROW TOP TÀI XẾ NĂNG SUẤT TRONG TUẦN -->
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+            <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div class="flex items-center gap-2">
+                <i data-lucide="award" class="w-5 h-5 text-amber-500"></i>
+                <h3 class="font-black text-slate-800 text-sm md:text-base">TOP TÀI XẾ NĂNG SUẤT NHẤT TRONG TUẦN (SỐ KM HOẠT ĐỘNG CAO NHẤT)</h3>
+              </div>
+              <span class="text-xs text-slate-500 font-medium">Bảng xếp hạng tuần</span>
+            </div>
+            <div id="topDriversLeaderboard" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3"></div>
           </div>
 
           <!-- 2 CHARTS ROW -->
@@ -949,6 +1033,42 @@
           <button type="submit" class="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold shadow-md transition">Xác Nhận Đổi</button>
         </div>
       </form>
+    </div>
+  <!-- MODAL: CÀI ĐẶT LINK TRANG TÍNH THÁNG 09 -->
+  <div id="modalSheetConfig" class="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-scale-up">
+      <div class="bg-indigo-900 text-white px-6 py-4 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <i data-lucide="settings-2" class="w-5 h-5 text-indigo-300"></i>
+          <div>
+            <h3 class="font-bold text-sm">Cài Đặt Liên Kết Trang Tính Tháng Mới</h3>
+            <p class="text-[10px] text-indigo-200">Hỗ trợ tự động chuyển sang đọc trang tính Tháng 09</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modalSheetConfig')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
+      </div>
+      <div class="p-6 space-y-4 text-xs">
+        <div id="sheetConfigAlert" class="hidden p-3 rounded-xl text-xs border"></div>
+
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Trang Tính Tháng 08/2026 (Đang hoạt động):</label>
+          <input type="text" id="cfgSheetUrl08" readonly class="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-mono text-[11px]" />
+        </div>
+
+        <div>
+          <label class="block font-bold text-indigo-900 mb-1">Link Google Sheets Tháng 09/2026 (Chạy từ 01/09):</label>
+          <input type="text" id="cfgSheetUrl09" placeholder="Dán link Google Sheets xe nhận hàng Tháng 09 tại đây..." class="w-full p-2.5 bg-white border border-indigo-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:outline-none font-mono text-[11px]" />
+          <p class="text-[10px] text-slate-400 mt-1">Hệ thống sẽ tự động nhận diện các tab ngày (ví dụ: 01, 02... hoặc 01 - T3) mà không cần cấu hình thêm.</p>
+        </div>
+
+        <div class="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button type="button" onclick="closeModal('modalSheetConfig')" class="px-4 py-2 text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Đóng</button>
+          <button type="button" onclick="saveSheetConfig()" class="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-md transition flex items-center gap-1.5">
+            <i data-lucide="save" class="w-4 h-4"></i>
+            <span>Lưu & Kết Nối</span>
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 

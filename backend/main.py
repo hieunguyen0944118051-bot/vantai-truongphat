@@ -5,7 +5,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
 import models, auth
-from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines
+from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, weighbridge
 
 Base.metadata.create_all(bind=engine)
 
@@ -35,11 +35,17 @@ app.include_router(maintenance.router)
 app.include_router(assistant.router)
 app.include_router(gps.router)
 app.include_router(traffic_fines.router)
+app.include_router(weighbridge.router)
 
 # Mount static folder
 static_path = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_path, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+# Mount uploads folder
+upload_path = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(upload_path, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 
 @app.get("/")
 def serve_ui():
@@ -47,6 +53,13 @@ def serve_ui():
     if os.path.exists(index_file):
         return FileResponse(index_file)
     return {"message": "Hệ thống Quản lý Vận tải đang hoạt động!"}
+
+@app.get("/weighbridge")
+def serve_weighbridge_ui():
+    wb_file = os.path.join(static_path, "weighbridge.html")
+    if os.path.exists(wb_file):
+        return FileResponse(wb_file)
+    return FileResponse(os.path.join(static_path, "index.html"))
 
 @app.on_event("startup")
 def init_db():

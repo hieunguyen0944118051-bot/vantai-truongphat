@@ -94,3 +94,12 @@ def delete_fuel_record(
     db.delete(rec)
     db.commit()
     return {"message": "Đã xóa bản ghi nhiên liệu"}
+
+@router.get("/weekly-summary")
+def get_weekly_fuel_summary(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    from routers.dashboard import get_dashboard_stats
+    stats = get_dashboard_stats(view_date=None, db=db, current_user=current_user)
+    return stats.get("weekly_fuel_summary", {})
