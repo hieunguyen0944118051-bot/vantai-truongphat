@@ -5,7 +5,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
 import models, auth
-from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, weighbridge
+from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines
+
+try:
+    from routers import weighbridge
+except ImportError:
+    weighbridge = None
 
 Base.metadata.create_all(bind=engine)
 
@@ -35,7 +40,8 @@ app.include_router(maintenance.router)
 app.include_router(assistant.router)
 app.include_router(gps.router)
 app.include_router(traffic_fines.router)
-app.include_router(weighbridge.router)
+if weighbridge:
+    app.include_router(weighbridge.router)
 
 # Mount static folder
 static_path = os.path.join(os.path.dirname(__file__), "static")
