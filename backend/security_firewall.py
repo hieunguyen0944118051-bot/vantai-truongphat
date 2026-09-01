@@ -27,26 +27,20 @@ MALICIOUS_PATTERNS = [
 BLOCKED_USER_AGENTS = [
     "sqlmap", "nikto", "dirbuster", "masscan", "zgrab", "gobuster",
     "wprecon", "nmap", "acunetix", "havij", "metasploit", "censys",
-    "shodan", "python-requests/2.1", "curl/7.2"
+    "shodan"
 ]
 
 class SecurityFirewallManager:
     def __init__(self):
-        # Rate limiting: IP -> list of request timestamps
         self.request_history = defaultdict(list)
-        # Failed login attempts: IP -> list of timestamps
         self.failed_logins = defaultdict(list)
-        # Blocked IPs: IP -> unblock_timestamp
         self.blocked_ips = {}
-        # In-memory security event audit log
         self.audit_logs = []
         self.total_attacks_blocked = 0
 
     def get_client_ip(self, request: Request) -> str:
-        """Lấy IP thực tế của client kể cả khi đi qua proxy / Cloudflare / Render"""
         forwarded_for = request.headers.get("X-Forwarded-For")
         if forwarded_for:
-            # Lấy IP đầu tiên trong danh sách forward
             return forwarded_for.split(",")[0].strip()
         real_ip = request.headers.get("X-Real-IP")
         if real_ip:
@@ -66,6 +60,12 @@ class SecurityFirewallManager:
         self.blocked_ips[ip] = time.time() + duration_seconds
         self.log_event(ip, "IP_BLOCKED", f"Khóa IP {duration_seconds//60} phút. Lý do: {reason}", is_threat=True)
 
+    def unblock_ip(self, ip: str):
+        if ip in self.blocked_ips:
+            del self.blocked_ips[ip]
+        if ip in self.failed_logins:
+            del self.failed_logins[ip]
+
     def log_event(self, ip: str, event_type: str, details: str, is_threat: bool = False):
         log_entry = {
             "timestamp": datetime.now().strftime("%H:%M:%S %d/%m/%Y"),
@@ -83,52 +83,52 @@ class SecurityFirewallManager:
     def record_login_attempt(self, ip: str, username: str, success: bool):
         now = time.time()
         if success:
-            # Xóa lịch sử lỗi khi đăng nhập thành công
-            if ip in self.failed_logins:
-                del self.failed_logins[ip]
-            self.log_event(ip, "LOGIN_SUCCESS", f"Đăng nhập thành công tài khoản [{username}]", is_threat=False)
+            self.unblock_ip(ip)
+            self.log_event(ip, "LOGIN_SUCCESS", f"Đăng nhập an toàn tài khoản [{username}]", is_threat=False)
         else:
             self.failed_logins[ip].append(now)
-            # Chỉ giữ các lần thử trong 10 phút gần nhất
             self.failed_logins[ip] = [t for t in self.failed_logins[ip] if now - t < 600]
             fail_count = len(self.failed_logins[ip])
             self.log_event(ip, "LOGIN_FAILED", f"Sai thông tin đăng nhập [{username}] (Lần {fail_count}/5)", is_threat=True)
             
             if fail_count >= 5:
                 self.block_ip(ip, duration_seconds=900, reason="Thử dò mật khẩu quá 5 lần (Brute-force protection)")
-                return True # Đã bị khóa
+                return True
         return False
 
     def inspect_request(self, request: Request, body_bytes: bytes = b"") -> tuple[bool, str]:
         ip = self.get_client_ip(request)
         now = time.time()
 
-        # 1. Kiểm tra IP có đang bị Blacklist không
-        if self.is_ip_blocked(ip):
+        # Cho phép trang chủ và endpoint login để người dùng hợp lệ tự đăng nhập và giải phóng IP
+        is_login_endpoint = request.url.path in ["/api/auth/login", "/", "/favicon.ico"]
+
+        # 1. Kiểm tra IP Blacklist (ngoại trừ trang login)
+        if not is_login_endpoint and self.is_ip_blocked(ip):
             return False, "IP của bạn đã bị tường lửa tạm khóa 15 phút do phát hiện hành vi bất thường."
 
-        # 2. Kiểm tra User-Agent độc hại / Tool scan
+        # 2. Kiểm tra User-Agent độc hại
         ua = request.headers.get("User-Agent", "").lower()
         for bad_ua in BLOCKED_USER_AGENTS:
             if bad_ua in ua:
                 self.block_ip(ip, duration_seconds=1800, reason=f"Sử dụng công cụ quét bảo mật: {bad_ua}")
                 return False, f"Chặn truy cập: Phát hiện công cụ quét tự động ({bad_ua})."
 
-        # 3. Rate Limiting: Chống spam request (tối đa 120 req / 60 giây)
+        # 3. Rate Limiting
         self.request_history[ip].append(now)
         self.request_history[ip] = [t for t in self.request_history[ip] if now - t < 60]
-        if len(self.request_history[ip]) > 140:
-            self.block_ip(ip, duration_seconds=300, reason="Spam request quá mức (DDoS / Flood protection)")
+        if len(self.request_history[ip]) > 160:
+            self.block_ip(ip, duration_seconds=300, reason="Spam request quá mức (DDoS protection)")
             return False, "Tần suất truy cập quá nhanh. Tường lửa đã tạm ngắt kết nối trong 5 phút."
 
-        # 4. Kiểm tra URL & Query Parameters chống SQLi, XSS, LFI
+        # 4. Kiểm tra URL & Query Parameters
         full_path = str(request.url)
         for pattern in MALICIOUS_PATTERNS:
             if pattern.search(full_path):
-                self.block_ip(ip, duration_seconds=3600, reason=f"Phát hiện mã độc trong URL (SQLi/XSS)")
+                self.block_ip(ip, duration_seconds=3600, reason="Phát hiện mã độc trong URL (SQLi/XSS)")
                 return False, "Yêu cầu bị chặn: Phát hiện mã độc trong đường dẫn."
 
-        # 5. Kiểm tra Body nếu là văn bản
+        # 5. Kiểm tra Body
         if body_bytes and len(body_bytes) < 50000:
             try:
                 body_str = body_bytes.decode("utf-8", errors="ignore")
@@ -145,12 +145,10 @@ firewall_manager = SecurityFirewallManager()
 
 class SecurityFirewallMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        # Bỏ qua kiểm tra cho static files tĩnh để tăng tốc tải trang
         if request.url.path.startswith("/static/") and not request.url.path.endswith((".php", ".asp", ".env")):
             response = await call_next(request)
             return self.apply_security_headers(response)
 
-        # Đọc body để kiểm tra an ninh (giữ lại stream cho FastAPI)
         body = b""
         if request.method in ["POST", "PUT", "PATCH"]:
             body = await request.body()
@@ -158,7 +156,6 @@ class SecurityFirewallMiddleware(BaseHTTPMiddleware):
                 return {"type": "http.request", "body": body}
             request._receive = receive
 
-        # Kiểm tra qua Tường Lửa
         is_safe, error_message = firewall_manager.inspect_request(request, body)
         if not is_safe:
             ip = firewall_manager.get_client_ip(request)
@@ -177,14 +174,12 @@ class SecurityFirewallMiddleware(BaseHTTPMiddleware):
         return self.apply_security_headers(response)
 
     def apply_security_headers(self, response: Response) -> Response:
-        """Thêm các Header bảo mật chuẩn quốc tế OWASP & ISO 27001"""
-        response.headers["X-Frame-Options"] = "SAMEORIGIN" # Chống Clickjacking
-        response.headers["X-Content-Type-Options"] = "nosniff" # Chống giả mạo định dạng file
-        response.headers["X-XSS-Protection"] = "1; mode=block" # Chống phản xạ XSS
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload" # Bắt buộc HTTPS
-        # Che giấu thông tin công nghệ máy chủ
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains; preload"
         if "server" in response.headers:
             del response.headers["server"]
         response.headers["Server"] = "Enterprise-Secure-Gateway"
