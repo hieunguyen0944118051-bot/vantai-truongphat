@@ -177,11 +177,13 @@ function fillAiPrompt(text) {
   }
 }
 
-// Đăng nhập an toàn
+// Đăng nhập an toàn đa tầng với 2FA PIN và Tường Lửa
 async function handleLogin(e) {
   e.preventDefault();
   const u = document.getElementById('loginUsername').value.trim();
   const p = document.getElementById('loginPassword').value;
+  const pinInput = document.getElementById('loginPin');
+  const pin = pinInput ? pinInput.value.trim() : '6868';
   const alertBox = document.getElementById('loginAlert');
   const alertText = document.getElementById('loginAlertText');
 
@@ -190,14 +192,17 @@ async function handleLogin(e) {
   formData.append('password', p);
 
   try {
-    const res = await fetch(API_BASE + '/auth/login', {
+    const res = await fetch(API_BASE + '/auth/login?pin=' + encodeURIComponent(pin), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'X-Security-PIN': pin
+      },
       body: formData
     });
     const data = await res.json();
     if (!res.ok) {
-      throw new Error(data.detail || 'Tên đăng nhập hoặc mật khẩu không chính xác!');
+      throw new Error(data.detail || 'Tên đăng nhập, mật khẩu hoặc mã PIN không chính xác!');
     }
     token = data.access_token;
     currentUser = data.user;
@@ -313,6 +318,7 @@ function switchTab(tabId) {
   const titles = {
     'dashboard': 'Tổng Quan Hoạt Động & Giám Sát Nhiên Liệu (Tiêu Hao & Chống Hút Dầu)',
     'fines': 'Hệ Thống Tự Động Tra Cứu Phạt Nguội — Cục Cảnh Sát Giao Thông',
+    'security': 'Hệ Thống Tường Lửa Ứng Dụng WAF & Phòng Thủ Xâm Nhập Chuẩn Quốc Tế',
     'trips': 'Lệnh Điều Xe & Bảng Kê Thực Tế Hàng Ngày (Google Trang Tính)',
     'vehicles': 'Đội Xe & Rơ-Moóc (15 Xe Ben • 11 Xe Thùng — Theo Dõi GĐĐ & Đăng Kiểm)',
     'drivers': 'Đội Ngũ Tài Xế & Đánh Giá Chi Tiết Hiệu Suất Vận Hành',
@@ -326,6 +332,7 @@ function switchTab(tabId) {
 
   if (tabId === 'dashboard') loadDashboard(selectedDate);
   if (tabId === 'fines') loadTrafficFines();
+  if (tabId === 'security') loadSecurityStatus();
   if (tabId === 'trips') loadDailyTripsFromSheets(selectedDate);
   if (tabId === 'vehicles') loadGroupedVehicles();
   if (tabId === 'drivers') loadDriversActivity();
@@ -1271,3 +1278,110 @@ async function loadBarges() {
 function closeModal(id) {
   document.getElementById(id).classList.add('hidden');
 }
+
+// 10. TƯỜNG LỬA & AN NINH HỆ THỐNG (WAF SHIELD)
+async function loadSecurityStatus() {
+  try {
+    const res = await fetch(API_BASE + '/security/status', { headers: getHeaders() });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Lỗi kiểm tra an ninh');
+
+    const attacksEl = document.getElementById('sec-attacks-count');
+    if (attacksEl) attacksEl.innerText = `${data.total_attacks_blocked || 0} Đợt`;
+
+    const blockedEl = document.getElementById('sec-blocked-count');
+    if (blockedEl) blockedEl.innerText = `${data.blocked_ips_count || 0} IP`;
+
+    const currentIpEl = document.getElementById('sec-current-ip');
+    if (currentIpEl) currentIpEl.innerText = `IP: ${data.client_ip || '127.0.0.1'}`;
+
+    // Render Blocked IPs
+    const blockedContainer = document.getElementById('sec-blocked-list');
+    if (blockedContainer) {
+      if (data.blocked_ips && data.blocked_ips.length > 0) {
+        blockedContainer.innerHTML = data.blocked_ips.map(item => `
+          <div class="flex items-center justify-between p-2 rounded-lg bg-rose-50 border border-rose-200">
+            <div>
+              <span class="font-mono font-bold text-rose-700">${item.ip}</span>
+              <span class="text-[10px] text-slate-500 ml-2">(Còn ${Math.ceil(item.remaining_seconds / 60)} phút)</span>
+            </div>
+            <button onclick="unblockIp('${item.ip}')" class="px-2 py-1 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded text-[10px] font-bold">
+              Gỡ Khóa
+            </button>
+          </div>
+        `).join('');
+      } else {
+        blockedContainer.innerHTML = '🟢 Hiện tại không có IP nào bị khóa. Toàn bộ kết nối an toàn.';
+      }
+    }
+
+    // Render Audit Logs
+    const tbody = document.getElementById('secAuditLogBody');
+    if (tbody) {
+      if (data.audit_logs && data.audit_logs.length > 0) {
+        tbody.innerHTML = data.audit_logs.map(log => {
+          let badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 An toàn</span>';
+          if (log.is_threat) {
+            badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 Ngăn chặn</span>';
+          }
+          return `
+            <tr class="hover:bg-slate-50 border-b border-slate-100">
+              <td class="py-2.5 px-3.5 text-slate-500">${log.timestamp}</td>
+              <td class="py-2.5 px-3.5 font-bold text-blue-700">${log.ip}</td>
+              <td class="py-2.5 px-3.5 font-bold ${log.is_threat ? 'text-rose-600' : 'text-slate-800'}">${log.event_type}</td>
+              <td class="py-2.5 px-3.5 text-slate-700">${log.details}</td>
+              <td class="py-2.5 px-3.5 text-center">${badge}</td>
+            </tr>
+          `;
+        }).join('');
+      } else {
+        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-400">Chưa ghi nhận sự kiện bất thường nào. Tường lửa hoạt động ổn định.</td></tr>';
+      }
+    }
+    if (window.lucide) lucide.createIcons();
+  } catch (err) {
+    console.error('Error loading security status:', err);
+  }
+}
+
+async function unblockIp(ip) {
+  if (!confirm(`Bạn có chắc chắn muốn gỡ khóa IP ${ip} không?`)) return;
+  try {
+    const res = await fetch(API_BASE + '/security/unblock-ip', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ ip })
+    });
+    const json = await res.json();
+    alert(json.message);
+    loadSecurityStatus();
+  } catch (err) {
+    alert('Lỗi gỡ khóa IP: ' + err.message);
+  }
+}
+
+async function handleUpdatePin(e) {
+  e.preventDefault();
+  const oldPin = document.getElementById('oldPinInput').value.trim();
+  const newPin = document.getElementById('newPinInput').value.trim();
+  const alertBox = document.getElementById('pinAlertBox');
+
+  try {
+    const res = await fetch(API_BASE + '/security/update-pin', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({ old_pin: oldPin, new_pin: newPin })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Lỗi cập nhật mã PIN');
+
+    alertBox.className = 'p-2.5 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block';
+    alertBox.innerText = `✅ ${json.message}`;
+    document.getElementById('updatePinForm').reset();
+    setTimeout(() => { alertBox.className = 'hidden'; }, 3000);
+  } catch (err) {
+    alertBox.className = 'p-2.5 rounded-xl text-xs border bg-rose-50 text-rose-800 border-rose-200 block';
+    alertBox.innerText = `❌ ${err.message}`;
+  }
+}
+

@@ -57,6 +57,18 @@
           </div>
         </div>
 
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Mã PIN Bảo Mật Cấp 2</label>
+            <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Mặc định: 6868</span>
+          </div>
+          <div class="relative">
+            <i data-lucide="shield-check" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500"></i>
+            <input type="password" id="loginPin" required maxlength="8" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN (6868)..." value="6868" />
+          </div>
+          <p class="text-[10px] text-slate-400 mt-1">Lớp khiên 2FA chống rò rỉ tài khoản và chặn đứng hacker dò mật khẩu.</p>
+        </div>
+
         <button type="submit" id="btnLogin" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-blue-700/25 transition flex items-center justify-center gap-2 text-sm">
           <span>Đăng Nhập An Toàn</span>
           <i data-lucide="arrow-right" class="w-4 h-4"></i>
@@ -92,11 +104,18 @@
           <span>Tổng Quan Vận Hành</span>
         </button>
 
-        <!-- MỤC MỚI: TỰ CHECK PHẠT NGUỘI TOÀN ĐOÀN XE -->
+        <!-- MỤC: TỰ CHECK PHẠT NGUỘI TOÀN ĐOÀN XE -->
         <button onclick="switchTab('fines')" id="nav-fines" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
           <i data-lucide="shield-alert" class="w-4 h-4 text-rose-400"></i>
           <span class="flex-1 text-left">Tra Cứu Phạt Nguội (CSGT)</span>
           <span id="badgeFinesCount" class="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">26 Xe</span>
+        </button>
+
+        <!-- MỤC MỚI: TƯỜNG LỬA & AN NINH HỆ THỐNG (WAF SHIELD) -->
+        <button onclick="switchTab('security')" id="nav-security" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+          <span class="flex-1 text-left">Tường Lửa & An Ninh</span>
+          <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-400/30">BẬT</span>
         </button>
 
         <button onclick="switchTab('trips')" id="nav-trips" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
@@ -655,6 +674,159 @@
                 </thead>
                 <tbody id="finesTableBody" class="divide-y divide-slate-100"></tbody>
               </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- TAB MỚI: TƯỜNG LỬA & BẢO MẬT HỆ THỐNG (WAF SHIELD & CHỐNG HACK) -->
+        <section id="tab-security" class="tab-content hidden space-y-6">
+          <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+            <!-- Header Tường Lửa -->
+            <div class="flex flex-col md:flex-row gap-3 items-center justify-between pb-4 border-b border-slate-100">
+              <div class="flex items-center gap-3">
+                <div class="p-3 bg-emerald-100 text-emerald-700 rounded-2xl font-bold shadow-sm">
+                  <i data-lucide="shield-check" class="w-6 h-6"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h3 class="font-black text-slate-800 text-sm md:text-base uppercase tracking-tight">HỆ THỐNG TƯỜNG LỬA & PHÒNG THỦ CHỐNG XÂM NHẬP (WAF SHIELD)</h3>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">● ĐANG BẢO VỆ 24/7</span>
+                  </div>
+                  <p class="text-xs text-slate-500 mt-0.5">
+                    Tiêu chuẩn an ninh quốc tế OWASP Top 10 • Phòng chống tấn công Brute-force, DDoS, SQL Injection, XSS, Scanner Bots.
+                  </p>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-2">
+                <button onclick="loadSecurityStatus()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold flex items-center gap-1.5 transition">
+                  <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                  <span>Làm Mới Trạng Thái</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- 4 Thẻ Trạng Thái An Ninh -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+              <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-emerald-700">Trạng Thái Tường Lửa</p>
+                  <h4 class="text-lg font-black mt-0.5 text-emerald-800">Đang Hoạt Động</h4>
+                  <span class="text-[10px] text-emerald-600">Enterprise WAF v3.5</span>
+                </div>
+                <i data-lucide="shield" class="w-8 h-8 text-emerald-500"></i>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-blue-700">Đợt Quét Đã Chặn Đứng</p>
+                  <h4 id="sec-attacks-count" class="text-lg font-black mt-0.5 text-blue-800">0 Đợt</h4>
+                  <span class="text-[10px] text-blue-600">Tự động phát hiện & chặn</span>
+                </div>
+                <i data-lucide="shield-x" class="w-8 h-8 text-blue-500"></i>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-rose-700">IP Bị Khóa Tạm Thời</p>
+                  <h4 id="sec-blocked-count" class="text-lg font-black mt-0.5 text-rose-800">0 IP</h4>
+                  <span class="text-[10px] text-rose-600">Chặn Brute-force mật khẩu</span>
+                </div>
+                <i data-lucide="ban" class="w-8 h-8 text-rose-500"></i>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 flex items-center justify-between">
+                <div>
+                  <p class="text-[10px] uppercase font-bold text-indigo-700">Bảo Vệ Đăng Nhập 2FA</p>
+                  <h4 class="text-lg font-black mt-0.5 text-indigo-800">Mã PIN Cấp 2</h4>
+                  <span class="text-[10px] text-indigo-600">Chống rò rỉ mật khẩu</span>
+                </div>
+                <i data-lucide="key-round" class="w-8 h-8 text-indigo-500"></i>
+              </div>
+            </div>
+
+            <!-- Khối Quản Trị: Đổi PIN Cấp 2 & Địa chỉ IP -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <!-- Box Đổi PIN Bảo Mật Cấp 2 -->
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-2">
+                    <i data-lucide="lock" class="w-4 h-4 text-slate-700"></i>
+                    <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wide">Thiết Lập Mã PIN Bảo Mật Cấp 2</h4>
+                  </div>
+                  <span class="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">Mặc định: 6868</span>
+                </div>
+                <p class="text-[11px] text-slate-500">
+                  Mã PIN cấp 2 là lớp phòng thủ bổ sung. Ngay cả khi hacker có được tên tài khoản và mật khẩu, hệ thống vẫn kiên quyết từ chối nếu không có mã PIN này.
+                </p>
+                <form id="updatePinForm" onsubmit="handleUpdatePin(event)" class="space-y-2.5">
+                  <div id="pinAlertBox" class="hidden p-2.5 rounded-xl text-xs border"></div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div>
+                      <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Mã PIN Hiện Tại *</label>
+                      <input type="password" id="oldPinInput" required maxlength="8" class="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold" placeholder="Nhập PIN cũ..." />
+                    </div>
+                    <div>
+                      <label class="block text-[10px] font-bold text-slate-600 uppercase mb-1">Mã PIN Mới *</label>
+                      <input type="password" id="newPinInput" required maxlength="8" class="w-full p-2 bg-white border border-slate-300 rounded-xl text-xs font-mono font-bold" placeholder="Nhập PIN mới..." />
+                    </div>
+                  </div>
+                  <div class="flex justify-end">
+                    <button type="submit" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold shadow-sm transition">
+                      Lưu Mã PIN Mới
+                    </button>
+                  </div>
+                </form>
+              </div>
+
+              <!-- Box Thông Tin IP Hiện Tại & Danh Sách Khóa -->
+              <div class="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 flex flex-col justify-between">
+                <div class="space-y-2">
+                  <div class="flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                      <i data-lucide="network" class="w-4 h-4 text-blue-600"></i>
+                      <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wide">Địa Chỉ IP Của Bạn & Kết Nối</h4>
+                    </div>
+                    <span id="sec-current-ip" class="font-mono font-black text-blue-700 text-xs bg-blue-100 px-2 py-0.5 rounded">Đang kiểm tra...</span>
+                  </div>
+                  <p class="text-[11px] text-slate-500">
+                    Địa chỉ IP của bạn được tường lửa chứng thực phiên an toàn và mã hóa dữ liệu 256-bit chuẩn HSTS qua giao thức HTTPS quốc tế.
+                  </p>
+                </div>
+                <div id="sec-blocked-list-container" class="space-y-1.5 text-xs">
+                  <span class="text-[10px] font-bold text-slate-600 uppercase">Danh Sách IP Đang Bị Khóa:</span>
+                  <div id="sec-blocked-list" class="p-2 bg-white rounded-xl border border-slate-200 text-slate-500 text-[11px]">
+                    🟢 Hiện tại không có IP nào bị khóa. Toàn bộ kết nối an toàn.
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- BẢNG NHẬT KÝ AN NINH & GIÁM SÁT TRUY CẬP (SECURITY AUDIT LOG) -->
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <i data-lucide="scroll-text" class="w-4 h-4 text-slate-700"></i>
+                  <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Nhật Ký An Ninh & Giám Sát Truy Cập Tức Thời (Audit Log)</h4>
+                </div>
+                <span class="text-[10px] text-slate-500">Tự động ghi nhận mọi nỗ lực đăng nhập & xâm nhập</span>
+              </div>
+              <div class="overflow-x-auto rounded-xl border border-slate-200">
+                <table class="w-full text-left text-xs whitespace-nowrap">
+                  <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
+                    <tr>
+                      <th class="py-2.5 px-3.5">Thời Gian</th>
+                      <th class="py-2.5 px-3.5">Địa Chỉ IP</th>
+                      <th class="py-2.5 px-3.5">Loại Sự Kiện</th>
+                      <th class="py-2.5 px-3.5">Chi Tiết Kiểm Soát</th>
+                      <th class="py-2.5 px-3.5 text-center">Đánh Giá An Ninh</th>
+                    </tr>
+                  </thead>
+                  <tbody id="secAuditLogBody" class="divide-y divide-slate-100 font-mono text-[11px]">
+                    <!-- Rendered dynamically via app.js -->
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </section>

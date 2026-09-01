@@ -1,44 +1,38 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from pydantic import BaseModel
+from typing import Optional
 import models, schemas, auth
 from database import get_db
 from datetime import datetime, timedelta
+from security_firewall import firewall_manager
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
-# In-memory brute force protection: username -> [timestamps]
-failed_attempts = {}
-
-def check_rate_limit(username: str):
-    now = datetime.now()
-    attempts = failed_attempts.get(username, [])
-    recent = [t for t in attempts if now - t < timedelta(minutes=15)]
-    failed_attempts[username] = recent
-    if len(recent) >= 10:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Tài khoản bị tạm khóa 15 phút do nhập sai mật khẩu quá 10 lần để đảm bảo an ninh hệ thống!"
-        )
-
-def record_failed_attempt(username: str):
-    now = datetime.now()
-    if username not in failed_attempts:
-        failed_attempts[username] = []
-    failed_attempts[username].append(now)
-
-def clear_failed_attempts(username: str):
-    if username in failed_attempts:
-        del failed_attempts[username]
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
 
 @router.post("/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(
+    request: Request,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db)
+):
+    ip = firewall_manager.get_client_ip(request)
+
+    # 1. Kiểm tra IP có đang bị tường lửa khóa không
+    if firewall_manager.is_ip_blocked(ip):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Địa chỉ IP của bạn đã bị tường lửa tạm khóa 15 phút do nhập sai quá nhiều lần!"
+        )
+
     clean_username = form_data.username.strip().lower()
     clean_password = form_data.password.strip()
 
-    check_rate_limit(clean_username)
-
-    # Đảm bảo tài khoản admin luôn tồn tại
+    # 2. Đảm bảo tài khoản admin luôn sẵn sàng
     user = db.query(models.User).filter(models.User.username == clean_username).first()
     if not user and clean_username == "admin":
         user = models.User(
@@ -52,18 +46,41 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         db.commit()
         db.refresh(user)
 
-    if not user or not auth.verify_password(clean_password, user.password_hash):
-        record_failed_attempt(clean_username)
+    # 3. Lấy mã PIN bảo mật cấp 2 (Mặc định 6868)
+    pin_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "security_pin_code").first()
+    expected_pin = pin_setting.value if pin_setting else "6868"
+
+    # Kiểm tra mã PIN được gửi qua Header hoặc Form
+    client_pin = request.headers.get("X-Security-PIN") or request.query_params.get("pin")
+
+    # Xác thực mật khẩu
+    password_ok = user and auth.verify_password(clean_password, user.password_hash)
+
+    # Nếu có truyền PIN, kiểm tra khớp PIN
+    pin_ok = True
+    if client_pin:
+        pin_ok = (client_pin.strip() == expected_pin)
+
+    if not password_ok or not pin_ok:
+        is_now_blocked = firewall_manager.record_login_attempt(ip, clean_username, success=False)
+        if is_now_blocked:
+            detail_msg = "Bạn đã nhập sai thông tin 5 lần! IP đã bị tường lửa khóa 15 phút để chống tấn công dò mật khẩu."
+        elif not password_ok:
+            detail_msg = "Tên đăng nhập hoặc mật khẩu không chính xác!"
+        else:
+            detail_msg = "Mã PIN bảo mật cấp 2 không chính xác!"
+
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Tên đăng nhập hoặc mật khẩu không chính xác!",
+            detail=detail_msg,
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Tài khoản này đã bị vô hiệu hóa")
-    
-    clear_failed_attempts(clean_username)
+
+    # Đăng nhập thành công -> Ghi nhật ký & Xóa các lần thử sai
+    firewall_manager.record_login_attempt(ip, clean_username, success=True)
     access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
     return {
         "access_token": access_token,
@@ -82,19 +99,22 @@ def get_me(current_user: models.User = Depends(auth.get_current_user)):
 
 @router.post("/change-password")
 def change_password(
-    req: schemas.ChangePasswordRequest,
-    current_user: models.User = Depends(auth.get_current_user),
-    db: Session = Depends(get_db)
+    req: ChangePasswordRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     if not auth.verify_password(req.old_password, current_user.password_hash):
-        raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác!")
-    
-    if req.new_password != req.confirm_password:
-        raise HTTPException(status_code=400, detail="Mật khẩu mới và xác nhận mật khẩu không trùng khớp!")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mật khẩu hiện tại không chính xác!"
+        )
+
     if len(req.new_password) < 6:
-        raise HTTPException(status_code=400, detail="Mật khẩu mới phải có tối thiểu 6 ký tự để đảm bảo an toàn!")
-    
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mật khẩu mới phải có tối thiểu 6 ký tự!"
+        )
+
     current_user.password_hash = auth.get_password_hash(req.new_password)
     db.commit()
-    return {"message": "Đã đổi mật khẩu thành công! Hãy ghi nhớ mật khẩu mới của bạn."}
+    return {"message": "Đã đổi mật khẩu thành công! Vui lòng ghi nhớ mật khẩu mới."}

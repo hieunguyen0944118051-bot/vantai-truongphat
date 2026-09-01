@@ -5,7 +5,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
 import models, auth
-from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines
+from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, security
+from security_firewall import SecurityFirewallMiddleware, firewall_manager
 
 try:
     from routers import weighbridge
@@ -20,6 +21,10 @@ app = FastAPI(
     version="3.5.0"
 )
 
+# 1. Tường Lửa Bảo Mật Ứng Dụng WAF (Chặn Brute-Force, DDoS, SQLi, XSS, Scanner Bots)
+app.add_middleware(SecurityFirewallMiddleware)
+
+# 2. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -29,6 +34,7 @@ app.add_middleware(
 )
 
 app.include_router(auth_router.router)
+app.include_router(security.router)
 app.include_router(users.router)
 app.include_router(vehicles.router)
 app.include_router(barges.router)
