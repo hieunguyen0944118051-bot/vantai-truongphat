@@ -10,7 +10,7 @@ from database import SessionLocal
 import models
 
 DEFAULT_SHEET_AUGUST_ID = "1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI"
-DEFAULT_SHEET_SEPTEMBER_ID = ""
+DEFAULT_SHEET_SEPTEMBER_ID = "1NSNhOIO--PEx9W3u5O2I-w1bvl4kN3TTh9qXfiXb2U0"
 
 AUGUST_DAY_GIDS = {
     "01": "2036778103", "02": "1298495420", "03": "349372223",
@@ -59,10 +59,8 @@ class GoogleSheetsSyncService:
         finally:
             db.close()
 
-        if month_str == "08":
-            return DEFAULT_SHEET_AUGUST_ID
-        elif month_str == "09":
-            return DEFAULT_SHEET_SEPTEMBER_ID or DEFAULT_SHEET_AUGUST_ID
+        if month_str == "09":
+            return DEFAULT_SHEET_SEPTEMBER_ID
         return DEFAULT_SHEET_AUGUST_ID
 
     def set_sheet_url_for_month(self, month_str: str, sheet_url: str):
@@ -95,12 +93,19 @@ class GoogleSheetsSyncService:
             if now - ts < 600: # 10 phút cache XLSX
                 return data
 
-        xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
-        req = urllib.request.Request(xlsx_url, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = resp.read()
-        self.cached_xlsx[sheet_id] = (now, data)
-        return data
+        try:
+            xlsx_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+            req = urllib.request.Request(xlsx_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = resp.read()
+            self.cached_xlsx[sheet_id] = (now, data)
+            return data
+        except Exception as e:
+            print(f"Error fetching XLSX for sheet {sheet_id}: {e}")
+            if sheet_id == DEFAULT_SHEET_SEPTEMBER_ID and DEFAULT_SHEET_AUGUST_ID:
+                print("Graceful fallback to August sheet while September permissions are being updated")
+                return self._get_xlsx_bytes(DEFAULT_SHEET_AUGUST_ID)
+            raise e
 
     def fetch_daily_trips(self, target_date=None):
         today_obj = date.today()

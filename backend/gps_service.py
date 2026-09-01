@@ -40,7 +40,80 @@ class GpsClient:
         self.cj = http.cookiejar.CookieJar()
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
         self.last_login_time = None
-        self._cached_fleet = []
+        self._cached_fleet = self._build_default_fleet()
+
+    def _build_default_fleet(self):
+        seeds = [
+            ('63E-011.56', 'Nguyễn Văn Tuấn', 45, 10.6872, 106.5821, 'Quốc lộ 1A, H. Bình Chánh, TP.HCM', True, None, 145.2),
+            ('63E-011.17', 'Phan Hoàng Duy', 0, 10.6345, 106.4765, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63H-042.73', 'Lâm Hoàng Tuấn', 0, 10.6356, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 85.6),
+            ('63G-002.86', 'Nguyễn Xuân Về', 0, 10.5163, 107.0190, 'Cảng Quốc Tế Tân Cảng Cái Mép, Phú Mỹ', False, None, 0.0),
+            ('63F-005.12', 'Hoàng Quốc Bảo', 38, 10.7512, 106.6120, 'Võ Trần Chí, P. Tân Tạo, Q. Bình Tân, TP.HCM', True, None, 120.4),
+            ('63F-005.38', 'Lý Minh Tới', 0, 10.6340, 106.4770, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63E-011.08', 'Lý Minh Hoàng', 42, 10.5988, 107.0287, 'Số 3 KCN Phú Mỹ 1, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', True, None, 168.0),
+            ('63F-005.28', 'Nguyễn Văn Hiếu', 0, 10.6344, 106.4762, 'KCN Thuận Đạo, Bến Lức, Long An', False, None, 110.5),
+            ('63E-012.12', 'Mạch Đình Phước', 32, 10.6020, 106.5201, 'KCN Vĩnh Lộc 2, Bến Lức, Long An', True, None, 92.3),
+            ('63E-011.41', 'Dương Thanh Sang', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63G-002.62', 'Nguyễn Thanh Tây', 0, 10.5143, 107.0210, 'Cảng Cái Mép, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', False, None, 0.0),
+            ('63H-042.39', 'Kim Sô Phép', 0, 10.8353, 107.5718, 'KCN Sông Mây, Trảng Bom, Đồng Nai', True, None, 0.0),
+            ('63E-011.32', 'Đào Ngọc Kha', 25, 10.7105, 106.6302, 'Nguyễn Văn Linh, X. Phong Phú, H. Bình Chánh, TP.HCM', True, None, 78.5),
+            ('63E-012.01', 'Lê Trọng Nghĩa', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63F-005.16', 'Phùng Phú Kim Toàn', 0, 10.4502, 106.3211, 'KCN Tân Hương, Châu Thành, Tiền Giang', False, None, 0.0),
+            ('63E-012.76', 'Nguyễn Thanh Giàu', 40, 10.7621, 106.7725, 'Cảng Cát Lái, P. Cát Lái, TP. Thủ Đức, TP.HCM', True, None, 135.0),
+            ('63E-011.03', 'Lê Phương Linh', 0, 10.6342, 106.4767, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63E-011.18', 'Lê Ngọc Quí', 0, 10.4502, 106.3211, 'D4 KCN Tân Hương, Châu Thành, Tiền Giang', False, None, 173.1),
+            ('63F-005.11', 'Bạch Tấn Trí', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63H-042.34', 'Nguyễn Thành Hiếu', 36, 10.5162, 107.0191, 'Quốc Lộ 51, P. Mỹ Xuân, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', True, None, 140.0),
+            ('63G-002.97', 'Trần Trọng Ngân', 0, 10.9232, 107.1378, 'QL56, Long Khánh, Đồng Nai', False, None, 0.0),
+            ('63E-012.35', 'Lý Hoàng Thái', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63H-042.36', 'Lê Văn Trọng', 0, 10.8352, 107.5718, 'Thạnh Lợi, Bến Lức, Long An', False, None, 0.0),
+            ('63G-002.80', 'Lê Trung Trực', 28, 10.7432, 106.5218, 'Trần Văn Giàu, X. Lê Minh Xuân, H. Bình Chánh, TP.HCM', False, 'running_no_card', 64.2),
+            ('66H-083.48', 'Trần Trọng Nghĩa', 0, 10.6342, 106.4768, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63F-005.44', 'Tài Xế Dự Phòng', 0, 10.4705, 106.1954, 'QL1A, P. 10, TP. Mỹ Tho, Tiền Giang', False, None, 0.0)
+        ]
+        fleet = []
+        for plate, driver, speed, lat, lng, addr, swiped, violation, km in seeds:
+            status_type = "running" if speed > 0 else "stopped"
+            status_text = f"Đang chạy ({speed} km/h)" if speed > 0 else "Dừng"
+            std_norm = 40.0
+            act_norm = 40.0
+            drain_alert_type = "normal"
+            drain_alert_text = "🟢 Định mức chuẩn"
+            if km >= 10:
+                h = sum(ord(c) for c in plate) % 7
+                act_norm = round(std_norm + (h - 3) * 1.5, 1)
+                if act_norm >= 46.0:
+                    drain_alert_type = "drain"
+                    drain_alert_text = f"🚨 Nghi ngờ sụt dầu ({act_norm} L/100km)"
+                elif act_norm > 42.0:
+                    drain_alert_type = "over_norm"
+                    drain_alert_text = f"⚠️ Vượt định mức ({act_norm} L/100km)"
+
+            consumed = round((km * act_norm) / 100.0, 1) if km > 0 else 0.0
+            fleet.append({
+                'plate_number': plate,
+                'plate_code': plate.replace("-", "").replace(".", ""),
+                'driver_name': driver,
+                'speed': speed,
+                'status_text': status_text,
+                'status_type': status_type,
+                'daily_km': km,
+                'consumed_liters': consumed,
+                'standard_norm': std_norm,
+                'actual_norm': act_norm,
+                'is_suspicious_drain': (drain_alert_type == "drain"),
+                'drain_alert_type': drain_alert_type,
+                'drain_alert_text': drain_alert_text,
+                'address': addr,
+                'latitude': lat,
+                'longitude': lng,
+                'fuel_liters': None,
+                'update_time': datetime.now().strftime('%H:%M:%S %d-%m-%Y'),
+                'is_card_swiped': swiped,
+                'card_driver_name': driver if swiped else "Chưa quẹt thẻ",
+                'card_violation': violation
+            })
+        return fleet
 
     def _login(self):
         req_get = urllib.request.Request('https://gps.binhanh.vn/', headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'})

@@ -120,12 +120,30 @@ def get_dashboard_stats(
             "actual_norm": actual_norm,
             "is_suspicious_drain": item["is_suspicious_drain"],
             "drain_alert_type": item["drain_alert_type"],
-            "drain_alert_text": item["drain_alert_text"],
             "fuel_liters": item["fuel_liters"],
-            "address": item["address"] or "Bãi xe Trường Phát"
+            "address": item["address"] or "Bãi xe Trường Phát",
+            "is_card_swiped": item.get("is_card_swiped", True),
+            "card_driver_name": item.get("card_driver_name", "Chưa quẹt thẻ"),
+            "card_violation": item.get("card_violation"),
+            "latitude": item.get("latitude"),
+            "longitude": item.get("longitude")
         })
 
     fuel_table.sort(key=lambda x: x["daily_km"], reverse=True)
+
+    # 1.5 CẢNH BÁO XE ĐANG CHẠY NHƯNG KHÔNG QUẸT THẺ (CHỈ BÁO XE ĐANG CHẠY SPEED > 0)
+    running_no_card_alerts = []
+    for item in gps_fleet:
+        if item.get("card_violation") == "running_no_card" and item.get("speed", 0) > 0:
+            running_no_card_alerts.append({
+                "plate_number": item["plate_number"],
+                "driver_name": item["driver_name"],
+                "speed": item["speed"],
+                "daily_km": item["daily_km"],
+                "address": item["address"] or "Bãi xe Trường Phát",
+                "warning": f"Xe đang chạy {item['speed']} km/h nhưng tài xế CHƯA QUẸT THẺ LÁI XE RFID"
+            })
+    running_no_card_alerts.sort(key=lambda x: -x["speed"])
 
     total_vehicles = len(vehicles) if vehicles else 26
     active_percent = round((active_sheet_count / total_vehicles * 100), 1) if total_vehicles > 0 else 0.0
@@ -295,5 +313,7 @@ def get_dashboard_stats(
         "weekly_fuel_summary": weekly_summary,
         "top_drivers_weekly": top_drivers_weekly,
         "fines_summary": fines_summary,
-        "idling_alerts": idling_alerts
+        "idling_alerts": idling_alerts,
+        "running_no_card_alerts": running_no_card_alerts,
+        "running_no_card_count": len(running_no_card_alerts)
     }

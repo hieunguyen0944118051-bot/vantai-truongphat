@@ -215,7 +215,7 @@ def get_sheets_config(
     setting_09 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_09").first()
     return {
         "sheet_url_month_08": setting_08.value if setting_08 else "https://docs.google.com/spreadsheets/d/1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI/edit",
-        "sheet_url_month_09": setting_09.value if setting_09 else ""
+        "sheet_url_month_09": setting_09.value if setting_09 else f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_SEPTEMBER_ID}/edit"
     }
 
 @router.post("/sheets-config")
