@@ -422,7 +422,7 @@ class GoogleSheetsSyncService:
         now = time.time()
         if self.cached_maintenance:
             ts, data = self.cached_maintenance
-            if now - ts < 300:
+            if now - ts < 120:
                 return data
 
         try:
@@ -434,47 +434,68 @@ class GoogleSheetsSyncService:
             rows = list(reader)
 
             maintenance_list = []
+            count = 0
             for r in rows:
                 if len(r) > 2 and r[1].strip().isdigit():
                     stt = int(r[1].strip())
-                    if stt > 26:
+                    if stt != count + 1 or count >= 25:
                         continue
+                    count += 1
+
                     raw_plate = r[2].strip()
-                    norm = r[3].strip() if len(r) > 3 else "15.000"
-                    last_odo = r[4].strip() if len(r) > 4 else "0"
-                    last_date = r[5].strip() if len(r) > 5 else ""
-                    next_odo = r[6].strip() if len(r) > 6 else "0"
-                    actual_odo = r[7].strip() if len(r) > 7 else "0"
-                    diff_km = r[8].strip() if len(r) > 8 else "0"
-                    status_text = r[9].strip() if len(r) > 9 else "Bình thường"
-                    notes = r[10].strip() if len(r) > 10 else ""
+                    clean_p = raw_plate.replace(" ", "").replace("-", "").replace(".", "").upper()
+                    if len(clean_p) == 8:
+                        plate_formatted = f"{clean_p[:3]}-{clean_p[3:6]}.{clean_p[6:]}"
+                    else:
+                        plate_formatted = raw_plate
+
+                    norm = r[3].strip() if len(r) > 3 and r[3].strip() else "15.000"
+                    last_km = r[4].strip() if len(r) > 4 and r[4].strip() else "—"
+                    last_date = r[5].strip() if len(r) > 5 and r[5].strip() else "—"
+                    current_km = r[6].strip() if len(r) > 6 and r[6].strip() else "—"
+                    due_km = r[8].strip() if len(r) > 8 and r[8].strip() else "—"
+                    remaining_km = r[9].strip() if len(r) > 9 and r[9].strip() else "—"
+                    status_text = r[10].strip() if len(r) > 10 and r[10].strip() else ""
+                    notes = r[11].strip() if len(r) > 11 else ""
+
+                    if not status_text:
+                        if remaining_km and remaining_km != "—":
+                            try:
+                                rem_num = float(remaining_km.replace(".", "").replace(",", "."))
+                                if rem_num < 0:
+                                    status_text = "Sắp / quá hạn"
+                                elif rem_num < 3000:
+                                    status_text = "Gần tới hạn"
+                                else:
+                                    status_text = "Còn xa"
+                            except Exception:
+                                status_text = "Còn xa"
+                        else:
+                            status_text = "Thiếu số liệu"
 
                     maintenance_list.append({
                         "stt": stt,
-                        "plate_number": raw_plate,
-                        "norm": norm,
+                        "plate_number": plate_formatted,
+                        "raw_plate": raw_plate,
                         "norm_km": norm,
-                        "last_odo": last_odo,
-                        "last_km": last_odo,
+                        "last_km": last_km,
                         "last_date": last_date,
-                        "next_odo": next_odo,
-                        "due_km": next_odo,
-                        "actual_odo": actual_odo,
-                        "current_km": actual_odo,
-                        "diff_km": diff_km,
-                        "remaining_km": diff_km,
-                        "status_text": status_text,
+                        "current_km": current_km,
+                        "due_km": due_km,
+                        "remaining_km": remaining_km,
                         "status": status_text,
+                        "status_text": status_text,
                         "notes": notes
                     })
 
-            self.cached_maintenance = (now, maintenance_list)
-            return maintenance_list
+            if maintenance_list:
+                self.cached_maintenance = (now, maintenance_list)
+                return maintenance_list
         except Exception as e:
             print(f"Error fetching maintenance sheet: {e}")
             if self.cached_maintenance:
                 return self.cached_maintenance[1]
-            return []
+        return []
 
     def fetch_vehicles_sheet(self):
         now = time.time()

@@ -472,6 +472,23 @@ async function loadDashboard(dateStr) {
   }
 }
 
+const XE_BEN_SET = new Set([
+  '63H04273', '63G00286', '63E01156', '63E01117', '63E01108',
+  '63F00528', '63G00262', '63H04239', '63E01276', '63E01103',
+  '63E01118', '63F00511', '63H04234', '63E01235', '63H04236'
+]);
+
+function formatPlateBadge(plate) {
+  if (!plate) return '—';
+  const clean = plate.replace(/[-. ]/g, '').toUpperCase();
+  const isBen = XE_BEN_SET.has(clean);
+  if (isBen) {
+    return `<span class="inline-flex items-center font-mono font-black text-amber-900 bg-amber-100/90 border border-amber-300 px-2 py-0.5 rounded-md text-xs shadow-xs tracking-tight" title="Xe Ben">${plate}</span>`;
+  } else {
+    return `<span class="inline-flex items-center font-mono font-black text-blue-900 bg-blue-100/90 border border-blue-300 px-2 py-0.5 rounded-md text-xs shadow-xs tracking-tight" title="Xe Thùng">${plate}</span>`;
+  }
+}
+
 function renderFuelAnalysisTable(items) {
   const tbody = document.getElementById('fuelAnalysisTableBody');
   if (!tbody) return;
@@ -502,7 +519,7 @@ function renderFuelAnalysisTable(items) {
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
+        <td class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
         <td class="py-3 px-4 font-medium text-slate-800">${v.driver_name}</td>
         <td class="py-3 px-4 text-center">${cardBadge}</td>
         <td class="py-3 px-4 space-y-1">
@@ -721,13 +738,8 @@ function renderWeeklyFuelTable(weeklyData) {
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
         <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
-        <td class="py-3 px-3.5 font-mono font-black text-blue-700 text-sm">${r.plate_number}</td>
+        <td class="py-3 px-3.5">${formatPlateBadge(r.plate_number)}</td>
         <td class="py-3 px-3.5 font-bold text-slate-800">${r.driver_name}</td>
-        <td class="py-3 px-3.5">
-          <span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.vehicle_type === 'Xe Ben' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}">
-            ${r.vehicle_type}
-          </span>
-        </td>
         <td class="py-3 px-3.5 text-right font-black text-slate-800">${r.weekly_km.toLocaleString('vi-VN')} km</td>
         <td class="py-3 px-3.5 text-right font-bold text-blue-600">${r.avg_daily_km} km</td>
         <td class="py-3 px-3.5 text-right font-black text-amber-700">${r.weekly_liters.toLocaleString('vi-VN')} L</td>
@@ -1238,27 +1250,27 @@ async function loadMaintenance() {
 
     tbody.innerHTML = list.map(m => {
       const rem = (m.remaining_km !== undefined ? m.remaining_km : (m.diff_km !== undefined ? m.diff_km : '—')).toString();
-      const statusText = m.status || m.status_text || 'Bình thường';
+      const statusText = (m.status || m.status_text || 'Thiếu số liệu').toString();
       const isOver = rem.startsWith('-') || statusText.toLowerCase().includes('quá') || statusText.toLowerCase().includes('sắp');
 
-      let statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">Bình thường</span>';
+      let statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Thiếu số liệu</span>';
       if (statusText.toLowerCase().includes('còn xa')) {
-        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Còn xa</span>';
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">🟢 Còn xa</span>';
       } else if (isOver) {
-        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 animate-pulse">Sắp / Quá hạn</span>';
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 Sắp / Quá hạn</span>';
       } else if (statusText.toLowerCase().includes('gần')) {
-        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Gần tới hạn</span>';
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">⚠️ Gần tới hạn</span>';
       }
 
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
           <td class="py-3 px-4 text-center font-bold text-slate-400">${m.stt || '—'}</td>
-          <td class="py-3 px-4 font-mono font-bold text-blue-700 text-sm">${m.plate_number || '—'}</td>
+          <td class="py-3 px-4">${formatPlateBadge(m.plate_number)}</td>
           <td class="py-3 px-4 text-right font-bold text-slate-600">${m.norm_km || m.norm || '15.000'}</td>
-          <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km || m.last_odo || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km || '—'}</td>
           <td class="py-3 px-4 text-center text-slate-600">${m.last_date || '—'}</td>
-          <td class="py-3 px-4 text-right font-mono font-black text-slate-800">${m.current_km || m.actual_odo || '—'}</td>
-          <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km || m.next_odo || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono font-black text-slate-900">${m.current_km || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km || '—'}</td>
           <td class="py-3 px-4 text-right font-mono font-black ${isOver ? 'text-red-600' : 'text-emerald-600'}">
             ${rem}
           </td>
