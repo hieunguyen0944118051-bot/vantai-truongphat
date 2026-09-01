@@ -454,7 +454,6 @@ async function loadDashboard(dateStr) {
     }
 
     renderFuelAnalysisTable(stats.fuel_table || []);
-    updateDashboardFleetMap(stats.fuel_table || []);
     renderFuelNormChart(stats.norm_chart_data || []);
     renderDailyKmChart(stats.km_chart_data || []);
     renderTopRoutesChart(stats.top_routes || []);
@@ -503,7 +502,7 @@ function renderFuelAnalysisTable(items) {
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm cursor-pointer hover:underline" onclick="focusVehicleOnMap('${v.plate_number}')" title="Nhấp để định vị xe trên bản đồ">${v.plate_number} 🎯</td>
+        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
         <td class="py-3 px-4 font-mono font-bold text-slate-700">${v.trailer_number || '—'}</td>
         <td class="py-3 px-4 font-medium text-slate-800">${v.driver_name}</td>
         <td class="py-3 px-4 text-center">${cardBadge}</td>
@@ -1277,275 +1276,11 @@ async function loadMaintenance() {
 }
 
 // BẢN ĐỒ GIÁM SÁT HÀNH TRÌNH LEAFLET.JS (REALTIME FLEET MAP)
-let dashboardMap = null;
-let liveGpsMap = null;
-let dashboardMarkersLayer = null;
-let liveGpsMarkersLayer = null;
-let activeMapFilter = 'all';
-let vehicleMarkersMap = {};
-
-const GOOGLE_ROAD_LAYER_URL = 'https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}';
-const GOOGLE_HYBRID_LAYER_URL = 'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}';
-
-function createVehicleMapIcon(vehicle) {
-  let color = '#475569'; // xám đậm đậu bãi
-  let pulse = '';
-  let speedText = '';
-  let badge = '';
-
-  const isNoCardRunning = (vehicle.card_violation === 'running_no_card' && vehicle.speed > 0);
-
-  if (isNoCardRunning) {
-    color = '#dc2626'; // đỏ cảnh báo vi phạm quẹt thẻ
-    pulse = '<span class="absolute -inset-2 rounded-full bg-rose-500/60 animate-ping"></span>';
-    speedText = `<span class="bg-rose-700 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm flex items-center gap-0.5">⚡ ${vehicle.speed} km/h</span>`;
-    badge = '<span class="absolute -top-2.5 -right-2.5 text-sm animate-bounce">🚨</span>';
-  } else if (vehicle.speed > 0 || vehicle.status_type === 'running') {
-    color = '#059669'; // xanh lá di chuyển
-    pulse = '<span class="absolute -inset-1.5 rounded-full bg-emerald-500/50 animate-ping"></span>';
-    speedText = `<span class="bg-emerald-700 text-white text-[9px] font-black px-1.5 py-0.5 rounded shadow-sm">⚡ ${vehicle.speed} km/h</span>`;
-  } else if (vehicle.status_type === 'idling' || vehicle.op_state === 'idling') {
-    color = '#d97706'; // vàng nổ máy tại chỗ
-    speedText = `<span class="bg-amber-600 text-white text-[9px] font-bold px-1 rounded shadow-xs">Nổ máy</span>`;
-  }
-
-  const cleanPlate = (vehicle.plate_number || '').replace('63E0', '63E-').replace('63H0', '63H-').replace('63G0', '63G-').replace('63F0', '63F-').replace('66H0', '66H-');
-
-  const html = `
-    <div class="relative flex flex-col items-center cursor-pointer group select-none" style="transform: translate(-50%, -100%);">
-      ${pulse}
-      ${badge}
-      <div style="background-color: ${color};" class="w-9 h-9 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-white z-10 transition group-hover:scale-125">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/>
-          <path d="M15 18H9"/>
-          <path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/>
-          <circle cx="17" cy="18" r="2"/>
-          <circle cx="7" cy="18" r="2"/>
-        </svg>
-      </div>
-      <div class="mt-1 whitespace-nowrap z-20 flex flex-col items-center pointer-events-none">
-        <span class="bg-slate-900 text-white text-[10px] font-black px-2 py-0.5 rounded-md shadow-md border border-white/30 font-mono tracking-tight">${cleanPlate}</span>
-        ${speedText}
-      </div>
-    </div>
-  `;
-
-  return L.divIcon({
-    html: html,
-    className: 'custom-vehicle-div-icon',
-    iconSize: [0, 0],
-    iconAnchor: [0, 0],
-    popupAnchor: [0, -50]
-  });
-}
-
-function buildPopupHtml(v) {
-  const isNoCardRunning = (v.card_violation === 'running_no_card' && v.speed > 0);
-  const cardBadge = isNoCardRunning
-    ? '<span class="px-2 py-1 rounded-lg text-[11px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse block text-center shadow-xs">🚨 VI PHẠM: ĐANG CHẠY CHƯA QUẸT THẺ</span>'
-    : (v.is_card_swiped
-      ? '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 block text-center">🟢 Đã quẹt thẻ lái xe RFID</span>'
-      : '<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 text-slate-600 block text-center">⚪ Đang dừng bãi / Nghỉ ngơi</span>');
-
-  const statusText = v.speed > 0
-    ? `<span class="text-emerald-700 font-black flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> ⚡ Đang chạy (${v.speed} km/h)</span>`
-    : (v.status_type === 'idling' || v.op_state === 'idling' ? '<span class="text-amber-700 font-bold">🟡 Dừng nổ máy</span>' : '<span class="text-slate-600 font-medium">⚪ Đang dừng / Đậu bãi</span>');
-
-  return `
-    <div class="p-1 text-xs min-w-[260px] space-y-2 font-sans">
-      <div class="flex items-center justify-between border-b border-slate-200 pb-2">
-        <div>
-          <span class="font-mono font-black text-blue-700 text-base">${v.plate_number}</span>
-          <span class="text-[10px] text-slate-500 font-semibold block">${v.trailer_number ? 'Rơ-moóc: ' + v.trailer_number : 'Đầu kéo độc lập'}</span>
-        </div>
-        <span class="px-2 py-0.5 rounded text-[10px] font-black uppercase ${v.speed > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">
-          ${v.speed > 0 ? 'Lăn Bánh' : 'Đỗ Bãi'}
-        </span>
-      </div>
-      <div class="space-y-1.5 text-slate-700">
-        <div><b>Vận hành:</b> ${statusText}</div>
-        <div><b>Tài xế phụ trách:</b> <span class="font-bold text-slate-900">${v.driver_name || 'Chưa phân công'}</span></div>
-        <div class="pt-0.5">${cardBadge}</div>
-        <div class="text-[11px] text-slate-600 pt-1.5 border-t border-slate-100 leading-relaxed">
-          📍 <b>Vị trí GPS:</b> ${v.address || 'Bãi xe Trường Phát, Bến Lức, Long An'}
-        </div>
-        <div class="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-          <span>Hôm nay: <b class="text-blue-700 font-mono">${v.daily_km || 0} km</b></span>
-          <span class="font-mono font-bold text-slate-600">${v.update_time ? '⏱️ ' + v.update_time : ''}</span>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function updateDashboardFleetMap(vehicles) {
-  const container = document.getElementById('dashboardFleetMap');
-  if (!container || typeof L === 'undefined') return;
-
-  if (!dashboardMap) {
-    dashboardMap = L.map('dashboardFleetMap', {
-      zoomControl: true,
-      attributionControl: false
-    }).setView([10.65, 106.60], 10);
-
-    // Google Maps Đường Bộ Layer
-    const roadLayer = L.tileLayer(GOOGLE_ROAD_LAYER_URL, { maxZoom: 20, attribution: 'Google Maps' });
-    const satLayer = L.tileLayer(GOOGLE_HYBRID_LAYER_URL, { maxZoom: 20, attribution: 'Google Maps Vệ Tinh' });
-    roadLayer.addTo(dashboardMap);
-
-    L.control.layers({ "🗺️ Bản Đồ": roadLayer, "🛰️ Vệ Tinh": satLayer }, null, { position: 'topright' }).addTo(dashboardMap);
-
-    dashboardMarkersLayer = L.layerGroup().addTo(dashboardMap);
-  }
-
-  dashboardMarkersLayer.clearLayers();
-  const validVehicles = vehicles.filter(v => v.latitude && v.longitude && v.latitude > 5 && v.longitude > 100);
-
-  validVehicles.forEach(v => {
-    const icon = createVehicleMapIcon(v);
-    const marker = L.marker([v.latitude, v.longitude], { icon: icon });
-    marker.bindPopup(buildPopupHtml(v));
-    dashboardMarkersLayer.addLayer(marker);
-  });
-
-  if (validVehicles.length > 0) {
-    try {
-      const bounds = L.latLngBounds(validVehicles.map(v => [v.latitude, v.longitude]));
-      dashboardMap.fitBounds(bounds.pad(0.12));
-    } catch (e) {}
-  }
-}
-
-function updateLiveGpsMap(vehicles, filter = 'all') {
-  const container = document.getElementById('liveFleetMap');
-  if (!container || typeof L === 'undefined') return;
-
-  if (!liveGpsMap) {
-    liveGpsMap = L.map('liveFleetMap', {
-      zoomControl: true,
-      attributionControl: false
-    }).setView([10.65, 106.60], 10);
-
-    // Google Maps Đường Bộ & Vệ Tinh Layers
-    const roadLayer = L.tileLayer(GOOGLE_ROAD_LAYER_URL, { maxZoom: 20, attribution: 'Google Maps Giao Thông' });
-    const satLayer = L.tileLayer(GOOGLE_HYBRID_LAYER_URL, { maxZoom: 20, attribution: 'Google Maps Vệ Tinh' });
-    roadLayer.addTo(liveGpsMap);
-
-    L.control.layers({ "🗺️ Bản Đồ Giao Thông": roadLayer, "🛰️ Google Vệ Tinh": satLayer }, null, { position: 'topright' }).addTo(liveGpsMap);
-
-    liveGpsMarkersLayer = L.layerGroup().addTo(liveGpsMap);
-  }
-
-  liveGpsMarkersLayer.clearLayers();
-  vehicleMarkersMap = {};
-
-  let filtered = vehicles.filter(v => v.latitude && v.longitude && v.latitude > 5 && v.longitude > 100);
-
-  if (filter === 'running') {
-    filtered = filtered.filter(v => v.speed > 0 || v.status_type === 'running');
-  } else if (filter === 'idling') {
-    filtered = filtered.filter(v => v.status_type === 'idling' || v.op_state === 'idling');
-  } else if (filter === 'no_card') {
-    filtered = filtered.filter(v => (v.card_violation === 'running_no_card' && v.speed > 0) || (!v.is_card_swiped && v.daily_km > 0));
-  }
-
-  filtered.forEach(v => {
-    const icon = createVehicleMapIcon(v);
-    const marker = L.marker([v.latitude, v.longitude], { icon: icon });
-    marker.bindPopup(buildPopupHtml(v));
-    liveGpsMarkersLayer.addLayer(marker);
-    vehicleMarkersMap[v.plate_number] = marker;
-  });
-
-  const totalCount = vehicles.length;
-  const runningCount = vehicles.filter(v => v.speed > 0 || v.status_type === 'running').length;
-  const idlingCount = vehicles.filter(v => v.status_type === 'idling' || v.op_state === 'idling').length;
-  const noCardCount = vehicles.filter(v => (v.card_violation === 'running_no_card' && v.speed > 0) || (!v.is_card_swiped && v.daily_km > 0)).length;
-
-  const stTot = document.getElementById('mapStatTotal');
-  const stRun = document.getElementById('mapStatRunning');
-  const stIdl = document.getElementById('mapStatIdling');
-  const stNoC = document.getElementById('mapStatNoCard');
-
-  if (stTot) stTot.innerText = `${totalCount} Xe`;
-  if (stRun) stRun.innerText = `${runningCount} Xe`;
-  if (stIdl) stIdl.innerText = `${idlingCount} Xe`;
-  if (stNoC) stNoC.innerText = `${noCardCount} Xe`;
-}
-
-function fitAllFleetBounds() {
-  if (!liveGpsMap || !gpsCache || gpsCache.length === 0) return;
-  const valid = gpsCache.filter(v => v.latitude && v.longitude && v.latitude > 5 && v.longitude > 100);
-  if (valid.length > 0) {
-    try {
-      const bounds = L.latLngBounds(valid.map(v => [v.latitude, v.longitude]));
-      liveGpsMap.fitBounds(bounds.pad(0.12));
-    } catch (e) {}
-  }
-}
-
-function handleMapSearch(query) {
-  const q = (query || '').trim().toLowerCase();
-  if (!q) {
-    updateLiveGpsMap(gpsCache, activeMapFilter);
-    return;
-  }
-  const matched = (gpsCache || []).filter(v => {
-    const p = (v.plate_number || '').toLowerCase();
-    const d = (v.driver_name || '').toLowerCase();
-    const a = (v.address || '').toLowerCase();
-    return p.includes(q) || d.includes(q) || a.includes(q);
-  });
-  updateLiveGpsMap(matched, 'all');
-
-  if (matched.length === 1 && liveGpsMap) {
-    const v = matched[0];
-    if (v.latitude && v.longitude) {
-      liveGpsMap.flyTo([v.latitude, v.longitude], 15, { duration: 1.2 });
-      setTimeout(() => {
-        if (vehicleMarkersMap[v.plate_number]) vehicleMarkersMap[v.plate_number].openPopup();
-      }, 400);
-    }
-  }
-}
-
-function focusVehicleOnMap(plate) {
-  switchTab('gps');
-  setTimeout(() => {
-    const input = document.getElementById('mapVehicleSearch');
-    if (input) input.value = plate;
-    handleMapSearch(plate);
-    const v = (gpsCache || []).find(x => (x.plate_number && x.plate_number.includes(plate)) || (plate && plate.includes(x.plate_number)));
-    if (v && v.latitude && v.longitude && liveGpsMap) {
-      liveGpsMap.flyTo([v.latitude, v.longitude], 15, { duration: 1.2 });
-      setTimeout(() => {
-        if (vehicleMarkersMap[v.plate_number]) vehicleMarkersMap[v.plate_number].openPopup();
-      }, 400);
-    }
-  }, 250);
-}
-
-function filterMapMarkers(type) {
-  activeMapFilter = type;
-  const buttons = [
-    { key: 'all', id: 'btnFilterMapAll' },
-    { key: 'running', id: 'btnFilterMapRunning' },
-    { key: 'idling', id: 'btnFilterMapIdling' },
-    { key: 'no_card', id: 'btnFilterMapNoCard' }
-  ];
-  buttons.forEach(b => {
-    const btn = document.getElementById(b.id);
-    if (btn) {
-      if (b.key === type) {
-        btn.className = 'px-2.5 py-1 rounded-lg bg-blue-600 text-white shadow-xs';
-      } else {
-        btn.className = 'px-2.5 py-1 rounded-lg bg-white text-slate-700 hover:bg-slate-50';
-      }
-    }
-  });
-  updateLiveGpsMap(gpsCache, type);
-}
+// Bản đồ đã được gỡ bỏ theo yêu cầu
+function focusVehicleOnMap(plate) {}
+function fitAllFleetBounds() {}
+function handleMapSearch(q) {}
+function filterMapMarkers(t) {}
 
 // 7. GPS & TIRES & BARGES
 async function loadGpsLive() {
@@ -1636,10 +1371,7 @@ async function silentRefreshLiveGps() {
     const activeTabEl = document.querySelector('.tab-content:not(.hidden)');
     const activeTabId = activeTabEl ? activeTabEl.id.replace('tab-', '') : '';
 
-    if (activeTabId === 'gps') {
-      updateLiveGpsMap(gpsCache, activeMapFilter);
-    } else if (activeTabId === 'dashboard') {
-      updateDashboardFleetMap(gpsCache);
+    if (activeTabId === 'dashboard') {
       const runningNoCard = gpsCache.filter(v => v.card_violation === 'running_no_card' && v.speed > 0);
       const alertBox = document.getElementById('dashboardRunningNoCardAlertBox');
       const listEl = document.getElementById('dashboardRunningNoCardList');
@@ -1649,7 +1381,7 @@ async function silentRefreshLiveGps() {
           alertBox.classList.remove('hidden');
           countBadge.innerText = `${runningNoCard.length} Xe Đang Vi Phạm Nóng`;
           listEl.innerHTML = runningNoCard.map(v => `
-            <div class="bg-white p-3 rounded-xl border border-rose-200 shadow-xs flex items-center justify-between cursor-pointer hover:bg-rose-50/50" onclick="focusVehicleOnMap('${v.plate_number}')">
+            <div class="bg-white p-3 rounded-xl border border-rose-200 shadow-xs flex items-center justify-between">
               <div class="space-y-0.5">
                 <div class="flex items-center gap-1.5">
                   <span class="font-mono font-black text-rose-700">${v.plate_number}</span>
@@ -1658,7 +1390,7 @@ async function silentRefreshLiveGps() {
                 <p class="text-slate-700 font-medium text-[11px]">Tài xế: <b>${v.driver_name || 'Chưa đăng ký'}</b></p>
                 <p class="text-[10px] text-slate-500 truncate max-w-[200px]">📍 ${v.address || 'Đang cập nhật'}</p>
               </div>
-              <span class="text-xs text-rose-600 font-bold bg-rose-100 px-2 py-1 rounded-lg">Định vị 🎯</span>
+              <span class="text-xs text-rose-700 font-bold bg-rose-100 px-2 py-1 rounded-lg">🚨 Chưa Quẹt</span>
             </div>
           `).join('');
         } else {
