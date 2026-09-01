@@ -111,24 +111,11 @@
           <span id="badgeFinesCount" class="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-bold">26 Xe</span>
         </button>
 
-        <!-- MỤC MỚI: TƯỜNG LỬA & AN NINH HỆ THỐNG (WAF SHIELD) -->
-        <button onclick="switchTab('security')" id="nav-security" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
-          <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
-          <span class="flex-1 text-left">Tường Lửa & An Ninh</span>
-          <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-400/30">BẬT</span>
-        </button>
-
         <button onclick="switchTab('trips')" id="nav-trips" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
           <i data-lucide="file-spreadsheet" class="w-4 h-4 text-emerald-400"></i>
           <span class="flex-1 text-left">Lệnh Điều Xe & Bảng Kê</span>
           <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold">Sheets</span>
         </button>
-
-        <a href="/weighbridge" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition">
-          <i data-lucide="scan-line" class="w-4 h-4 text-amber-400"></i>
-          <span class="flex-1 text-left font-bold text-xs">Đọc Phiếu Cân Zalo (OCR)</span>
-          <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-bold">Mới</span>
-        </a>
 
         <button onclick="switchTab('vehicles')" id="nav-vehicles" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
           <i data-lucide="truck" class="w-4 h-4 text-sky-400"></i>
@@ -161,6 +148,16 @@
           <i data-lucide="ship" class="w-4 h-4 text-cyan-400"></i>
           <span>Đội Sà Lan (10)</span>
         </button>
+
+        <!-- HỆ THỐNG & BẢO MẬT (TÁCH BIỆT PHÍA DƯỚI) -->
+        <div class="pt-3 mt-2 border-t border-slate-800/80">
+          <p class="px-3 pb-1.5 text-[9px] font-bold text-slate-500 uppercase tracking-widest">Hệ Thống & An Ninh</p>
+          <button onclick="switchTab('security')" id="nav-security" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800 hover:text-white transition">
+            <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+            <span class="flex-1 text-left">Tường Lửa & An Ninh</span>
+            <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-400/30">BẬT</span>
+          </button>
+        </div>
       </nav>
 
       <!-- User & Settings & Logout -->
@@ -976,6 +973,30 @@
 
         <!-- TAB: DRIVERS -->
         <section id="tab-drivers" class="tab-content hidden space-y-6">
+          <!-- CẢNH BÁO: XE ĐANG CHẠY / HOẠT ĐỘNG KHÔNG QUẸT THẺ LÁI XE -->
+          <div id="noCardAlertContainer" class="hidden p-4 md:p-5 rounded-2xl bg-rose-50 border-2 border-rose-300 shadow-sm space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-rose-600 text-white rounded-xl font-bold shadow-md shadow-rose-600/30 animate-pulse">
+                  <i data-lucide="user-x" class="w-5 h-5"></i>
+                </div>
+                <div>
+                  <div class="flex items-center gap-2">
+                    <h4 class="font-black text-rose-950 text-xs md:text-sm uppercase tracking-tight">CẢNH BÁO: XE ĐANG CHẠY NHƯNG KHÔNG QUẸT THẺ LÁI XE</h4>
+                    <span id="noCardRunningBadge" class="text-[10px] bg-rose-600 text-white font-bold px-2 py-0.5 rounded-full animate-bounce">0 Xe Đang Chạy</span>
+                  </div>
+                  <p class="text-[11px] text-rose-700 mt-0.5">
+                    Phát hiện qua GPS Bình Anh: Tài xế chưa đăng nhập quẹt thẻ RFID khi xe lăn bánh (Vi phạm Nghị định 10/2020/NĐ-CP của Bộ GTVT)
+                  </p>
+                </div>
+              </div>
+              <span id="noCardTotalBadge" class="text-xs font-bold text-rose-800 bg-rose-200/80 px-3 py-1.5 rounded-xl self-start sm:self-auto border border-rose-300">
+                Tổng vi phạm: 0 xe
+              </span>
+            </div>
+            <div id="noCardVehiclesList" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1"></div>
+          </div>
+
           <div class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-5 md:p-6 rounded-3xl text-white shadow-xl space-y-4">
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-2.5">
@@ -1009,6 +1030,7 @@
                   <tr>
                     <th class="py-3 px-4">Tài Xế Phụ Trách</th>
                     <th class="py-3 px-4">Xe Đầu Kéo</th>
+                    <th class="py-3 px-4 text-center">Thẻ RFID Lái Xe</th>
                     <th class="py-3 px-4 text-right">Km Hôm Nay</th>
                     <th class="py-3 px-4 text-center">Cự Ly Tuyến</th>
                     <th class="py-3 px-4">Trạng Thái & Vị Trí Hiện Tại</th>

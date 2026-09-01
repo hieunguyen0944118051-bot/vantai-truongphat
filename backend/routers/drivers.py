@@ -331,6 +331,10 @@ def get_drivers_daily_activity(
         else:
             detailed_comment = "Tài xế nghỉ cả ngày / Xe đậu bãi bảo quản xe tốt."
 
+        is_card_swiped = g_data.get("is_card_swiped", True)
+        card_driver_name = g_data.get("card_driver_name", "Chưa quẹt thẻ")
+        card_violation = g_data.get("card_violation")
+
         movement_state = "🟢 Đang chạy" if speed > 0 else ("🟡 Dừng nổ máy" if status_type == "idling" else "⚪ Đậu bãi")
 
         drivers_activity.append({
@@ -353,17 +357,44 @@ def get_drivers_daily_activity(
             "safety_note": safety_note,
             "overall_rating": overall_rating,
             "grade": grade,
-            "detailed_comment": detailed_comment
+            "detailed_comment": detailed_comment,
+            "is_card_swiped": is_card_swiped,
+            "card_driver_name": card_driver_name,
+            "card_violation": card_violation
         })
 
     # Xếp hạng thi đua: tài xế nào chạy nhiều km nhất lên đầu
     drivers_activity.sort(key=lambda x: x["daily_km"], reverse=True)
-
     top_runners = [d for d in drivers_activity if d["daily_km"] > 0][:5]
+
+    # Danh sách xe vi phạm không quẹt thẻ lái xe (Nghị định 10/2020)
+    no_card_alerts = []
+    for d in drivers_activity:
+        if d.get("card_violation"):
+            is_running = (d["card_violation"] == "running_no_card")
+            no_card_alerts.append({
+                "plate_number": d["vehicle_plate"],
+                "driver_assigned": d["full_name"],
+                "phone": d["phone"],
+                "speed": d["speed"],
+                "daily_km": d["daily_km"],
+                "address": d["current_address"],
+                "violation_type": d["card_violation"],
+                "violation_title": "🚨 ĐANG CHẠY TRÊN ĐƯỜNG KHÔNG QUẸT THẺ" if is_running else "⚠️ ĐÃ CHẠY TRONG CA NHƯNG CHƯA QUẸT THẺ",
+                "severity": "danger" if is_running else "warning",
+                "rfid_status": "LÁI XE ĐĂNG XUẤT (Chưa quẹt thẻ)"
+            })
+
+    # Ưu tiên xe đang chạy lên đầu
+    no_card_alerts.sort(key=lambda x: (x["violation_type"] != "running_no_card", -x["speed"], -x["daily_km"]))
 
     return {
         "total_drivers": len(drivers_activity),
         "active_today": len([d for d in drivers_activity if d["daily_km"] > 0]),
+        "no_card_count": len(no_card_alerts),
+        "no_card_running_count": len([x for x in no_card_alerts if x["violation_type"] == "running_no_card"]),
+        "no_card_daily_count": len([x for x in no_card_alerts if x["violation_type"] == "daily_no_card"]),
+        "no_card_alerts": no_card_alerts,
         "top_runners": top_runners,
         "drivers": drivers_activity
     }

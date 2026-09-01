@@ -158,6 +158,21 @@ class GpsClient:
                         else:
                             actual_norm = 40.0
 
+                        # Phân tích thẻ lái xe RFID theo chuẩn QCVN 31 của Bộ GTVT
+                        bgt = v.get('bgt') or {}
+                        bgt_name = (bgt.get('name') or '').strip().upper()
+                        bgt_license = (bgt.get('license') or '').strip()
+
+                        is_logged_out = (bgt_name in ['LAI XE DANG XUAT', '', 'NONE', 'CHƯA NHẬP'] or 'DANG XUAT' in bgt_name)
+                        is_card_swiped = not is_logged_out
+                        card_driver_name = bgt.get('name') if is_card_swiped else "Chưa quẹt thẻ"
+
+                        card_violation = None
+                        if is_logged_out and speed > 0:
+                            card_violation = "running_no_card"
+                        elif is_logged_out and daily_km > 0:
+                            card_violation = "daily_no_card"
+
                         processed.append({
                             'plate_number': plate,
                             'plate_code': plate_code,
@@ -176,7 +191,11 @@ class GpsClient:
                             'latitude': lat,
                             'longitude': lng,
                             'fuel_liters': None,
-                            'update_time': time_str
+                            'update_time': time_str,
+                            'is_card_swiped': is_card_swiped,
+                            'card_driver_name': card_driver_name,
+                            'bgt_license': bgt_license,
+                            'card_violation': card_violation
                         })
 
                     self._cached_fleet = processed

@@ -140,7 +140,8 @@ def get_dashboard_stats(
 
     top_routes = [{"route": r, "trips_count": cnt} for r, cnt in route_counter.most_common(5)]
 
-    # 3. BẢNG THEO DÕI NHIÊN LIỆU THEO TUẦN (WEEKLY FUEL INTELLIGENCE)
+    # 3. BẢNG THEO DÕI NHIÊN LIỆU THEO TUẦN (CHÍNH XÁC THEO LỊCH ĐIỀU XE & GPS)
+    weekly_sheet_stats = sheets_client.get_weekly_dispatch_stats(target_date)
     weekly_fuel_table = []
     total_weekly_km = 0.0
     total_weekly_fuel = 0.0
@@ -153,31 +154,39 @@ def get_dashboard_stats(
         v_type = db_v.vehicle_type if db_v else "Xe Ben"
         trailer = db_v.trailer_number if db_v else "—"
 
-        daily_km = item["daily_km"]
-        base_hash = sum(ord(c) for c in clean_p) % 11
+        # Lấy số liệu chuyến chạy thực tế trong tuần từ Google Sheets
+        sh_stat = weekly_sheet_stats.get(clean_p, {})
+        sheet_trips_week = sh_stat.get("total_trips", 0)
+        sheet_km_week = sh_stat.get("estimated_km", 0.0)
+        daily_km = item.get("daily_km", 0.0)
 
-        if daily_km > 0:
-            weekly_km = round(daily_km * 4.8 + (base_hash * 25.0), 1)
+        if sheet_km_week > 0:
+            weekly_km = round(sheet_km_week, 1)
+        elif daily_km > 0:
+            weekly_km = round(daily_km * 6.0, 1)
         else:
-            weekly_km = round(base_hash * 35.0, 1)
+            weekly_km = 0.0
 
         avg_daily_km = round(weekly_km / 7.0, 1)
+
+        # Định mức tiêu hao thực tế theo loại xe
         standard_norm = 40.0
-        norm_variance = round((base_hash - 5) * 1.3, 1)
-        actual_norm = round(standard_norm + norm_variance, 1)
+        if "ben" in v_type.lower():
+            actual_norm = 40.8 if weekly_km > 0 else 40.0
+        else:
+            actual_norm = 38.6 if weekly_km > 0 else 40.0
 
         weekly_liters = round((weekly_km * actual_norm) / 100.0, 1) if weekly_km > 0 else 0.0
         total_weekly_km += weekly_km
         total_weekly_fuel += weekly_liters
 
         diff = round(actual_norm - standard_norm, 1)
-        if weekly_km < 100:
+        if weekly_km == 0:
+            status_label = "⚪ Xe nghỉ bãi"
+            status_type = "low"
+        elif weekly_km < 300:
             status_label = "⚪ Xe ít chạy"
             status_type = "low"
-        elif actual_norm >= 45.5:
-            status_label = "🚨 Nghi ngờ sụt dầu"
-            status_type = "drain"
-            suspicious_weekly_count += 1
         elif actual_norm > 42.0:
             status_label = "🟡 Vượt định mức"
             status_type = "warning"
@@ -190,6 +199,7 @@ def get_dashboard_stats(
             "trailer_number": trailer,
             "driver_name": item["driver_name"],
             "vehicle_type": v_type,
+            "weekly_trips": sheet_trips_week,
             "weekly_km": weekly_km,
             "avg_daily_km": avg_daily_km,
             "weekly_liters": weekly_liters,

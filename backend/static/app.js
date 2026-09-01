@@ -912,10 +912,70 @@ async function resolveTrafficFine(plate) {
 }
 
 // 3. TAB BẢNG KÊ (LỆNH ĐIỀU XE & BẢNG KÊ THỰC TẾ HÀNG NGÀY)
+const dailyTripsClientCache = {};
+
+function renderDailyTripsTable(data) {
+  const timeEl = document.getElementById('sheetsSyncTimeText');
+  if (timeEl && data.sync_time) timeEl.innerText = data.sync_time;
+  
+  const countActiveEl = document.getElementById('sheet-count-active');
+  if (countActiveEl) countActiveEl.innerText = `${data.active_count} Xe`;
+  
+  const countOffEl = document.getElementById('sheet-count-off');
+  if (countOffEl) countOffEl.innerText = `${data.off_count} Xe`;
+  
+  const percentActiveEl = document.getElementById('sheet-percent-active');
+  if (percentActiveEl) percentActiveEl.innerText = `${data.active_percent}%`;
+
+  const tbody = document.getElementById('dailyTripsTableBody');
+  if (!tbody || !data.all_trips) return;
+
+  tbody.innerHTML = data.all_trips.map(t => {
+    const isOff = t.status_code === 'driver_off';
+
+    let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
+    let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
+
+    if (isOff) {
+      opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
+    }
+
+    const typeBadge = t.vehicle_type === 'Xe Ben'
+      ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Xe Ben</span>'
+      : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">Xe Thùng</span>';
+
+    return `
+      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+        <td class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
+        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
+        <td class="py-3 px-4">${typeBadge}</td>
+        <td class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
+        <td class="py-3 px-4 font-medium text-slate-700">${t.cargo_type || '—'}</td>
+        <td class="py-3 px-4 font-bold text-slate-900">${t.customer_name || '—'}</td>
+        <td class="py-3 px-4 space-y-1">
+          <div>${opBadge}</div>
+          <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
+            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
+            <span class="truncate">${liveAddr}</span>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
+}
+
 async function loadDailyTripsFromSheets(dateStr) {
   const d = dateStr || selectedDate;
-  const timeEl = document.getElementById('sheetsSyncTimeText');
-  if (timeEl) timeEl.innerText = `Đang đọc số liệu ngày ${formatDateVN(d)}...`;
+  
+  // Nếu đã có cache trong phiên, hiển thị ngay tức thì 0ms
+  if (dailyTripsClientCache[d]) {
+    renderDailyTripsTable(dailyTripsClientCache[d]);
+  } else {
+    const timeEl = document.getElementById('sheetsSyncTimeText');
+    if (timeEl) timeEl.innerText = `Đang đồng bộ ngày ${formatDateVN(d)}...`;
+  }
 
   try {
     const res = await fetch(`${API_BASE}/trips/sheets-live?date=${d}`, { headers: getHeaders() });
@@ -923,46 +983,8 @@ async function loadDailyTripsFromSheets(dateStr) {
     if (!res.ok) throw new Error(json.detail || 'Lỗi đọc Trang Tính');
 
     const data = json.data;
-    if (timeEl) timeEl.innerText = data.sync_time;
-    document.getElementById('sheet-count-active').innerText = `${data.active_count} Xe`;
-    document.getElementById('sheet-count-off').innerText = `${data.off_count} Xe`;
-    document.getElementById('sheet-percent-active').innerText = `${data.active_percent}%`;
-
-    const tbody = document.getElementById('dailyTripsTableBody');
-    tbody.innerHTML = data.all_trips.map(t => {
-      const isOff = t.status_code === 'driver_off';
-
-      let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
-      let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
-
-      if (isOff) {
-        opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
-      }
-
-      const typeBadge = t.vehicle_type === 'Xe Ben'
-        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Xe Ben</span>'
-        : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">Xe Thùng</span>';
-
-      return `
-        <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-          <td class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
-          <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
-          <td class="py-3 px-4">${typeBadge}</td>
-          <td class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
-          <td class="py-3 px-4 font-medium text-slate-700">${t.cargo_type || '—'}</td>
-          <td class="py-3 px-4 font-bold text-slate-900">${t.customer_name || '—'}</td>
-          <td class="py-3 px-4 space-y-1">
-            <div>${opBadge}</div>
-            <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
-              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
-              <span class="truncate">${liveAddr}</span>
-            </div>
-          </td>
-        </tr>
-      `;
-    }).join('');
-
-    if (window.lucide) lucide.createIcons();
+    dailyTripsClientCache[d] = data;
+    renderDailyTripsTable(data);
   } catch (err) {
     console.error('Error loading daily trips:', err);
   }
@@ -1045,6 +1067,49 @@ async function loadDriversActivity() {
 
     driversActivityCache = json;
 
+    // Render cảnh báo xe chạy không quẹt thẻ RFID
+    const noCardContainer = document.getElementById('noCardAlertContainer');
+    const noCardList = document.getElementById('noCardVehiclesList');
+    const runningBadge = document.getElementById('noCardRunningBadge');
+    const totalBadge = document.getElementById('noCardTotalBadge');
+
+    if (noCardContainer && json.no_card_alerts) {
+      const runningCount = json.no_card_running_count || 0;
+      const totalViolations = json.no_card_alerts.length;
+
+      if (totalViolations > 0) {
+        noCardContainer.classList.remove('hidden');
+        if (runningBadge) runningBadge.innerText = `${runningCount} Xe Đang Chạy`;
+        if (totalBadge) totalBadge.innerText = `Tổng vi phạm: ${totalViolations} xe`;
+
+        noCardList.innerHTML = json.no_card_alerts.map(v => {
+          const isRunning = (v.violation_type === 'running_no_card');
+          return `
+            <div class="p-3 rounded-xl border ${isRunning ? 'bg-rose-100/80 border-rose-300' : 'bg-amber-50 border-amber-200'} space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="font-mono font-black text-slate-900 text-sm">${v.plate_number}</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-black ${isRunning ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-600 text-white'}">
+                  ${isRunning ? `🚨 Chạy ${v.speed} km/h` : `⚠️ Đã chạy ${v.daily_km} km`}
+                </span>
+              </div>
+              <div class="text-[11px] font-bold text-slate-800">
+                Tài xế phụ trách: <span class="text-blue-700">${v.driver_assigned}</span> (${v.phone})
+              </div>
+              <div class="text-[10px] text-rose-700 font-bold flex items-center gap-1">
+                <i data-lucide="alert-triangle" class="w-3 h-3 shrink-0"></i>
+                <span>Thẻ RFID: LÁI XE ĐĂNG XUẤT (Chưa quẹt thẻ)</span>
+              </div>
+              <div class="text-[10px] text-slate-500 truncate" title="${v.address}">
+                📍 ${v.address}
+              </div>
+            </div>
+          `;
+        }).join('');
+      } else {
+        noCardContainer.classList.add('hidden');
+      }
+    }
+
     const topContainer = document.getElementById('topRunnersContainer');
     topContainer.innerHTML = json.top_runners.slice(0, 3).map((d, i) => {
       const medals = ['🥇', '🥈', '🥉'];
@@ -1107,6 +1172,12 @@ function renderDetailedDriversTable(list) {
           <div class="text-[11px] text-slate-500 font-mono">${d.phone} • Hạng ${d.license_class}</div>
         </td>
         <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${d.vehicle_plate}</td>
+        <td class="py-3 px-4 text-center">
+          ${d.is_card_swiped
+            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 inline-flex items-center gap-1">🟢 Đã quẹt</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse inline-flex items-center gap-1">🚨 Chưa quẹt</span>'
+          }
+        </td>
         <td class="py-3 px-4 text-right font-mono font-black text-blue-600 text-sm">${d.daily_km} km</td>
         <td class="py-3 px-4 text-center">
           <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border ${badgeColor}">
@@ -1118,10 +1189,10 @@ function renderDetailedDriversTable(list) {
           <div class="text-[10px] text-slate-500 truncate max-w-xs" title="${d.current_address}">📍 ${d.current_address}</div>
         </td>
         <td class="py-3 px-4 text-center font-bold text-blue-700">${d.productivity_score}%</td>
-        <td class="py-3 px-4 text-center font-bold text-amber-700">${d.fuel_saving_score}%</td>
-        <td class="py-3 px-4 text-center font-bold text-emerald-700">${d.safety_score}%</td>
+        <td class="py-3 px-4 text-center text-slate-600 font-medium">${d.fuel_saving_note}</td>
+        <td class="py-3 px-4 text-center text-slate-600 font-medium">${d.safety_note}</td>
         <td class="py-3 px-4 text-center">${gradeBadge}</td>
-        <td class="py-3 px-4 text-slate-700 font-medium max-w-sm">${d.detailed_comment}</td>
+        <td class="py-3 px-4 text-slate-700 text-[11px] leading-relaxed max-w-xs">${d.detailed_comment}</td>
       </tr>
     `;
   }).join('');
@@ -1134,27 +1205,36 @@ async function loadMaintenance() {
     const res = await fetch(API_BASE + '/maintenance/oil', { headers: getHeaders() });
     const list = await res.json();
     const tbody = document.getElementById('maintenanceTableBody');
+    if (!tbody) return;
 
     tbody.innerHTML = list.map(m => {
-      let statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">Thiếu số liệu</span>';
-      if (m.status === 'Còn xa') statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Còn xa</span>';
-      if (m.status === 'Sắp / quá hạn') statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700 animate-pulse">Sắp / Quá hạn</span>';
-      if (m.status === 'Gần tới hạn') statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Gần tới hạn</span>';
+      const rem = (m.remaining_km !== undefined ? m.remaining_km : (m.diff_km !== undefined ? m.diff_km : '—')).toString();
+      const statusText = m.status || m.status_text || 'Bình thường';
+      const isOver = rem.startsWith('-') || statusText.toLowerCase().includes('quá') || statusText.toLowerCase().includes('sắp');
+
+      let statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">Bình thường</span>';
+      if (statusText.toLowerCase().includes('còn xa')) {
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Còn xa</span>';
+      } else if (isOver) {
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-700 border border-red-200 animate-pulse">Sắp / Quá hạn</span>';
+      } else if (statusText.toLowerCase().includes('gần')) {
+        statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">Gần tới hạn</span>';
+      }
 
       return `
         <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-          <td class="py-3 px-4 text-center font-bold text-slate-400">${m.stt}</td>
-          <td class="py-3 px-4 font-mono font-bold text-blue-700 text-sm">${m.plate_number}</td>
-          <td class="py-3 px-4 text-right font-bold text-slate-600">${m.norm_km}</td>
-          <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km}</td>
-          <td class="py-3 px-4 text-center text-slate-600">${m.last_date}</td>
-          <td class="py-3 px-4 text-right font-mono font-black text-slate-800">${m.current_km}</td>
-          <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km}</td>
-          <td class="py-3 px-4 text-right font-mono font-black ${m.remaining_km.toString().startsWith('-') ? 'text-red-600' : 'text-emerald-600'}">
-            ${m.remaining_km}
+          <td class="py-3 px-4 text-center font-bold text-slate-400">${m.stt || '—'}</td>
+          <td class="py-3 px-4 font-mono font-bold text-blue-700 text-sm">${m.plate_number || '—'}</td>
+          <td class="py-3 px-4 text-right font-bold text-slate-600">${m.norm_km || m.norm || '15.000'}</td>
+          <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km || m.last_odo || '—'}</td>
+          <td class="py-3 px-4 text-center text-slate-600">${m.last_date || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono font-black text-slate-800">${m.current_km || m.actual_odo || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km || m.next_odo || '—'}</td>
+          <td class="py-3 px-4 text-right font-mono font-black ${isOver ? 'text-red-600' : 'text-emerald-600'}">
+            ${rem}
           </td>
           <td class="py-3 px-4 text-center">${statBadge}</td>
-          <td class="py-3 px-4 text-slate-700 font-bold text-[11px]">${m.notes}</td>
+          <td class="py-3 px-4 text-slate-700 font-bold text-[11px]">${m.notes || ''}</td>
         </tr>
       `;
     }).join('');
