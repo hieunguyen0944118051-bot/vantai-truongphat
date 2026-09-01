@@ -260,8 +260,8 @@ class GoogleSheetsSyncService:
 
     def get_weekly_dispatch_stats(self, target_date=None):
         """
-        Tính toán chính xác hoạt động tuần (7 ngày) của toàn bộ 26 xe từ bảng kê Google Sheets.
-        Mỗi chuyến chạy có cự ly khứ hồi thực tế từ tuyến đường (trung bình 120km - 180km).
+        Tính toán chính xác hoạt động tuần (7 ngày) của toàn bộ 26 xe từ bảng kê Google Sheets trong 1 lượt đọc siêu tốc.
+        Mỗi chuyến chạy có cự ly khứ hồi thực tế từ tuyến đường (trung bình 130km - 180km).
         """
         today_obj = date.today()
         if isinstance(target_date, str):
@@ -274,55 +274,91 @@ class GoogleSheetsSyncService:
         else:
             base_date = today_obj
 
-        # Thu thập 7 ngày gần nhất
+        month_str = f"{base_date.month:02d}"
+        sheet_id = self.get_sheet_id_for_month(month_str) or DEFAULT_SHEET_AUGUST_ID
+
+        days_to_fetch = [base_date - timedelta(days=i) for i in range(7)]
+        day_prefixes = [f"{d.day:02d}" for d in days_to_fetch] + [str(d.day) for d in days_to_fetch]
+
         truck_stats = {}
+        try:
+            data = self._get_xlsx_bytes(sheet_id)
+            wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True)
 
-        for day_offset in range(7):
-            d = base_date - timedelta(days=day_offset)
-            d_str = d.strftime("%Y-%m-%d")
-            daily = self.fetch_daily_trips(d_str)
+            sheet_to_date = {}
+            for s in wb.sheetnames:
+                cs = s.strip()
+                for dp in day_prefixes:
+                    if cs.startswith(dp + " ") or cs.startswith(dp + "-") or cs == dp:
+                        sheet_to_date[s] = dp
+                        break
 
-            all_daily_trips = daily.get("ben", []) + daily.get("thung", [])
-            for t in all_daily_trips:
-                p = t.get("plate_number", "")
-                if not p:
-                    continue
-                clean_p = p.replace("-", "").replace(".", "").replace(" ", "").upper()
-                if clean_p not in truck_stats:
-                    truck_stats[clean_p] = {
-                        "plate_number": p,
-                        "trailer_number": t.get("trailer_number", ""),
-                        "driver_name": t.get("driver_name", ""),
-                        "active_days": 0,
-                        "total_trips": 0,
-                        "routes": set(),
-                        "estimated_km": 0.0
-                    }
+            for s_name in sheet_to_date.keys():
+                ws = wb[s_name]
+                for row in ws.iter_rows(values_only=True):
+                    if not row or len(row) < 2:
+                        continue
+                    first_col = str(row[0]).strip() if row[0] is not None else ""
+                    if "XE BEN" in first_col.upper() or "XE CÔNG" in first_col.upper() or "STT" in first_col.upper():
+                        continue
 
-                if t.get("status_code") == "active":
-                    num_trips = t.get("num_trips", 1)
-                    orig = t.get("origin", "").lower()
-                    dest = t.get("destination", "").lower()
-                    
-                    # Tính cự ly thực tế theo tuyến
-                    leg_km = 140.0 # Mặc định khứ hồi
-                    if "đức hòa" in dest or "bến lức" in dest or "long an" in dest:
-                        leg_km = 180.0
-                    elif "thăng long" in dest or "đan phượng" in dest or "bình dương" in dest:
-                        leg_km = 150.0
-                    elif "cát lái" in dest or "hiệp phước" in dest or "hcm" in dest:
-                        leg_km = 130.0
-                    elif "cảng" in dest or "ptsc" in dest or "mỹ xuân" in dest:
-                        leg_km = 80.0
-                    elif "vũng tàu" in dest:
-                        leg_km = 90.0
+                    raw_plate = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+                    if not raw_plate or "BIỂN" in raw_plate.upper() or "SỐ XE" in raw_plate.upper():
+                        continue
 
-                    trip_km = leg_km * num_trips
-                    truck_stats[clean_p]["total_trips"] += num_trips
-                    truck_stats[clean_p]["active_days"] += 1
-                    truck_stats[clean_p]["estimated_km"] += trip_km
-                    if t.get("origin") and t.get("destination"):
-                        truck_stats[clean_p]["routes"].add(f"{t['origin']} ➔ {t['destination']}")
+                    clean_p = raw_plate.replace("-", "").replace(".", "").replace(" ", "").upper()
+                    if len(clean_p) < 7:
+                        continue
+
+                    trailer = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+                    driver = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
+                    customer = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
+                    origin = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ""
+                    dest = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ""
+                    cargo = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ""
+                    num_trips_raw = str(row[8]).strip() if len(row) > 8 and row[8] is not None else "1"
+
+                    try:
+                        num_trips = int(float(num_trips_raw))
+                    except Exception:
+                        num_trips = 1
+
+                    if clean_p not in truck_stats:
+                        truck_stats[clean_p] = {
+                            "plate_number": raw_plate,
+                            "trailer_number": trailer,
+                            "driver_name": driver,
+                            "active_days": 0,
+                            "total_trips": 0,
+                            "routes": set(),
+                            "estimated_km": 0.0
+                        }
+
+                    lower_dest = dest.lower() + " " + customer.lower() + " " + cargo.lower()
+                    is_active = not ("nghỉ" in lower_dest or "bảo dưỡng" in lower_dest or "sửa" in lower_dest or (not customer and not dest))
+
+                    if is_active:
+                        leg_km = 140.0
+                        if "đức hòa" in dest.lower() or "bến lức" in dest.lower() or "long an" in dest.lower():
+                            leg_km = 180.0
+                        elif "thăng long" in dest.lower() or "đan phượng" in dest.lower() or "bình dương" in dest.lower():
+                            leg_km = 150.0
+                        elif "cát lái" in dest.lower() or "hiệp phước" in dest.lower() or "hcm" in dest.lower():
+                            leg_km = 130.0
+                        elif "cảng" in dest.lower() or "ptsc" in dest.lower() or "mỹ xuân" in dest.lower():
+                            leg_km = 80.0
+                        elif "vũng tàu" in dest.lower():
+                            leg_km = 90.0
+
+                        trip_km = leg_km * num_trips
+                        truck_stats[clean_p]["total_trips"] += num_trips
+                        truck_stats[clean_p]["active_days"] += 1
+                        truck_stats[clean_p]["estimated_km"] += trip_km
+                        if origin and dest:
+                            truck_stats[clean_p]["routes"].add(f"{origin} ➔ {dest}")
+
+        except Exception as e:
+            print(f"Error calculating weekly stats: {e}")
 
         return truck_stats
 
