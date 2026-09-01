@@ -144,7 +144,7 @@ class GpsClient:
             '__VIEWSTATEGENERATOR': vsg,
             '__EVENTVALIDATION': ev,
             'UserLogin1$txtLoginUserName': 'truongphat68',
-            'UserLogin1$txtLoginPassword': 'bN8Xm2Wp6KzV',
+            'UserLogin1$txtLoginPassword': '9Tx4Ym7Kp2Wv',
             'UserLogin1$hdfPassword': '',
             'UserLogin1$chkRememberMe': 'on',
             'UserLogin1$btnLogin': 'Đăng nhập'
