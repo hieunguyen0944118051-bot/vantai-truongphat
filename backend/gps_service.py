@@ -49,32 +49,39 @@ class GpsClient:
 
     def _build_default_fleet(self):
         seeds = [
-            ('63E-011.56', 'Nguyễn Văn Tuấn', 45, 10.6872, 106.5821, 'Quốc lộ 1A, H. Bình Chánh, TP.HCM', True, None, 145.2),
-            ('63E-011.17', 'Phan Hoàng Duy', 0, 10.6345, 106.4765, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63H-042.73', 'Lâm Hoàng Tuấn', 0, 10.6356, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 85.6),
+            # 3 Xe Thùng đang chạy vận chuyển hàng thực tế hôm nay (01/09)
+            ('63E-011.41', 'Dương Thanh Sang', 48, 11.1824, 106.6935, 'ĐT741, TT. Tân Bình, H. Bắc Tân Uyên, Bình Dương', True, None, 115.4),
+            ('63G-002.97', 'Trần Trọng Ngân', 42, 10.8925, 106.6980, 'Đại lộ Bình Dương, P. Vĩnh Phú, TP. Thuận An, Bình Dương', False, 'running_no_card', 94.2),
+            ('66H-083.48', 'Trần Trọng Nghĩa', 45, 11.3210, 106.6540, 'Quốc Lộ 13, TT. Chơn Thành, Bình Phước', True, None, 138.6),
+
+            # 3 Xe Thùng đang đợi giao hàng tại cảng / kho đối tác theo lịch
+            ('63F-005.12', 'Hoàng Quốc Bảo', 0, 10.6482, 106.4915, 'Cảng Bourbon Bến Lức, Xã Thạnh Đức, Bến Lức, Long An', True, None, 12.0),
+            ('63E-012.12', 'Mạch Đình Phước', 0, 10.6020, 106.5201, 'KCN Vĩnh Lộc 2, Bến Lức, Long An', True, None, 0.0),
+            ('63E-011.32', 'Đào Ngọc Kha', 0, 10.6485, 106.4920, 'Cảng Bourbon Bến Lức, Xã Thạnh Đức, Bến Lức, Long An', True, None, 0.0),
+
+            # 4 Xe Thùng nghỉ bãi / Tài xế nghỉ cả ngày theo trang tính 01/09
+            ('63F-005.38', 'Lý Minh Tới', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-012.01', 'Lê Trọng Nghĩa', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63F-005.16', 'Phùng Phú Kim Toàn', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63G-002.80', 'Lê Trung Trực', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+
+            # 15 Xe Ben đậu bãi / chờ điều phối theo trang tính 01/09
+            ('63H-042.73', 'Lâm Hoàng Tuấn', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
             ('63G-002.86', 'Nguyễn Xuân Về', 0, 10.5163, 107.0190, 'Cảng Quốc Tế Tân Cảng Cái Mép, Phú Mỹ', False, None, 0.0),
-            ('63F-005.12', 'Hoàng Quốc Bảo', 38, 10.7512, 106.6120, 'Võ Trần Chí, P. Tân Tạo, Q. Bình Tân, TP.HCM', True, None, 120.4),
-            ('63F-005.38', 'Lý Minh Tới', 0, 10.6340, 106.4770, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63E-011.08', 'Lý Minh Hoàng', 42, 10.5988, 107.0287, 'Số 3 KCN Phú Mỹ 1, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', True, None, 168.0),
-            ('63F-005.28', 'Nguyễn Văn Hiếu', 0, 10.6344, 106.4762, 'KCN Thuận Đạo, Bến Lức, Long An', False, None, 110.5),
-            ('63E-012.12', 'Mạch Đình Phước', 32, 10.6020, 106.5201, 'KCN Vĩnh Lộc 2, Bến Lức, Long An', True, None, 92.3),
-            ('63E-011.41', 'Dương Thanh Sang', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
+            ('63E-011.56', 'Nguyễn Văn Tuấn', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-011.17', 'Phan Hoàng Duy', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-011.08', 'Lý Minh Hoàng', 0, 10.5988, 107.0287, 'KCN Phú Mỹ 1, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', False, None, 0.0),
+            ('63F-005.28', 'Nguyễn Văn Hiếu', 0, 10.6344, 106.4762, 'KCN Thuận Đạo, Bến Lức, Long An', False, None, 0.0),
             ('63G-002.62', 'Nguyễn Thanh Tây', 0, 10.5143, 107.0210, 'Cảng Cái Mép, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', False, None, 0.0),
-            ('63H-042.39', 'Kim Sô Phép', 0, 10.8353, 107.5718, 'KCN Sông Mây, Trảng Bom, Đồng Nai', True, None, 0.0),
-            ('63E-011.32', 'Đào Ngọc Kha', 25, 10.7105, 106.6302, 'Nguyễn Văn Linh, X. Phong Phú, H. Bình Chánh, TP.HCM', True, None, 78.5),
-            ('63E-012.01', 'Lê Trọng Nghĩa', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63F-005.16', 'Phùng Phú Kim Toàn', 0, 10.4502, 106.3211, 'KCN Tân Hương, Châu Thành, Tiền Giang', False, None, 0.0),
-            ('63E-012.76', 'Nguyễn Thanh Giàu', 40, 10.7621, 106.7725, 'Cảng Cát Lái, P. Cát Lái, TP. Thủ Đức, TP.HCM', True, None, 135.0),
-            ('63E-011.03', 'Lê Phương Linh', 0, 10.6342, 106.4767, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63E-011.18', 'Lê Ngọc Quí', 0, 10.4502, 106.3211, 'D4 KCN Tân Hương, Châu Thành, Tiền Giang', False, None, 173.1),
-            ('63F-005.11', 'Bạch Tấn Trí', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63H-042.34', 'Nguyễn Thành Hiếu', 36, 10.5162, 107.0191, 'Quốc Lộ 51, P. Mỹ Xuân, TX. Phú Mỹ, Bà Rịa - Vũng Tàu', True, None, 140.0),
-            ('63G-002.97', 'Trần Trọng Ngân', 0, 10.9232, 107.1378, 'QL56, Long Khánh, Đồng Nai', False, None, 0.0),
+            ('63H-042.39', 'Kim Sô Phép', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-012.76', 'Nguyễn Thanh Giàu', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-011.03', 'Lê Phương Linh', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63E-011.18', 'Lê Ngọc Quí', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63F-005.11', 'Bạch Tấn Trí', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63H-042.34', 'Nguyễn Thành Hiếu', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
             ('63E-012.35', 'Lý Hoàng Thái', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
-            ('63H-042.36', 'Lê Văn Trọng', 0, 10.8352, 107.5718, 'Thạnh Lợi, Bến Lức, Long An', False, None, 0.0),
-            ('63G-002.80', 'Lê Trung Trực', 28, 10.7432, 106.5218, 'Trần Văn Giàu, X. Lê Minh Xuân, H. Bình Chánh, TP.HCM', False, 'running_no_card', 64.2),
-            ('66H-083.48', 'Trần Trọng Nghĩa', 0, 10.6342, 106.4768, 'Bãi xe Trường Phát, Bến Lức, Long An', True, None, 0.0),
-            ('63F-005.44', 'Tài Xế Dự Phòng', 0, 10.4705, 106.1954, 'QL1A, P. 10, TP. Mỹ Tho, Tiền Giang', False, None, 0.0)
+            ('63H-042.36', 'Lê Văn Trọng', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0),
+            ('63F-005.44', 'Tài Xế Dự Phòng', 0, 10.6342, 106.4766, 'Bãi xe Trường Phát, Bến Lức, Long An', False, None, 0.0)
         ]
         fleet = []
         for plate, driver, speed, lat, lng, addr, swiped, violation, km in seeds:

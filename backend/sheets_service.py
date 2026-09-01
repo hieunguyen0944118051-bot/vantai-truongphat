@@ -103,9 +103,6 @@ class GoogleSheetsSyncService:
             return data
         except Exception as e:
             print(f"Error fetching XLSX for sheet {sheet_id}: {e}")
-            if sheet_id == DEFAULT_SHEET_SEPTEMBER_ID and DEFAULT_SHEET_AUGUST_ID:
-                print("Graceful fallback to August sheet while September permissions are being updated")
-                return self._get_xlsx_bytes(DEFAULT_SHEET_AUGUST_ID)
             raise e
 
     def fetch_daily_trips(self, target_date=None):
@@ -234,6 +231,9 @@ class GoogleSheetsSyncService:
             elif "SỬA XE" in combined_notes or "BẢO DƯỠNG" in combined_notes or "SỬA" in combined_notes:
                 status_code = "off"
                 status_str = "Bảo dưỡng / Sửa xe"
+            elif "TRỐNG LỊCH" in combined_notes or "ĐỢI GIAO" in combined_notes:
+                status_code = "idle"
+                status_str = "Đợi giao hàng / Trống lịch" if "ĐỢI GIAO" in combined_notes else "Trống lịch"
             elif not customer and not route:
                 status_code = "idle"
                 status_str = "Nghỉ bãi / Trống lịch"
@@ -279,9 +279,10 @@ class GoogleSheetsSyncService:
         from collections import Counter
         cust_counter = Counter()
         for t in all_trips:
-            c = t.get("customer_name")
-            if c and c != "—" and "NGHỈ" not in c.upper() and "SỬA" not in c.upper():
-                cust_counter[c] += 1
+            if t.get("status_code") == "active":
+                c = t.get("customer_name")
+                if c and c != "—" and "NGHỈ" not in c.upper() and "SỬA" not in c.upper() and "TRỐNG" not in c.upper():
+                    cust_counter[c] += 1
 
         total_cust_trips = sum(cust_counter.values())
         customer_breakdown = []
