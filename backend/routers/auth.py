@@ -46,9 +46,11 @@ async def login(
         db.commit()
         db.refresh(user)
 
-    # 3. Lấy mã PIN bảo mật cấp 2 (Mặc định 6868)
-    pin_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "security_pin_code").first()
-    expected_pin = pin_setting.value if pin_setting else "6868"
+    # 3. Lấy mã PIN bảo mật cấp 2 (Mặc định 2626)
+    pin_setting = db.query(models.SystemSetting).filter(
+        (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
+    ).first()
+    expected_pin = pin_setting.value if pin_setting else "2626"
 
     # Kiểm tra mã PIN được gửi qua Header hoặc Form
     client_pin = request.headers.get("X-Security-PIN") or request.query_params.get("pin")
@@ -56,10 +58,8 @@ async def login(
     # Xác thực mật khẩu
     password_ok = user and auth.verify_password(clean_password, user.password_hash)
 
-    # Nếu có truyền PIN, kiểm tra khớp PIN
-    pin_ok = True
-    if client_pin:
-        pin_ok = (client_pin.strip() == expected_pin)
+    # Nếu có mã PIN truyền lên thì kiểm tra khớp, hoặc bắt buộc nếu được gửi
+    pin_ok = (client_pin.strip() == expected_pin) if client_pin else (expected_pin == "2626")
 
     if not password_ok or not pin_ok:
         is_now_blocked = firewall_manager.record_login_attempt(ip, clean_username, success=False)

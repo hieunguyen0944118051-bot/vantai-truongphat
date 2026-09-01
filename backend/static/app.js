@@ -183,7 +183,7 @@ async function handleLogin(e) {
   const u = document.getElementById('loginUsername').value.trim();
   const p = document.getElementById('loginPassword').value;
   const pinInput = document.getElementById('loginPin');
-  const pin = pinInput ? pinInput.value.trim() : '6868';
+  const pin = pinInput ? pinInput.value.trim() : '';
   const alertBox = document.getElementById('loginAlert');
   const alertText = document.getElementById('loginAlertText');
 
@@ -503,7 +503,6 @@ function renderFuelAnalysisTable(items) {
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
         <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
-        <td class="py-3 px-4 font-mono font-bold text-slate-700">${v.trailer_number || '—'}</td>
         <td class="py-3 px-4 font-medium text-slate-800">${v.driver_name}</td>
         <td class="py-3 px-4 text-center">${cardBadge}</td>
         <td class="py-3 px-4 space-y-1">
@@ -723,7 +722,6 @@ function renderWeeklyFuelTable(weeklyData) {
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
         <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
         <td class="py-3 px-3.5 font-mono font-black text-blue-700 text-sm">${r.plate_number}</td>
-        <td class="py-3 px-3.5 font-mono text-slate-600 font-bold">${r.trailer_number}</td>
         <td class="py-3 px-3.5 font-bold text-slate-800">${r.driver_name}</td>
         <td class="py-3 px-3.5">
           <span class="px-2 py-0.5 rounded text-[10px] font-bold ${r.vehicle_type === 'Xe Ben' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}">

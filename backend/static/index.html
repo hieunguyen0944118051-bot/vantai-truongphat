@@ -70,11 +70,10 @@
         <div>
           <div class="flex items-center justify-between mb-2">
             <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Mã PIN Bảo Mật Cấp 2</label>
-            <span class="text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">Mặc định: 6868</span>
           </div>
           <div class="relative">
             <i data-lucide="shield-check" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500"></i>
-            <input type="password" id="loginPin" required maxlength="8" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN (6868)..." value="6868" />
+            <input type="password" id="loginPin" required maxlength="8" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN bảo mật..." value="" />
           </div>
           <p class="text-[10px] text-slate-400 mt-1">Lớp khiên 2FA chống rò rỉ tài khoản và chặn đứng hacker dò mật khẩu.</p>
         </div>
@@ -161,13 +160,6 @@
             <span class="flex-1 text-left">Tường Lửa & An Ninh</span>
             <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-400/30">BẬT</span>
           </button>
-          
-          <!-- NÚT CÀI ĐẶT APP DI ĐỘNG -->
-          <button onclick="openModal('modalInstallApp')" class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 transition mt-2">
-            <i data-lucide="smartphone" class="w-4 h-4 text-amber-400 animate-pulse"></i>
-            <span class="flex-1 text-left font-bold">Cài App Về Điện Thoại</span>
-            <span class="text-[9px] bg-amber-500/30 text-amber-200 px-1.5 py-0.5 rounded font-black">App Store / CH Play</span>
-          </button>
         </div>
       </nav>
 
@@ -206,11 +198,7 @@
             <h2 class="font-black text-xs leading-none">TRƯỜNG PHÁT</h2>
             <span class="text-[9px] text-blue-400">15 Ben • 11 Thùng</span>
           </div>
-        </div>
-          <button onclick="openModal('modalInstallApp')" title="Cài đặt App về điện thoại" class="px-2 py-1 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-lg text-xs font-bold flex items-center gap-1">
-            <i data-lucide="smartphone" class="w-3.5 h-3.5 text-amber-400"></i>
-            <span>Tải App</span>
-          </button>
+        <div class="flex items-center gap-1.5">
           <button onclick="switchTab('fines')" title="Tra cứu phạt nguội" class="p-1.5 bg-rose-950/80 text-rose-300 border border-rose-800/60 rounded-lg text-xs">
             <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
           </button>
@@ -502,7 +490,6 @@
                 <thead class="bg-slate-100/80 text-slate-600 font-bold uppercase tracking-wider border-b border-slate-200">
                   <tr>
                     <th class="py-3 px-4">Số Xe Đầu Kéo</th>
-                    <th class="py-3 px-4">Rơ-Moóc</th>
                     <th class="py-3 px-4">Tài Xế Phụ Trách</th>
                     <th class="py-3 px-4 text-center">Thẻ RFID Lái Xe</th>
                     <th class="py-3 px-4">Trạng Thái & Vị Trí GPS Chính Xác</th>
@@ -565,7 +552,6 @@
                   <tr>
                     <th class="py-3 px-3.5 text-center">STT</th>
                     <th class="py-3 px-3.5">Số Xe Đầu Kéo</th>
-                    <th class="py-3 px-3.5">Rơ-Moóc</th>
                     <th class="py-3 px-3.5">Tài Xế Phụ Trách</th>
                     <th class="py-3 px-3.5">Phân Loại</th>
                     <th class="py-3 px-3.5 text-right">Tổng Km Tuần</th>
@@ -778,7 +764,6 @@
                     <i data-lucide="lock" class="w-4 h-4 text-slate-700"></i>
                     <h4 class="font-bold text-xs text-slate-800 uppercase tracking-wide">Thiết Lập Mã PIN Bảo Mật Cấp 2</h4>
                   </div>
-                  <span class="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">Mặc định: 6868</span>
                 </div>
                 <p class="text-[11px] text-slate-500">
                   Mã PIN cấp 2 là lớp phòng thủ bổ sung. Ngay cả khi hacker có được tên tài khoản và mật khẩu, hệ thống vẫn kiên quyết từ chối nếu không có mã PIN này.
@@ -1259,159 +1244,6 @@
     </div>
   </div>
 
-  <!-- MODAL: CÀI ĐẶT ỨNG DỤNG DI ĐỘNG (PWA / APP STORE / CH PLAY) -->
-  <div id="modalInstallApp" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-150 border border-slate-200">
-      <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-5 flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-400/30 flex items-center justify-center">
-            <i data-lucide="smartphone" class="w-6 h-6"></i>
-          </div>
-          <div>
-            <h3 class="font-bold text-base">Cài Đặt App Vận Tải Trường Phát</h3>
-            <p class="text-xs text-blue-200">Dành cho điện thoại iPhone (iOS) & Android (Samsung, Xiaomi, Oppo...)</p>
-          </div>
-        </div>
-        <button onclick="closeModal('modalInstallApp')" class="text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-      </div>
-
-      <div class="p-5 space-y-4 text-xs">
-        <!-- Nút Cài Đặt Tự Động Nhanh (nếu trình duyệt hỗ trợ PWA) -->
-        <div id="pwaInstallPromptBox" class="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
-          <div class="flex items-center gap-2.5">
-            <i data-lucide="download-cloud" class="w-6 h-6 text-amber-600 shrink-0"></i>
-            <div>
-              <p class="font-bold text-slate-800 text-xs">Cài Đặt Trực Tiếp Vào Máy</p>
-              <p class="text-[11px] text-slate-500">Mở toàn màn hình, mượt mà và chạy tức thì</p>
-            </div>
-          </div>
-          <button id="btnPwaInstall" onclick="triggerPwaInstall()" class="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-lg text-xs shadow-md transition shrink-0 flex items-center gap-1.5">
-            <i data-lucide="plus-circle" class="w-4 h-4"></i>
-            <span>Cài Đặt Ngay</span>
-          </button>
-        </div>
-
-        <!-- Tabs Hướng Dẫn Nhanh -->
-        <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl font-bold">
-          <button type="button" onclick="switchInstallTab('ios')" id="tabBtnIos" class="py-2 rounded-lg text-center bg-white shadow-sm text-blue-950 flex items-center justify-center gap-1.5 transition">
-            <span>🍏 Cho iPhone (iOS)</span>
-          </button>
-          <button type="button" onclick="switchInstallTab('android')" id="tabBtnAndroid" class="py-2 rounded-lg text-center text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition">
-            <span>🤖 Cho Android (CH Play)</span>
-          </button>
-        </div>
-
-        <!-- Hướng dẫn iOS -->
-        <div id="installGuideIos" class="space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div class="flex items-start gap-3">
-            <span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">1</span>
-            <div>
-              <p class="font-bold text-slate-800">Mở Safari trên iPhone</p>
-              <p class="text-slate-500 text-[11px]">Mở đường link <code class="bg-slate-200 px-1 rounded text-blue-700 font-bold">vantai-truongphat.onrender.com</code> trên trình duyệt Safari.</p>
-            </div>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">2</span>
-            <div>
-              <p class="font-bold text-slate-800">Bấm nút "Chia Sẻ" ở thanh dưới cùng</p>
-              <p class="text-slate-500 text-[11px]">Bấm biểu tượng ô vuông có mũi tên chỉ lên ( <i data-lucide="share" class="w-3.5 h-3.5 inline text-blue-600"></i> ) ở giữa dưới màn hình.</p>
-            </div>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">3</span>
-            <div>
-              <p class="font-bold text-slate-800">Chọn "Thêm vào MH chính" (Add to Home Screen)</p>
-              <p class="text-slate-500 text-[11px]">Cuộn xuống danh sách tùy chọn và chọn <span class="font-bold text-slate-700">"Thêm vào MH chính"</span> rồi bấm <span class="font-bold text-blue-600">"Thêm"</span> ở góc phải.</p>
-            </div>
-          </div>
-          <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg text-[11px] font-medium border border-emerald-200 flex items-center gap-2">
-            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-            <span>Ứng dụng Trường Phát sẽ hiển thị ngay trên màn hình chính của iPhone với biểu tượng riêng, không cần chờ xét duyệt App Store!</span>
-          </div>
-        </div>
-
-        <!-- Hướng dẫn Android -->
-        <div id="installGuideAndroid" class="hidden space-y-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
-          <div class="flex items-start gap-3">
-            <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">1</span>
-            <div>
-              <p class="font-bold text-slate-800">Mở Chrome trên điện thoại Android</p>
-              <p class="text-slate-500 text-[11px]">Mở đường link <code class="bg-slate-200 px-1 rounded text-blue-700 font-bold">vantai-truongphat.onrender.com</code>.</p>
-            </div>
-          </div>
-          <div class="flex items-start gap-3">
-            <span class="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">2</span>
-            <div>
-              <p class="font-bold text-slate-800">Bấm nút "Cài Đặt Ứng Dụng"</p>
-              <p class="text-slate-500 text-[11px]">Bấm nút <span class="font-bold text-amber-600">"Cài Đặt Ngay"</span> ở trên, hoặc bấm dấu 3 chấm (⋮) ở góc trên bên phải Chrome -> chọn <span class="font-bold text-slate-800">"Cài đặt ứng dụng"</span> (hoặc "Thêm vào màn hình chính").</p>
-            </div>
-          </div>
-          <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-lg text-[11px] font-medium border border-emerald-200 flex items-center gap-2">
-            <i data-lucide="check-circle" class="w-4 h-4 text-emerald-600 shrink-0"></i>
-            <span>Ứng dụng được cài đặt trực tiếp vào điện thoại, chạy độc lập toàn màn hình như tải từ CH Play!</span>
-          </div>
-        </div>
-
-        <div class="flex justify-end pt-2 border-t border-slate-100">
-          <button type="button" onclick="closeModal('modalInstallApp')" class="px-5 py-2 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs transition">Đã Hiểu</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <script src="/static/app.js"></script>
-  
-  <!-- SERVICE WORKER & PWA INSTALL LOGIC -->
-  <script>
-    let deferredPrompt = null;
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      const box = document.getElementById('pwaInstallPromptBox');
-      if (box) box.classList.remove('hidden');
-    });
-
-    function triggerPwaInstall() {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        deferredPrompt.userChoice.then((choiceResult) => {
-          if (choiceResult.outcome === 'accepted') {
-            console.log('User accepted PWA installation');
-          }
-          deferredPrompt = null;
-        });
-      } else {
-        alert('Trình duyệt của bạn đang mở ở chế độ xem web hoặc đã cài đặt ứng dụng. Hãy làm theo hướng dẫn các bước bên dưới!');
-      }
-    }
-
-    function switchInstallTab(type) {
-      const iosGuide = document.getElementById('installGuideIos');
-      const androidGuide = document.getElementById('installGuideAndroid');
-      const tabIos = document.getElementById('tabBtnIos');
-      const tabAndroid = document.getElementById('tabBtnAndroid');
-
-      if (type === 'ios') {
-        iosGuide.classList.remove('hidden');
-        androidGuide.classList.add('hidden');
-        tabIos.className = 'py-2 rounded-lg text-center bg-white shadow-sm text-blue-950 flex items-center justify-center gap-1.5 transition font-bold';
-        tabAndroid.className = 'py-2 rounded-lg text-center text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition font-bold';
-      } else {
-        androidGuide.classList.remove('hidden');
-        iosGuide.classList.add('hidden');
-        tabAndroid.className = 'py-2 rounded-lg text-center bg-white shadow-sm text-emerald-950 flex items-center justify-center gap-1.5 transition font-bold';
-        tabIos.className = 'py-2 rounded-lg text-center text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5 transition font-bold';
-      }
-      if (window.lucide) lucide.createIcons();
-    }
-
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('/static/sw.js')
-          .then((reg) => console.log('PWA ServiceWorker registered with scope:', reg.scope))
-          .catch((err) => console.log('PWA ServiceWorker registration failed:', err));
-      });
-    }
-  </script>
 </body>
 </html>

@@ -25,8 +25,10 @@ def get_security_status(
     client_ip = firewall_manager.get_client_ip(request)
     
     # Lấy mã PIN hiện tại trong DB
-    pin_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "security_pin_code").first()
-    current_pin = pin_setting.value if pin_setting else "6868"
+    pin_setting = db.query(models.SystemSetting).filter(
+        (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
+    ).first()
+    current_pin = pin_setting.value if pin_setting else "2626"
 
     blocked_list = [
         {"ip": ip, "remaining_seconds": max(0, int(expire_time - __import__("time").time()))}
@@ -63,8 +65,10 @@ def update_security_pin(
     current_user: models.User = Depends(auth.require_role(["admin"]))
 ):
     """Admin đổi mã PIN bảo mật cấp 2"""
-    pin_setting = db.query(models.SystemSetting).filter(models.SystemSetting.key == "security_pin_code").first()
-    current_pin = pin_setting.value if pin_setting else "6868"
+    pin_setting = db.query(models.SystemSetting).filter(
+        (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
+    ).first()
+    current_pin = pin_setting.value if pin_setting else "2626"
 
     if req.old_pin.strip() != current_pin:
         raise HTTPException(status_code=400, detail="Mã PIN hiện tại không chính xác!")

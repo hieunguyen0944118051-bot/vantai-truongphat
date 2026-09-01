@@ -10,6 +10,12 @@ from gps_service import gps_client
 from sheets_service import sheets_client
 from traffic_fines_service import traffic_fines_service
 
+XE_BEN_PLATES = {
+    '63H04273', '63G00286', '63E01156', '63E01117', '63E01108',
+    '63F00528', '63G00262', '63H04239', '63E01276', '63E01103',
+    '63E01118', '63F00511', '63H04234', '63E01235', '63H04236'
+}
+
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 
 @router.get("/stats")
@@ -129,7 +135,7 @@ def get_dashboard_stats(
             "longitude": item.get("longitude")
         })
 
-    fuel_table.sort(key=lambda x: x["daily_km"], reverse=True)
+    fuel_table.sort(key=lambda x: (0 if x["plate_number"].replace("-", "").replace(".", "").replace(" ", "").upper() in XE_BEN_PLATES else 1, -x["daily_km"]))
 
     # 1.5 CẢNH BÁO XE ĐANG CHẠY NHƯNG KHÔNG QUẸT THẺ (CHỈ BÁO XE ĐANG CHẠY SPEED > 0)
     running_no_card_alerts = []
@@ -228,7 +234,7 @@ def get_dashboard_stats(
             "status_type": status_type
         })
 
-    weekly_fuel_table.sort(key=lambda x: x["weekly_km"], reverse=True)
+    weekly_fuel_table.sort(key=lambda x: (0 if x["plate_number"].replace("-", "").replace(".", "").replace(" ", "").upper() in XE_BEN_PLATES else 1, -x["weekly_km"]))
 
     avg_weekly_fleet_norm = round((total_weekly_fuel / total_weekly_km * 100), 1) if total_weekly_km > 0 else 40.0
     weekly_summary = {
