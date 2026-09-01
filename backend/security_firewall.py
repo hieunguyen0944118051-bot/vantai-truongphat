@@ -11,7 +11,7 @@ MALICIOUS_PATTERNS = [
     # SQL Injection patterns
     re.compile(r"(\bunion\b.*\bselect\b|\bselect\b.*\bfrom\b|\binsert\b.*\binto\b|\bdelete\b.*\bfrom\b|\bdrop\b\s+(table|database))", re.IGNORECASE),
     re.compile(r"(--|#|/\*|\*/|;\s*waitfor\b|\bor\b\s+1\s*=\s*1\b|\band\b\s+1\s*=\s*1\b)", re.IGNORECASE),
-    re.compile(r"(\bexec\b|\bexecute\b|\bxp_cmdshell\b|\bsp_executesql\b)", re.IGNORECASE),
+    re.compile(r"(\bexec\s+sp_|\bxp_cmdshell\b|\bsp_executesql\b)", re.IGNORECASE),
     
     # Path Traversal & LFI/RFI
     re.compile(r"(\.\./|\.\.\\|/etc/passwd|/proc/self|/windows/win\.ini)", re.IGNORECASE),
@@ -128,8 +128,8 @@ class SecurityFirewallManager:
                 self.block_ip(ip, duration_seconds=3600, reason="Phát hiện mã độc trong URL (SQLi/XSS)")
                 return False, "Yêu cầu bị chặn: Phát hiện mã độc trong đường dẫn."
 
-        # 5. Kiểm tra Body
-        if body_bytes and len(body_bytes) < 50000:
+        # 5. Kiểm tra Body (Ngoại trừ cổng chat trợ lý AI hội thoại tiếng Việt)
+        if body_bytes and len(body_bytes) < 50000 and request.url.path != "/api/assistant/execute":
             try:
                 body_str = body_bytes.decode("utf-8", errors="ignore")
                 for pattern in MALICIOUS_PATTERNS:
