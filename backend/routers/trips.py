@@ -71,27 +71,44 @@ def sync_trips_from_sheets(
     Sync trips from Google Sheets into the local database for historical reporting.
     """
     try:
-        data = sheets_client.fetch_daily_trips(target_date=view_date)
-        trips = data["all_trips"]
+        if view_date:
+            try:
+                sync_date = datetime.strptime(view_date, "%Y-%m-%d").date()
+            except Exception:
+                sync_date = date.today()
+        else:
+            sync_date = date.today()
+
+        data = sheets_client.fetch_daily_trips(target_date=sync_date.strftime("%Y-%m-%d"))
+        trips = data.get("all_trips", [])
         
         vehicles = db.query(models.Vehicle).all()
         v_map = {v.plate_number.replace("-", "").replace(".", "").replace(" ", "").upper(): v for v in vehicles}
 
+        date_prefix = sync_date.strftime("%Y%m%d")
         synced_count = 0
+
         for t in trips:
             clean_plate = t["raw_plate"].replace("-", "").replace(".", "").replace(" ", "").upper()
             v = v_map.get(clean_plate)
             
+            trip_code = f"TRIP-{date_prefix}-{t['stt']:03d}-{clean_plate[-4:]}"
             existing = db.query(models.Trip).filter(
-                models.Trip.trip_date == date.today(),
-                models.Trip.vehicle_id == (v.id if v else None),
-                models.Trip.cargo_type == t["cargo_type"]
+                models.Trip.trip_code == trip_code
             ).first()
 
-            if not existing:
+            if existing:
+                existing.customer_name = t["customer_name"]
+                existing.cargo_type = t["cargo_type"]
+                existing.origin = t["origin"]
+                existing.destination = t["destination"]
+                existing.num_trips = 1 if t["status_code"] == "active" else 0
+                existing.weight_tons = 30.0 if t["status_code"] == "active" else 0.0
+                existing.notes = t["route"]
+            else:
                 new_trip = models.Trip(
-                    trip_date=date.today(),
-                    trip_code=f"TRIP-{t['stt']:03d}-{clean_plate[-4:]}",
+                    trip_date=sync_date,
+                    trip_code=trip_code,
                     vehicle_id=v.id if v else None,
                     customer_name=t["customer_name"],
                     cargo_type=t["cargo_type"],
@@ -106,12 +123,13 @@ def sync_trips_from_sheets(
         db.commit()
         return {
             "success": True,
-            "message": f"Đã đồng bộ thành công {len(trips)} chuyến từ Google Trang Tính!",
-            "active_count": data["active_count"],
-            "off_count": data["off_count"],
+            "message": f"Đã đồng bộ thành công {len(trips)} chuyến từ Google Trang Tính ngày {sync_date.strftime('%d/%m/%Y')}!",
+            "active_count": data.get("active_count", 0),
+            "off_count": data.get("off_count", 0),
             "synced_count": synced_count
         }
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi khi đồng bộ Google Sheets: {str(e)}")
 
 @router.get("", response_model=List[schemas.TripOut])

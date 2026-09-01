@@ -8,6 +8,7 @@ import openpyxl
 from datetime import datetime, date, timedelta
 from database import SessionLocal
 import models
+from gps_service import OFFICIAL_DRIVERS_BY_CLEAN_PLATE
 
 DEFAULT_SHEET_AUGUST_ID = "1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI"
 DEFAULT_SHEET_SEPTEMBER_ID = "1NSNhOIO--PEx9W3u5O2I-w1bvl4kN3TTh9qXfiXb2U0"
@@ -184,61 +185,78 @@ class GoogleSheetsSyncService:
         for row in rows:
             if not row or len(row) < 2:
                 continue
-            first_col = row[0].strip() if len(row) > 0 else ""
             row_joined = " ".join(row).upper()
-
-            if "XE BEN" in first_col.upper() or "XE BEN" in row_joined:
-                current_section = "ben"
-                continue
-            elif "XE CÔNG DÀI" in first_col.upper() or "XE THÙNG" in first_col.upper() or "XE CÔNG DÀI" in row_joined:
+            if "XE CÔNG DÀI" in row_joined or "XE THÙNG" in row_joined:
                 current_section = "thung"
                 continue
+            elif "XE BEN" in row_joined and "TĂNG BO" not in row_joined:
+                current_section = "ben"
+                continue
+            elif "TĂNG BO" in row_joined:
+                break
 
+            first_col = row[0].strip() if len(row) > 0 else ""
             raw_plate = row[1].strip() if len(row) > 1 else ""
             if not raw_plate or "BIỂN SỐ" in raw_plate.upper() or "SỐ XE" in raw_plate.upper() or "STT" in first_col.upper():
                 continue
 
             # Chuẩn hóa biển số
-            clean_plate = raw_plate.replace(" ", "").replace("-", "").replace(".", "").upper()
-            if len(clean_plate) >= 7 and clean_plate[:2].isdigit():
-                formatted_plate = f"{clean_plate[:3]}-{clean_plate[3:6]}.{clean_plate[6:]}" if len(clean_plate) == 8 else raw_plate
+            clean_p = raw_plate.replace(" ", "").replace("-", "").replace(".", "").upper()
+            if not (clean_p.startswith("63") or clean_p.startswith("66")):
+                continue
+
+            if len(clean_p) == 8:
+                formatted_plate = f"{clean_p[:3]}-{clean_p[3:6]}.{clean_p[6:]}"
             else:
                 formatted_plate = raw_plate
 
-            trailer = row[2].strip() if len(row) > 2 else ""
-            driver = row[3].strip() if len(row) > 3 else ""
+            route = row[2].strip() if len(row) > 2 else ""
+            cargo = row[3].strip() if len(row) > 3 else ""
             customer = row[4].strip() if len(row) > 4 else ""
-            origin = row[5].strip() if len(row) > 5 else ""
-            dest = row[6].strip() if len(row) > 6 else ""
-            cargo = row[7].strip() if len(row) > 7 else ""
-            num_trips_raw = row[8].strip() if len(row) > 8 else "1"
 
-            try:
-                num_trips = int(float(num_trips_raw))
-            except Exception:
-                num_trips = 1
+            origin = ""
+            dest = ""
+            if "=>" in route:
+                parts = route.split("=>")
+                origin = parts[0].strip()
+                dest = parts[1].strip()
+            elif "->" in route:
+                parts = route.split("->")
+                origin = parts[0].strip()
+                dest = parts[1].strip()
+            else:
+                dest = route
 
-            status_str = "Hoạt động"
-            status_code = "active"
-            lower_dest = dest.lower() + " " + customer.lower() + " " + cargo.lower()
-            if "nghỉ" in lower_dest or "bảo dưỡng" in lower_dest or "sửa" in lower_dest:
-                status_str = "Nghỉ bãi / Sửa chữa"
+            combined_notes = (route + " " + customer + " " + cargo).upper()
+            if "TÀI XẾ NGHỈ" in combined_notes or "TX NGHỈ" in combined_notes or "NGHỈ" in combined_notes:
+                status_code = "driver_off"
+                status_str = "Tài xế nghỉ cả ngày"
+            elif "SỬA XE" in combined_notes or "BẢO DƯỠNG" in combined_notes or "SỬA" in combined_notes:
                 status_code = "off"
-            elif not customer and not dest:
-                status_str = "Trống lịch"
+                status_str = "Bảo dưỡng / Sửa xe"
+            elif not customer and not route:
                 status_code = "idle"
+                status_str = "Nghỉ bãi / Trống lịch"
+            else:
+                status_code = "active"
+                status_str = "Đang hoạt động"
+
+            driver_name = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p, "Tài xế công ty")
 
             trip_item = {
+                "raw_plate": formatted_plate,
                 "plate_number": formatted_plate,
-                "trailer_number": trailer,
-                "driver_name": driver,
-                "customer_name": customer,
+                "clean_plate": clean_p,
+                "vehicle_type": "Xe Ben" if current_section == "ben" else "Xe Thùng",
+                "route": route or ("Nghỉ bãi" if status_code != "active" else "Đang chạy"),
                 "origin": origin,
                 "destination": dest,
-                "cargo_type": cargo,
-                "num_trips": num_trips,
-                "status": status_str,
+                "cargo_type": cargo or "—",
+                "customer_name": customer or "—",
                 "status_code": status_code,
+                "status_text": status_str,
+                "driver_name": driver_name,
+                "num_trips": 1 if status_code == "active" else 0,
                 "date": display_date
             }
 
@@ -247,15 +265,47 @@ class GoogleSheetsSyncService:
             else:
                 thung_trips.append(trip_item)
 
+        all_trips = []
+        for idx, t in enumerate(ben_trips + thung_trips, 1):
+            t["stt"] = idx
+            all_trips.append(t)
+
+        total_vehicles = len(all_trips)
+        active_count = len([t for t in all_trips if t.get("status_code") == "active"])
+        off_count = len([t for t in all_trips if t.get("status_code") != "active"])
+        active_percent = round((active_count / total_vehicles * 100), 1) if total_vehicles > 0 else 0.0
+
+        # Phân tích cơ cấu chủ hàng (%)
+        from collections import Counter
+        cust_counter = Counter()
+        for t in all_trips:
+            c = t.get("customer_name")
+            if c and c != "—" and "NGHỈ" not in c.upper() and "SỬA" not in c.upper():
+                cust_counter[c] += 1
+
+        total_cust_trips = sum(cust_counter.values())
+        customer_breakdown = []
+        for c_name, c_cnt in cust_counter.most_common(5):
+            pct = round(c_cnt / total_cust_trips * 100, 1) if total_cust_trips > 0 else 0.0
+            customer_breakdown.append({"customer": c_name, "trips": c_cnt, "percent": pct})
+
         result = {
             "date": display_date,
             "selected_date": t_date,
             "ben": ben_trips,
             "thung": thung_trips,
+            "ben_trips": ben_trips,
+            "thung_trips": thung_trips,
+            "all_trips": all_trips,
+            "trips": all_trips,
             "total_ben": len(ben_trips),
             "total_thung": len(thung_trips),
             "active_ben": len([t for t in ben_trips if t.get("status_code") == "active"]),
             "active_thung": len([t for t in thung_trips if t.get("status_code") == "active"]),
+            "active_count": active_count,
+            "off_count": off_count,
+            "active_percent": active_percent,
+            "customer_breakdown": customer_breakdown,
             "sync_time": datetime.now().strftime("%H:%M:%S")
         }
 

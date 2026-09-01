@@ -1146,8 +1146,26 @@
               </div>
             </div>
 
+            <!-- MAP INTERACTION TOOLBAR -->
+            <div class="flex flex-wrap items-center justify-between gap-2.5 p-2.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div class="relative flex-1 min-w-[220px] max-w-sm">
+                <input type="text" id="mapVehicleSearch" oninput="handleMapSearch(this.value)" placeholder="🔍 Tìm nhanh biển số (vd: 011.56, 042.73) hoặc tài xế..." class="w-full pl-3 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold focus:ring-2 focus:ring-blue-600 focus:outline-none shadow-xs" />
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="fitAllFleetBounds()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-xs transition">
+                  <i data-lucide="maximize" class="w-3.5 h-3.5"></i>
+                  <span>Xem Toàn Đoàn (26 Xe)</span>
+                </button>
+                <div class="flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-100/90 px-2.5 py-1.5 rounded-lg font-bold border border-emerald-300">
+                  <span class="w-2 h-2 rounded-full bg-emerald-600 animate-ping"></span>
+                  <span>Tự động cập nhật: </span>
+                  <span id="liveSyncCountdownBadge" class="font-mono text-emerald-900 font-black">15s</span>
+                </div>
+              </div>
+            </div>
+
             <!-- INTERACTIVE FULL-SIZE FLEET MAP -->
-            <div id="liveFleetMap" class="w-full h-[520px] rounded-2xl border border-slate-200 z-0 overflow-hidden shadow-inner"></div>
+            <div id="liveFleetMap" class="w-full h-[540px] rounded-2xl border border-slate-200 z-0 overflow-hidden shadow-inner"></div>
 
             <!-- SUMMARY BAR BELOW MAP -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-1">
