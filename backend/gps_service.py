@@ -68,9 +68,36 @@ class GpsClient:
                 plate = pri_code.replace('_C', '')
 
             plate_code = v.get('plate') or pri_code
-            speed = int(v.get('v_gps', 0) or 0)
-            state = v.get('state', 0)
-            daily_km = round(float(v.get('t_km') or 0.0), 1)
+            today_str = datetime.now().strftime('%Y-%m-%d')
+            g_time = v.get('g_time') or ''
+            g_date = g_time[:10] if g_time else ''
+            is_today = (g_date == today_str)
+
+            # Nếu dữ liệu GPS không thuộc ngày hôm nay (xe đậu bãi nhiều ngày không chạy):
+            if not is_today:
+                speed = 0
+                state = 104
+                daily_km = 0.0
+                status_text = "Dừng bãi"
+                status_type = "stopped"
+            else:
+                speed = int(v.get('v_gps', 0) or 0)
+                state = v.get('state', 0)
+                daily_km = round(float(v.get('t_km') or 0.0), 1)
+
+                if speed > 0:
+                    status_text = f"Đang chạy ({speed} km/h)"
+                    status_type = "running"
+                elif state in [32, 2080]:
+                    status_text = "Dừng nổ máy"
+                    status_type = "idling"
+                elif state in [40, 2088]:
+                    status_text = "Dừng tắt máy"
+                    status_type = "stopped"
+                else:
+                    status_text = "Dừng bãi"
+                    status_type = "stopped"
+
             address = v.get('adds') or 'Đang cập nhật...'
             lat = v.get('lat')
             lng = v.get('lng')
@@ -82,30 +109,17 @@ class GpsClient:
             bgt_license = (bgt.get('license') or '').strip()
 
             is_logged_out = (bgt_name in ['LAI XE DANG XUAT', '', 'NONE', 'CHƯA NHẬP'] or 'DANG XUAT' in bgt_name)
-            is_card_swiped = not is_logged_out
+            is_card_swiped = (not is_logged_out) and is_today
             card_driver_name = bgt.get('name') if is_card_swiped else "Chưa quẹt thẻ"
 
             official_driver = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p) or "Tài xế công ty"
             driver_name = official_driver
 
             card_violation = None
-            if is_logged_out and speed > 0:
+            if is_today and is_logged_out and speed > 0:
                 card_violation = "running_no_card"
-            elif is_logged_out and daily_km > 0:
+            elif is_today and is_logged_out and daily_km > 0:
                 card_violation = "daily_no_card"
-
-            if speed > 0:
-                status_text = f"Đang chạy ({speed} km/h)"
-                status_type = "running"
-            elif state in [32, 2080]:
-                status_text = "Dừng nổ máy"
-                status_type = "idling"
-            elif state in [40, 2088]:
-                status_text = "Dừng tắt máy"
-                status_type = "stopped"
-            else:
-                status_text = "Dừng bãi"
-                status_type = "stopped"
 
             standard_norm = 40.0
             consumed_liters = round((daily_km * standard_norm) / 100.0, 1) if daily_km > 0 else 0.0
