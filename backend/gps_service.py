@@ -85,8 +85,8 @@ class GpsClient:
             is_card_swiped = not is_logged_out
             card_driver_name = bgt.get('name') if is_card_swiped else "Chưa quẹt thẻ"
 
-            official_driver = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p)
-            driver_name = card_driver_name if is_card_swiped else (official_driver or "Chưa quẹt thẻ")
+            official_driver = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p) or "Tài xế công ty"
+            driver_name = official_driver
 
             card_violation = None
             if is_logged_out and speed > 0:

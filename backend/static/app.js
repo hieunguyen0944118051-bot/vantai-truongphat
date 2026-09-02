@@ -478,6 +478,40 @@ const XE_BEN_SET = new Set([
   '63E01118', '63F00511', '63H04234', '63E01235', '63H04236'
 ]);
 
+const OFFICIAL_DRIVERS_MAP = {
+  '63E01156': 'Nguyễn Văn Tuấn',
+  '63E01117': 'Phan Hoàng Duy',
+  '63H04273': 'Lâm Hoàng Tuấn',
+  '63G00286': 'Nguyễn Xuân Về',
+  '63F00512': 'Hoàng Quốc Bảo',
+  '63F00538': 'Lý Minh Tới',
+  '63E01108': 'Lý Minh Hoàng',
+  '63F00528': 'Nguyễn Văn Hiếu',
+  '63E01212': 'Mạch Đình Phước',
+  '63E01141': 'Dương Thanh Sang',
+  '63G00262': 'Nguyễn Thanh Tây',
+  '63H04239': 'Kim Sô Phép',
+  '63E01132': 'Đào Ngọc Kha',
+  '63E01201': 'Lê Trọng Nghĩa',
+  '63F00516': 'Phùng Phú Kim Toàn',
+  '63E01276': 'Nguyễn Thanh Giàu',
+  '63E01103': 'Lê Phương Linh',
+  '63E01118': 'Lê Ngọc Quí',
+  '63F00511': 'Bạch Tấn Trí',
+  '63H04234': 'Nguyễn Thành Hiếu',
+  '63G00297': 'Trần Trọng Ngân',
+  '63E01235': 'Lý Hoàng Thái',
+  '63H04236': 'Lê Văn Trọng',
+  '63G00280': 'Lê Trung Trực',
+  '66H08348': 'Trần Trọng Nghĩa'
+};
+
+function getOfficialDriverName(plate, fallback) {
+  if (!plate) return fallback || 'Tài xế công ty';
+  const clean = plate.replace(/[-. ]/g, '').toUpperCase();
+  return OFFICIAL_DRIVERS_MAP[clean] || fallback || 'Tài xế công ty';
+}
+
 function formatPlateBadge(plate) {
   if (!plate) return '—';
   const clean = plate.replace(/[-. ]/g, '').toUpperCase();
@@ -520,7 +554,7 @@ function renderFuelAnalysisTable(items) {
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
         <td class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
-        <td class="py-3 px-4 font-medium text-slate-800">${v.driver_name}</td>
+        <td class="py-3 px-4 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
         <td class="py-3 px-4 text-center">${cardBadge}</td>
         <td class="py-3 px-4 space-y-1">
           <div>${stateBadge}</div>
@@ -739,7 +773,7 @@ function renderWeeklyFuelTable(weeklyData) {
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
         <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
         <td class="py-3 px-3.5">${formatPlateBadge(r.plate_number)}</td>
-        <td class="py-3 px-3.5 font-bold text-slate-800">${r.driver_name}</td>
+        <td class="py-3 px-3.5 font-bold text-slate-800">${getOfficialDriverName(r.plate_number, r.driver_name)}</td>
         <td class="py-3 px-3.5 text-right font-black text-slate-800">${r.weekly_km.toLocaleString('vi-VN')} km</td>
         <td class="py-3 px-3.5 text-right font-bold text-blue-600">${r.avg_daily_km} km</td>
         <td class="py-3 px-3.5 text-right font-black text-amber-700">${r.weekly_liters.toLocaleString('vi-VN')} L</td>
@@ -766,7 +800,7 @@ function renderTopDriversLeaderboard(drivers) {
         <span class="text-base">${medals[idx] || (idx + 1)}</span>
         <span class="font-mono font-black text-xs text-blue-700">${d.plate_number}</span>
       </div>
-      <p class="font-black text-xs text-slate-800 truncate">${d.driver_name}</p>
+      <p class="font-black text-xs text-slate-800 truncate">${getOfficialDriverName(d.plate_number, d.driver_name)}</p>
       <div class="flex items-baseline justify-between text-[11px] pt-1.5 border-t border-slate-200/60">
         <span class="text-slate-500">Tổng tuần:</span>
         <span class="font-black text-slate-800">${d.weekly_km.toLocaleString('vi-VN')} km</span>
@@ -902,7 +936,7 @@ function renderFinesTable(list) {
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs ${v.has_violation ? 'bg-red-50/40' : ''}">
         <td class="py-3 px-4 text-center font-bold text-slate-400">${idx + 1}</td>
         <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
-        <td class="py-3 px-4 font-bold text-slate-800">${v.driver_name}</td>
+        <td class="py-3 px-4 font-bold text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
         <td class="py-3 px-4 text-center">${statBadge}</td>
         <td class="py-3 px-4 max-w-md whitespace-normal leading-relaxed">${violationsHtml}</td>
         <td class="py-3 px-4 text-center">${warningBadge}</td>
@@ -1335,7 +1369,7 @@ async function loadGpsLive() {
             <td class="py-3 px-4 text-center">${cardBadge}</td>
             <td class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
             <td class="py-3 px-4 text-slate-700 max-w-sm truncate" title="${v.address}">${v.address || 'Đang cập nhật...'}</td>
-            <td class="py-3 px-4 font-medium text-slate-800">${v.driver_name}</td>
+            <td class="py-3 px-4 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
             <td class="py-3 px-4 text-center font-mono text-slate-500 text-[11px]">${v.update_time}</td>
           </tr>
         `;

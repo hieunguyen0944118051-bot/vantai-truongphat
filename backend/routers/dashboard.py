@@ -6,7 +6,7 @@ from typing import Optional
 from collections import Counter
 import models, auth
 from database import get_db
-from gps_service import gps_client
+from gps_service import gps_client, OFFICIAL_DRIVERS_BY_CLEAN_PLATE
 from sheets_service import sheets_client
 from traffic_fines_service import traffic_fines_service
 
@@ -113,7 +113,7 @@ def get_dashboard_stats(
             "plate_number": item["plate_number"],
             "trailer_number": trailer,
             "vehicle_type": v_type,
-            "driver_name": item["driver_name"],
+            "driver_name": OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_plate) or item["driver_name"],
             "speed": speed,
             "op_state": op_state,
             "op_label": op_label,
@@ -221,7 +221,7 @@ def get_dashboard_stats(
         weekly_fuel_table.append({
             "plate_number": p,
             "trailer_number": trailer,
-            "driver_name": item["driver_name"],
+            "driver_name": OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p) or item["driver_name"],
             "vehicle_type": v_type,
             "weekly_trips": sheet_trips_week,
             "weekly_km": weekly_km,
