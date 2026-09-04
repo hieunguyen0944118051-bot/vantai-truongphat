@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from datetime import date, timedelta, datetime
 from typing import Optional
-from collections import Counter
+from collections import Counter, defaultdict
 import models, auth
 from database import get_db
 from gps_service import gps_client, OFFICIAL_DRIVERS_BY_CLEAN_PLATE
@@ -154,15 +154,67 @@ def get_dashboard_stats(
     total_vehicles = len(vehicles) if vehicles else 26
     active_percent = round((active_sheet_count / total_vehicles * 100), 1) if total_vehicles > 0 else 0.0
 
-    # 2. Phân Tích Top Tuyến Đường Vận Chuyển Hàng Đầu Hôm Nay
+    # 2. Phân Tích Top Tuyến Đường Vận Chuyển Hàng Đầu Hôm Nay & Danh Sách Xe Chạy Từng Tuyến
     route_counter = Counter()
+    route_trips_map = defaultdict(list)
     for t in all_sheet_trips:
         if t.get("status_code") == "active" and t.get("route"):
             r_clean = t["route"].strip()
             if r_clean and "NGHỈ" not in r_clean.upper():
                 route_counter[r_clean] += 1
+                p_num = t.get("plate_number") or ""
+                clean_p = t.get("clean_plate") or p_num.replace("-", "").replace(".", "").replace(" ", "").upper()
+                d_name = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p) or t.get("driver_name") or "Tài xế công ty"
+                c_name = t.get("customer_name") or "—"
+                cargo = t.get("cargo_type") or "—"
+                v_type = t.get("vehicle_type") or "Xe Ben"
+                
+                route_trips_map[r_clean].append({
+                    "plate_number": p_num,
+                    "driver_name": d_name,
+                    "customer_name": c_name,
+                    "cargo_type": cargo,
+                    "vehicle_type": v_type
+                })
 
-    top_routes = [{"route": r, "trips_count": cnt} for r, cnt in route_counter.most_common(5)]
+    top_routes = []
+    for r, cnt in route_counter.most_common(10):
+        t_list = route_trips_map[r]
+        vehicle_agg = {}
+        main_customer = ""
+        main_cargo = ""
+        for item in t_list:
+            p = item["plate_number"]
+            if not p:
+                continue
+            if not main_customer and item["customer_name"] != "—":
+                main_customer = item["customer_name"]
+            if not main_cargo and item["cargo_type"] != "—":
+                main_cargo = item["cargo_type"]
+
+            if p not in vehicle_agg:
+                vehicle_agg[p] = {
+                    "plate_number": p,
+                    "driver_name": item["driver_name"],
+                    "vehicle_type": item["vehicle_type"],
+                    "customer_name": item["customer_name"],
+                    "cargo_type": item["cargo_type"],
+                    "trips_count": 0
+                }
+            vehicle_agg[p]["trips_count"] += 1
+            
+        vehicles_list = list(vehicle_agg.values())
+        vehicles_list.sort(key=lambda x: -x["trips_count"])
+        
+        top_routes.append({
+            "route": r,
+            "trips_count": cnt,
+            "vehicles_count": len(vehicles_list),
+            "customer_name": main_customer or "—",
+            "cargo_type": main_cargo or "—",
+            "vehicles": vehicles_list,
+            "plates_str": ", ".join([v["plate_number"] for v in vehicles_list])
+        })
 
     # 3. BẢNG THEO DÕI NHIÊN LIỆU THEO TUẦN (CHÍNH XÁC THEO LỊCH ĐIỀU XE & GPS)
     weekly_sheet_stats = sheets_client.get_weekly_dispatch_stats(target_date)

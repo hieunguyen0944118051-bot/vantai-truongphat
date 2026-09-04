@@ -741,38 +741,100 @@ function renderDailyKmChart(kmData) {
 }
 
 function renderTopRoutesChart(routesData) {
-  const chartEl = document.getElementById('topRoutesChart');
-  if (!chartEl) return;
-  const ctx = chartEl.getContext('2d');
-  if (topRoutesChart) topRoutesChart.destroy();
+  const container = document.getElementById('topRoutesContainer');
+  const countBadge = document.getElementById('topRoutesTotalCountBadge');
+  if (!container) return;
 
-  const labels = routesData.map(r => r.route.length > 28 ? r.route.slice(0, 26) + '...' : r.route);
-  const data = routesData.map(r => r.trips_count);
+  if (!routesData || routesData.length === 0) {
+    if (countBadge) countBadge.innerText = '0 Tuyến Hoạt Động';
+    container.innerHTML = `
+      <div class="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-xs">
+        <i data-lucide="truck" class="w-8 h-8 mx-auto mb-2 text-slate-300"></i>
+        <p class="font-bold">Chưa có dữ liệu chuyến xe hôm nay</p>
+        <p class="text-[11px] mt-0.5">Tất cả xe đang nghỉ bãi hoặc chưa cập nhật lệnh điều xe</p>
+      </div>
+    `;
+    if (window.lucide) lucide.createIcons();
+    return;
+  }
 
-  topRoutesChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: labels,
-      datasets: [{
-        label: 'Số chuyến hôm nay',
-        data: data,
-        backgroundColor: '#6366f1',
-        borderRadius: 6,
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        x: {
-          beginAtZero: true,
-          ticks: { stepSize: 1, callback: (v) => v + ' chuyến' }
-        }
-      },
-      plugins: { legend: { display: false } }
-    }
-  });
+  const totalTrips = routesData.reduce((acc, r) => acc + (r.trips_count || 0), 0);
+  if (countBadge) {
+    countBadge.innerText = `${routesData.length} Tuyến • ${totalTrips} Chuyến`;
+  }
+
+  container.innerHTML = routesData.map((r, index) => {
+    const isTop1 = (index === 0);
+    const isTop2 = (index === 1);
+    const rankBadgeClass = isTop1 
+      ? 'bg-amber-500 text-white font-black shadow-xs' 
+      : (isTop2 ? 'bg-slate-700 text-white font-black' : 'bg-slate-200 text-slate-700 font-bold');
+
+    const vehiclesList = r.vehicles || [];
+    
+    const vehiclesHtml = vehiclesList.map(v => {
+      const isBen = (v.vehicle_type === 'Xe Ben');
+      const plateBadgeClass = isBen
+        ? 'bg-blue-50 text-blue-900 border-blue-200 hover:border-blue-400 hover:bg-blue-100'
+        : 'bg-emerald-50 text-emerald-900 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-100';
+
+      const typeIcon = isBen ? '🚛' : '🚚';
+      const tripCountBadge = v.trips_count > 1 
+        ? `<span class="px-1.5 py-0.2 bg-blue-600 text-white rounded-full text-[9px] font-black">${v.trips_count} chuyến</span>`
+        : '';
+
+      return `
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-xl border ${plateBadgeClass} text-xs transition shadow-2xs group">
+          <span class="text-xs shrink-0">${typeIcon}</span>
+          <span class="font-mono font-black text-[11px] tracking-tight text-slate-900">${v.plate_number}</span>
+          <span class="text-slate-400 text-[10px]">•</span>
+          <span class="font-bold text-slate-700 text-[11px] truncate max-w-[120px]">${v.driver_name}</span>
+          ${tripCountBadge}
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div class="p-3.5 bg-slate-50/80 hover:bg-slate-100/90 rounded-2xl border border-slate-200/90 space-y-2.5 transition">
+        <div class="flex items-start justify-between gap-3">
+          <div class="flex items-start gap-2.5 min-w-0">
+            <span class="w-5 h-5 rounded-lg ${rankBadgeClass} text-[11px] flex items-center justify-center shrink-0 mt-0.5">
+              ${index + 1}
+            </span>
+            <div class="min-w-0">
+              <h4 class="font-extrabold text-slate-900 text-xs md:text-sm flex items-center gap-1.5 flex-wrap">
+                <span>${r.route}</span>
+              </h4>
+              <div class="flex items-center gap-2 mt-0.5 text-[11px] text-slate-500 font-medium">
+                ${r.customer_name && r.customer_name !== '—' ? `<span class="text-blue-600 font-bold">🏢 Khách hàng: ${r.customer_name}</span>` : ''}
+                ${r.cargo_type && r.cargo_type !== '—' ? `<span class="text-slate-600">📦 Hàng: ${r.cargo_type}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="text-right shrink-0">
+            <span class="px-2.5 py-1 bg-blue-600 text-white rounded-xl font-black text-xs shadow-xs">
+              ⚡ ${r.trips_count} Chuyến
+            </span>
+            <p class="text-[10px] text-slate-500 font-bold mt-1">${r.vehicles_count} Xe chạy tuyến này</p>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH XE CHẠY TUYẾN NÀY (BIỂN SỐ XE + TÀI XẾ) -->
+        <div class="pt-2 border-t border-slate-200/60">
+          <div class="flex items-center gap-1.5 mb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+            <i data-lucide="truck" class="w-3 h-3 text-blue-600"></i>
+            <span>Xe & Tài Xế phụ trách (${vehiclesList.length} xe):</span>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            ${vehiclesHtml || '<span class="text-xs text-slate-400 italic">Đang cập nhật danh sách xe</span>'}
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  if (window.lucide) lucide.createIcons();
 }
 
 function renderCustomerBreakdownChart(customerData) {
