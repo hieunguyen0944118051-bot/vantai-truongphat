@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0a192f"/>
+      <stop offset="50%" stop-color="#1e3a8a"/>
+      <stop offset="100%" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24"/>
+      <stop offset="50%" stop-color="#f59e0b"/>
+      <stop offset="100%" stop-color="#d97706"/>
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+  </defs>
+
+  <!-- Background Shield -->
+  <rect x="24" y="24" width="464" height="464" rx="100" fill="url(#bgGrad)" filter="url(#glow)"/>
+  
+  <!-- Outer Gold Border -->
+  <rect x="24" y="24" width="464" height="464" rx="100" fill="none" stroke="url(#goldGrad)" stroke-width="8"/>
+  <rect x="36" y="36" width="440" height="440" rx="88" fill="none" stroke="#38bdf8" stroke-width="2" stroke-opacity="0.4"/>
+
+  <!-- Dynamic Wings in Gold -->
+  <path d="M 60 190 Q 180 80 256 120 Q 180 180 120 230 Z" fill="url(#goldGrad)" opacity="0.95"/>
+  <path d="M 452 190 Q 332 80 256 120 Q 332 180 392 230 Z" fill="url(#goldGrad)" opacity="0.95"/>
+
+  <!-- Cyan Swoosh Waves -->
+  <path d="M 120 270 Q 256 340 392 270 Q 320 310 256 320 Q 192 310 120 270 Z" fill="url(#cyanGrad)" opacity="0.9"/>
+
+  <!-- Stylized Monogram "T" -->
+  <path d="M 150 140 L 310 140 L 310 176 L 250 176 L 250 285 L 208 285 L 208 176 L 150 176 Z" fill="#ffffff" filter="url(#glow)"/>
+
+  <!-- Stylized Monogram "P" -->
+  <path d="M 265 140 L 335 140 C 375 140 395 160 395 195 C 395 230 375 250 335 250 L 305 250 L 305 285 L 265 285 Z M 305 174 L 330 174 C 350 174 358 182 358 195 C 358 208 350 216 330 216 L 305 216 Z" fill="url(#goldGrad)" filter="url(#glow)"/>
+
+  <!-- Brand Banner: "TRƯỜNG PHÁT" -->
+  <rect x="50" y="360" width="412" height="64" rx="18" fill="url(#goldGrad)" stroke="#fef08a" stroke-width="2" filter="url(#glow)"/>
+  <text x="256" y="404" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="34" font-weight="900" fill="#0f172a" text-anchor="middle" letter-spacing="2">TRƯỜNG PHÁT</text>
+
+  <!-- Subtitle -->
+  <text x="256" y="456" font-family="'Plus Jakarta Sans', Arial, sans-serif" font-size="16" font-weight="700" fill="#bae6fd" text-anchor="middle" letter-spacing="3">VẬN TẢI ĐƯỜNG BỘ &amp; ĐƯỜNG THỦY</text>
+</svg>
