@@ -90,15 +90,12 @@
         </div>
 
         <div>
-          <div class="flex items-center justify-between mb-2">
-            <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider">Mã PIN Bảo Mật Cấp 2</label>
-            <span class="text-[10px] text-slate-400 font-semibold">(Mặc định: 2626)</span>
-          </div>
+          <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Mã PIN Bảo Mật Cấp 2</label>
           <div class="relative">
             <i data-lucide="shield-check" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500"></i>
-            <input type="password" id="loginPin" maxlength="8" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN (2626)..." value="" />
+            <input type="password" id="loginPin" required maxlength="8" autocomplete="off" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN bảo mật..." value="" />
           </div>
-          <p class="text-[10px] text-slate-400 mt-1">Mã PIN bảo mật 2FA bảo vệ dữ liệu công ty (Mã PIN: 2626).</p>
+          <p class="text-[10px] text-slate-400 mt-1">Bắt buộc nhập mã PIN để xác thực bảo mật 2FA.</p>
         </div>
 
         <button type="submit" id="btnLogin" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-blue-700/25 transition flex items-center justify-center gap-2 text-sm">
@@ -1481,6 +1478,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=20260904_2108"></script>
 </body>
 </html>

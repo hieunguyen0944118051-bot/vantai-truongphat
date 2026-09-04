@@ -1,8 +1,6 @@
-// Vận Tải Trường Phát - PWA Service Worker v2 (Ultra Fast Stale-While-Revalidate)
-const CACHE_NAME = 'truongphat-pwa-v2';
+// Vận Tải Trường Phát - PWA Service Worker v4
+const CACHE_NAME = 'truongphat-pwa-v4';
 const STATIC_ASSETS = [
-  '/',
-  '/static/app.js',
   '/static/manifest.json',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png',
@@ -33,7 +31,6 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Stale-While-Revalidate Strategy for Static Resources (0ms Load Time)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -42,6 +39,25 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-First cho trang chủ và file app.js để luôn nhận phiên bản mới nhất
+  const isHtmlOrScript = url.pathname === '/' || url.pathname.endsWith('.html') || url.pathname.includes('app.js');
+
+  if (isHtmlOrScript) {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const clone = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, clone));
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Stale-While-Revalidate cho icons và CDN libraries
   event.respondWith(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.match(event.request).then((cachedResponse) => {
@@ -54,7 +70,6 @@ self.addEventListener('fetch', (event) => {
           })
           .catch(() => cachedResponse);
 
-        // Trả về cache ngay lập tức nếu có (0ms), song song cập nhật ngầm
         return cachedResponse || fetchPromise;
       });
     })

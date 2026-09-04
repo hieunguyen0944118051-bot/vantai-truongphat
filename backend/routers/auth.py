@@ -53,7 +53,7 @@ async def login(
     ).first()
     expected_pin = pin_setting.value.strip() if (pin_setting and pin_setting.value) else "2626"
 
-    # Kiểm tra mã PIN được gửi qua Header hoặc Query hoặc Form
+    # Kiểm tra mã PIN được gửi từ người dùng
     client_pin = request.headers.get("X-Security-PIN") or request.query_params.get("pin") or ""
     client_pin = str(client_pin).strip()
 
@@ -63,10 +63,8 @@ async def login(
         (clean_username == "admin" and clean_password in ["admin123", "admin"])
     )
 
-    # Kiểm tra mã PIN: Chấp nhận 2626 hoặc nếu khớp expected_pin hoặc nếu để trống
-    pin_ok = True
-    if client_pin:
-        pin_ok = (client_pin == expected_pin) or (client_pin == "2626")
+    # Kiểm tra mã PIN: Phải nhập đúng mã PIN (2626)
+    pin_ok = bool(client_pin) and ((client_pin == expected_pin) or (client_pin == "2626"))
 
     # NẾU ĐÚNG THÔNG TIN -> TỰ ĐỘNG GIẢI PHÓNG IP VÀ CHO VÀO NGAY LẬP TỨC
     if password_ok and pin_ok:
@@ -89,14 +87,16 @@ async def login(
             }
         }
 
-    # NẾU SAI THÔNG TIN -> Ghi nhận lỗi và kiểm tra khóa IP
+    # NẾU SAI THÔNG TIN -> Ghi nhận lỗi
     is_now_blocked = firewall_manager.record_login_attempt(ip, clean_username, success=False)
     if is_now_blocked or firewall_manager.is_ip_blocked(ip):
-        detail_msg = "Địa chỉ IP đã bị tạm khóa do nhập sai quá nhiều lần. Vui lòng nhập đúng: Tài khoản admin, Mật khẩu admin123, Mã PIN 2626!"
+        detail_msg = "Địa chỉ IP đã bị tạm khóa do nhập sai nhiều lần. Vui lòng kiểm tra lại tài khoản, mật khẩu và mã PIN!"
     elif not password_ok:
-        detail_msg = "Tên đăng nhập hoặc mật khẩu không chính xác! (Mặc định: admin / admin123)"
+        detail_msg = "Tên đăng nhập hoặc mật khẩu không chính xác!"
+    elif not client_pin:
+        detail_msg = "Vui lòng nhập mã PIN bảo mật cấp 2!"
     else:
-        detail_msg = "Mã PIN bảo mật cấp 2 không chính xác! (Mặc định: 2626)"
+        detail_msg = "Mã PIN bảo mật cấp 2 không chính xác!"
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

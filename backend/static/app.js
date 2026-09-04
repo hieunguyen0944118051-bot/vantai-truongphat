@@ -174,11 +174,17 @@ async function handleLogin(e) {
   const u = (document.getElementById('loginUsername').value || '').trim();
   const p = (document.getElementById('loginPassword').value || '').trim();
   const pinInput = document.getElementById('loginPin');
-  let pin = pinInput ? (pinInput.value || '').trim() : '';
-  if (!pin) pin = '2626';
+  const pin = pinInput ? (pinInput.value || '').trim() : '';
 
   const alertBox = document.getElementById('loginAlert');
   const alertText = document.getElementById('loginAlertText');
+
+  if (!pin) {
+    if (alertBox) alertBox.classList.remove('hidden');
+    if (alertText) alertText.innerText = 'Vui lòng nhập mã PIN bảo mật cấp 2!';
+    if (pinInput) pinInput.focus();
+    return;
+  }
 
   const btnLogin = document.getElementById('btnLogin');
   if (btnLogin) {
