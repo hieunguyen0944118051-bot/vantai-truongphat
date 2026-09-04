@@ -78,20 +78,16 @@ function renderQuickDateButtons() {
   }
 }
 
-// Khởi chạy
-document.addEventListener('DOMContentLoaded', () => {
+// Khởi chạy ứng dụng an toàn
+async function initApp() {
   if (window.lucide) lucide.createIcons();
 
   renderQuickDateButtons();
 
   const dPick = document.getElementById('desktopDatePicker');
   const mPick = document.getElementById('mobileDatePicker');
-  if (dPick) {
-    dPick.value = selectedDate;
-  }
-  if (mPick) {
-    mPick.value = selectedDate;
-  }
+  if (dPick) dPick.value = selectedDate;
+  if (mPick) mPick.value = selectedDate;
 
   const displayDate = formatDateVN(selectedDate);
   const bannerEl = document.getElementById('dateBannerText');
@@ -99,15 +95,38 @@ document.addEventListener('DOMContentLoaded', () => {
   const tripsDateEl = document.getElementById('tripsCurrentDateDisplay');
   if (tripsDateEl) tripsDateEl.innerText = displayDate;
 
-  if (token && currentUser) {
-    showApp();
+  // Xác thực token nếu đã lưu trước đó
+  if (token) {
+    try {
+      const res = await fetch(API_BASE + '/auth/me', {
+        headers: getHeaders()
+      });
+      if (res.ok) {
+        currentUser = await res.json();
+        sessionStorage.setItem('user', JSON.stringify(currentUser));
+        showApp();
+      } else {
+        logout();
+      }
+    } catch (err) {
+      console.warn('Lỗi xác thực phiên cũ:', err);
+      logout();
+    }
   } else {
     showLogin();
   }
 
   const loginForm = document.getElementById('loginForm');
-  if (loginForm) loginForm.addEventListener('submit', handleLogin);
-});
+  if (loginForm) {
+    loginForm.onsubmit = handleLogin;
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // Xử lý đổi ngày xem số liệu & Nhảy về ngày cũ
 function handleDateSelect(dateStr) {
@@ -170,20 +189,41 @@ function fillAiPrompt(text) {
 
 // Đăng nhập an toàn đa tầng với 2FA PIN và Tường Lửa
 async function handleLogin(e) {
-  e.preventDefault();
-  const u = (document.getElementById('loginUsername').value || '').trim();
-  const p = (document.getElementById('loginPassword').value || '').trim();
+  if (e && e.preventDefault) e.preventDefault();
+
+  const uInput = document.getElementById('loginUsername');
+  const pInput = document.getElementById('loginPassword');
   const pinInput = document.getElementById('loginPin');
-  const pin = pinInput ? (pinInput.value || '').trim() : '';
+
+  const u = (uInput ? uInput.value : '').trim();
+  const p = (pInput ? pInput.value : '').trim();
+  const pin = (pinInput ? pinInput.value : '').trim();
 
   const alertBox = document.getElementById('loginAlert');
   const alertText = document.getElementById('loginAlertText');
 
+  const showError = (msg) => {
+    if (alertBox) {
+      alertBox.classList.remove('hidden');
+      alertBox.style.display = 'flex';
+    }
+    if (alertText) alertText.innerText = msg;
+    if (window.innerWidth < 768) {
+      setTimeout(() => alert(msg), 50);
+    }
+  };
+
+  if (!u || !p) {
+    showError('Vui lòng nhập đầy đủ tài khoản và mật khẩu!');
+    if (!u && uInput) uInput.focus();
+    else if (!p && pInput) pInput.focus();
+    return false;
+  }
+
   if (!pin) {
-    if (alertBox) alertBox.classList.remove('hidden');
-    if (alertText) alertText.innerText = 'Vui lòng nhập mã PIN bảo mật cấp 2!';
+    showError('Vui lòng nhập mã PIN bảo mật cấp 2!');
     if (pinInput) pinInput.focus();
-    return;
+    return false;
   }
 
   const btnLogin = document.getElementById('btnLogin');
@@ -216,11 +256,13 @@ async function handleLogin(e) {
     sessionStorage.setItem('user', JSON.stringify(currentUser));
     localStorage.removeItem('token');
     
-    if (alertBox) alertBox.classList.add('hidden');
+    if (alertBox) {
+      alertBox.classList.add('hidden');
+      alertBox.style.display = 'none';
+    }
     showApp();
   } catch (err) {
-    if (alertBox) alertBox.classList.remove('hidden');
-    if (alertText) alertText.innerText = err.message;
+    showError(err.message || 'Lỗi kết nối máy chủ!');
   } finally {
     if (btnLogin) {
       btnLogin.disabled = false;
@@ -228,6 +270,7 @@ async function handleLogin(e) {
       if (window.lucide) lucide.createIcons();
     }
   }
+  return false;
 }
 
 function logout() {
@@ -240,17 +283,35 @@ function logout() {
 }
 
 function showLogin() {
-  document.getElementById('loginScreen').classList.remove('hidden');
-  document.getElementById('appScreen').classList.add('hidden');
-  document.getElementById('loginUsername').value = '';
-  document.getElementById('loginPassword').value = '';
+  const loginEl = document.getElementById('loginScreen');
+  const appEl = document.getElementById('appScreen');
+  if (loginEl) {
+    loginEl.classList.remove('hidden');
+    loginEl.style.display = 'flex';
+  }
+  if (appEl) {
+    appEl.classList.add('hidden');
+    appEl.style.display = 'none';
+  }
+  const uEl = document.getElementById('loginUsername');
+  if (uEl) uEl.value = '';
+  const pEl = document.getElementById('loginPassword');
+  if (pEl) pEl.value = '';
+  const pinEl = document.getElementById('loginPin');
+  if (pinEl) pinEl.value = '';
 }
 
 function showApp() {
   const loginEl = document.getElementById('loginScreen');
-  if (loginEl) loginEl.classList.add('hidden');
+  if (loginEl) {
+    loginEl.classList.add('hidden');
+    loginEl.style.display = 'none';
+  }
   const appEl = document.getElementById('appScreen');
-  if (appEl) appEl.classList.remove('hidden');
+  if (appEl) {
+    appEl.classList.remove('hidden');
+    appEl.style.display = 'flex';
+  }
 
   if (currentUser) {
     const unEl = document.getElementById('userNameDisplay');

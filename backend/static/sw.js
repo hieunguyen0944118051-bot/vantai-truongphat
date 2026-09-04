@@ -1,5 +1,5 @@
-// Vận Tải Trường Phát - PWA Service Worker v4
-const CACHE_NAME = 'truongphat-pwa-v4';
+// Vận Tải Trường Phát - PWA Service Worker v5
+const CACHE_NAME = 'truongphat-pwa-v5';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/icons/icon-192x192.png',

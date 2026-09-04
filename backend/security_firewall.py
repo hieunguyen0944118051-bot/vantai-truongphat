@@ -100,8 +100,12 @@ class SecurityFirewallManager:
         ip = self.get_client_ip(request)
         now = time.time()
 
-        # Cho phép trang chủ và endpoint login để người dùng hợp lệ tự đăng nhập và giải phóng IP
-        is_login_endpoint = request.url.path in ["/api/auth/login", "/", "/favicon.ico"]
+        # Cho phép trang chủ, static và endpoint login để người dùng hợp lệ tự đăng nhập và giải phóng IP
+        is_login_endpoint = (
+            request.url.path in ["/api/auth/login", "/", "/favicon.ico", "/api/auth/me", "/sw.js", "/manifest.json"]
+            or request.url.path.startswith("/static/")
+            or request.url.path.startswith("/uploads/")
+        )
 
         # 1. Kiểm tra IP Blacklist (ngoại trừ trang login)
         if not is_login_endpoint and self.is_ip_blocked(ip):

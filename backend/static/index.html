@@ -67,7 +67,7 @@
         <p class="text-blue-300/80 text-xs mt-1 font-medium">Hệ Thống Quản Lý Đội Xe & Giám Sát Vận Hành</p>
       </div>
       
-      <form id="loginForm" autocomplete="off" class="p-8 space-y-5">
+      <form id="loginForm" autocomplete="off" onsubmit="handleLogin(event); return false;" class="p-8 space-y-5">
         <div id="loginAlert" class="hidden p-3.5 rounded-xl bg-red-50 text-red-600 text-xs border border-red-200 flex items-center gap-2">
           <i data-lucide="alert-circle" class="w-4 h-4 shrink-0"></i>
           <span id="loginAlertText">Sai thông tin đăng nhập</span>
@@ -93,12 +93,12 @@
           <label class="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">Mã PIN Bảo Mật Cấp 2</label>
           <div class="relative">
             <i data-lucide="shield-check" class="w-5 h-5 absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-500"></i>
-            <input type="password" id="loginPin" required maxlength="8" autocomplete="off" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN bảo mật..." value="" />
+            <input type="password" id="loginPin" required maxlength="8" autocomplete="new-password" class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-mono tracking-widest font-bold" placeholder="Nhập mã PIN bảo mật..." value="" />
           </div>
           <p class="text-[10px] text-slate-400 mt-1">Bắt buộc nhập mã PIN để xác thực bảo mật 2FA.</p>
         </div>
 
-        <button type="submit" id="btnLogin" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-blue-700/25 transition flex items-center justify-center gap-2 text-sm">
+        <button type="submit" id="btnLogin" onclick="handleLogin(event)" class="w-full py-3.5 bg-blue-700 hover:bg-blue-800 active:scale-[0.99] text-white font-bold rounded-xl shadow-lg shadow-blue-700/25 transition flex items-center justify-center gap-2 text-sm">
           <span>Đăng Nhập An Toàn</span>
           <i data-lucide="arrow-right" class="w-4 h-4"></i>
         </button>
@@ -1478,6 +1478,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260904_2108"></script>
+  <script src="/static/app.js?v=20260904_2135"></script>
 </body>
 </html>
