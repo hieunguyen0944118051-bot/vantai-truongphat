@@ -61,8 +61,8 @@ function renderQuickDateButtons() {
     desktopContainer.innerHTML = days.map(d => {
       const isSelected = (d.dateStr === selectedDate);
       const btnClass = isSelected
-        ? 'px-2.5 py-1 rounded-lg bg-blue-600 text-white font-bold shadow-xs'
-        : 'px-2.5 py-1 rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition';
+        ? 'px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/20 font-mono text-xs transition'
+        : 'px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-mono text-xs transition shadow-2xs';
       return `<button onclick="handleDateSelect('${d.dateStr}')" class="${btnClass}">${d.label}</button>`;
     }).join('');
   }
@@ -71,8 +71,8 @@ function renderQuickDateButtons() {
     mobileContainer.innerHTML = days.map(d => {
       const isSelected = (d.dateStr === selectedDate);
       const btnClass = isSelected
-        ? 'px-2 py-0.5 rounded bg-blue-600 text-white font-bold shrink-0 shadow-xs'
-        : 'px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700 shrink-0';
+        ? 'px-2.5 py-1 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shrink-0 shadow-xs font-mono text-[11px]'
+        : 'px-2.5 py-1 rounded-xl bg-slate-800 text-slate-300 border border-slate-700 shrink-0 font-mono text-[11px]';
       return `<button onclick="handleDateSelect('${d.dateStr}')" class="${btnClass}">${d.label}</button>`;
     }).join('');
   }
@@ -372,24 +372,24 @@ async function handleChangePassword(e) {
 function switchTab(tabId) {
   document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
   document.querySelectorAll('.nav-btn').forEach(el => {
-    el.classList.remove('bg-blue-600', 'text-white');
-    el.classList.add('text-slate-300');
+    el.classList.remove('bg-gradient-to-r', 'from-blue-600', 'via-indigo-600', 'to-blue-700', 'text-white', 'shadow-md', 'shadow-blue-500/25', 'bg-blue-600');
+    el.classList.add('text-slate-300', 'hover:bg-slate-800/80', 'hover:text-white');
   });
   document.querySelectorAll('.mobile-nav-btn').forEach(el => {
-    el.classList.remove('text-blue-400');
+    el.classList.remove('text-blue-400', 'bg-blue-500/10');
     el.classList.add('text-slate-400');
   });
 
   const activeNav = document.getElementById('nav-' + tabId);
   if (activeNav) {
-    activeNav.classList.remove('text-slate-300');
-    activeNav.classList.add('bg-blue-600', 'text-white');
+    activeNav.classList.remove('text-slate-300', 'hover:bg-slate-800/80');
+    activeNav.classList.add('bg-gradient-to-r', 'from-blue-600', 'via-indigo-600', 'to-blue-700', 'text-white', 'shadow-md', 'shadow-blue-500/25');
   }
 
   const activeMobNav = document.getElementById('mob-' + tabId);
   if (activeMobNav) {
     activeMobNav.classList.remove('text-slate-400');
-    activeMobNav.classList.add('text-blue-400');
+    activeMobNav.classList.add('text-blue-400', 'bg-blue-500/10');
   }
 
   const targetTab = document.getElementById('tab-' + tabId);
