@@ -247,13 +247,19 @@ function showLogin() {
 }
 
 function showApp() {
-  document.getElementById('loginScreen').classList.add('hidden');
-  document.getElementById('appScreen').classList.remove('hidden');
-  document.getElementById('userNameDisplay').innerText = currentUser.full_name || currentUser.username;
-  document.getElementById('userRoleDisplay').innerText = currentUser.role || 'Quản trị viên';
+  const loginEl = document.getElementById('loginScreen');
+  if (loginEl) loginEl.classList.add('hidden');
+  const appEl = document.getElementById('appScreen');
+  if (appEl) appEl.classList.remove('hidden');
+
+  if (currentUser) {
+    const unEl = document.getElementById('userNameDisplay');
+    if (unEl) unEl.innerText = currentUser.full_name || currentUser.username || 'Ban Giám Đốc';
+    const urEl = document.getElementById('userRoleDisplay');
+    if (urEl) urEl.innerText = currentUser.role || 'Quản trị viên';
+  }
 
   switchTab('dashboard');
-  loadDashboard(selectedDate);
   startAutoSyncLoop();
 }
 
@@ -355,11 +361,8 @@ function switchTab(tabId) {
   if (tabId === 'barges') loadBarges();
 
   setTimeout(() => {
-    if (tabId === 'gps' && liveGpsMap) liveGpsMap.invalidateSize();
-    if (tabId === 'dashboard' && dashboardMap) dashboardMap.invalidateSize();
-  }, 150);
-  
-  if (window.lucide) lucide.createIcons();
+    if (window.lucide) lucide.createIcons();
+  }, 100);
 }
 
 // 1. DASHBOARD
@@ -1403,9 +1406,6 @@ async function loadGpsLive() {
 
     gpsCache = json.data || [];
     if (timeEl) timeEl.innerText = json.timestamp;
-
-    // Cập nhật bản đồ GPS tương tác
-    updateLiveGpsMap(gpsCache, activeMapFilter);
 
     const tbody = document.getElementById('gpsTableBody');
     if (tbody) {

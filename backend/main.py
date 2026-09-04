@@ -67,14 +67,14 @@ app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 def serve_ui():
     index_file = os.path.join(static_path, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file)
+        return FileResponse(index_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"message": "Hệ thống Quản lý Vận tải đang hoạt động!"}
 
 @app.get("/sw.js")
 def serve_service_worker():
     sw_file = os.path.join(static_path, "sw.js")
     if os.path.exists(sw_file):
-        return FileResponse(sw_file, media_type="application/javascript", headers={"Service-Worker-Allowed": "/"})
+        return FileResponse(sw_file, media_type="application/javascript", headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache, no-store, must-revalidate"})
     return {"error": "sw not found"}
 
 @app.get("/manifest.json")
