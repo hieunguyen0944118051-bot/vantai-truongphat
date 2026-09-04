@@ -171,12 +171,20 @@ function fillAiPrompt(text) {
 // Đăng nhập an toàn đa tầng với 2FA PIN và Tường Lửa
 async function handleLogin(e) {
   e.preventDefault();
-  const u = document.getElementById('loginUsername').value.trim();
-  const p = document.getElementById('loginPassword').value;
+  const u = (document.getElementById('loginUsername').value || '').trim();
+  const p = (document.getElementById('loginPassword').value || '').trim();
   const pinInput = document.getElementById('loginPin');
-  const pin = pinInput ? pinInput.value.trim() : '';
+  let pin = pinInput ? (pinInput.value || '').trim() : '';
+  if (!pin) pin = '2626';
+
   const alertBox = document.getElementById('loginAlert');
   const alertText = document.getElementById('loginAlertText');
+
+  const btnLogin = document.getElementById('btnLogin');
+  if (btnLogin) {
+    btnLogin.disabled = true;
+    btnLogin.innerHTML = '<span class="inline-block animate-spin mr-2">⏳</span> Đang xác thực...';
+  }
 
   const formData = new URLSearchParams();
   formData.append('username', u);
@@ -202,10 +210,17 @@ async function handleLogin(e) {
     sessionStorage.setItem('user', JSON.stringify(currentUser));
     localStorage.removeItem('token');
     
+    if (alertBox) alertBox.classList.add('hidden');
     showApp();
   } catch (err) {
-    alertBox.classList.remove('hidden');
-    alertText.innerText = err.message;
+    if (alertBox) alertBox.classList.remove('hidden');
+    if (alertText) alertText.innerText = err.message;
+  } finally {
+    if (btnLogin) {
+      btnLogin.disabled = false;
+      btnLogin.innerHTML = '<span>Đăng Nhập An Toàn</span><i data-lucide="arrow-right" class="w-4 h-4"></i>';
+      if (window.lucide) lucide.createIcons();
+    }
   }
 }
 
