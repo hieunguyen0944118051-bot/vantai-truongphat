@@ -87,6 +87,14 @@
           <i data-lucide="lock" class="w-3.5 h-3.5 text-emerald-600"></i>
           <span>Bảo mật Bcrypt — Bắt buộc xác thực tài khoản & mật khẩu</span>
         </div>
+
+        <!-- NÚT HƯỚNG DẪN CÀI APP VỀ IPHONE / ANDROID -->
+        <div class="mt-4 pt-3 border-t border-slate-100 text-center">
+          <button type="button" onclick="openInstallAppModal()" class="w-full py-2.5 px-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200 text-blue-800 rounded-xl font-bold text-xs flex items-center justify-center gap-2 transition shadow-xs">
+            <i data-lucide="smartphone" class="w-4 h-4 text-blue-600"></i>
+            <span>📲 Tải & Cài Đặt App Về iPhone / Android</span>
+          </button>
+        </div>
       </form>
     </div>
   </div>
@@ -161,6 +169,15 @@
             <span class="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-black border border-emerald-400/30">BẬT</span>
           </button>
         </div>
+
+        <!-- MỤC CÀI ĐẶT APP DI ĐỘNG -->
+        <div class="pt-2">
+          <button onclick="openInstallAppModal()" class="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-blue-300 bg-gradient-to-r from-blue-950/90 to-indigo-950/90 border border-blue-700/60 hover:border-blue-400 hover:text-white transition shadow-sm group">
+            <i data-lucide="smartphone" class="w-4 h-4 text-blue-400 group-hover:scale-110 transition-transform"></i>
+            <span class="flex-1 text-left font-bold text-[11px]">Cài App Điện Thoại</span>
+            <span class="text-[9px] bg-blue-500/30 text-blue-200 px-1.5 py-0.5 rounded font-black border border-blue-400/40">iOS • Android</span>
+          </button>
+        </div>
       </nav>
 
       <!-- User & Settings & Logout -->
@@ -198,7 +215,12 @@
             <h2 class="font-black text-xs leading-none">TRƯỜNG PHÁT</h2>
             <span class="text-[9px] text-blue-400">15 Ben • 11 Thùng</span>
           </div>
+        </div>
         <div class="flex items-center gap-1.5">
+          <button onclick="openInstallAppModal()" title="Cài App về điện thoại" class="p-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs flex items-center gap-1 shadow-sm font-bold">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+            <span class="text-[10px]">Cài App</span>
+          </button>
           <button onclick="switchTab('fines')" title="Tra cứu phạt nguội" class="p-1.5 bg-rose-950/80 text-rose-300 border border-rose-800/60 rounded-lg text-xs">
             <i data-lucide="shield-alert" class="w-3.5 h-3.5"></i>
           </button>
@@ -270,6 +292,12 @@
           <button onclick="openSheetConfigModal()" class="flex items-center gap-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-2 rounded-xl border border-indigo-200 transition shadow-sm" title="Cài đặt liên kết Google Sheets Tháng 09">
             <i data-lucide="settings-2" class="w-3.5 h-3.5 text-indigo-600"></i>
             <span>Sheet T09</span>
+          </button>
+
+          <!-- Button Cài App Điện Thoại (iOS & Android) -->
+          <button onclick="openInstallAppModal()" class="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 px-3.5 py-2 rounded-xl shadow-md shadow-blue-500/25 transition active:scale-95" title="Cài đặt App trên iPhone & Android">
+            <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+            <span>Tải App ĐT</span>
           </button>
         </div>
       </header>
@@ -1239,6 +1267,180 @@
             <span>Lưu & Kết Nối</span>
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMART PWA MOBILE INSTALL BANNER -->
+  <div id="pwaMobileInstallBanner" class="fixed bottom-16 left-3 right-3 md:hidden bg-slate-900/95 text-white p-3.5 rounded-2xl shadow-2xl border border-blue-500/30 backdrop-blur-md z-40 hidden flex items-center justify-between gap-3 animate-slide-up">
+    <div class="flex items-center gap-2.5 overflow-hidden">
+      <div class="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center font-black text-sm shrink-0 shadow-md">
+        TP
+      </div>
+      <div class="truncate">
+        <h4 class="font-bold text-xs text-white">Vận Tải Trường Phát App</h4>
+        <p class="text-[10px] text-blue-300">Cài đặt về điện thoại để mở nhanh</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-1.5 shrink-0">
+      <button onclick="openInstallAppModal()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold rounded-xl shadow-md transition active:scale-95">
+        Cài Đặt
+      </button>
+      <button onclick="dismissPwaBanner()" class="p-1.5 text-slate-400 hover:text-white">
+        <i data-lucide="x" class="w-4 h-4"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- MODAL: HƯỚNG DẪN & CÀI ĐẶT APP CHO IPHONE (IOS) & ANDROID -->
+  <div id="modalInstallApp" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-3 md:p-4">
+    <div class="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden border border-slate-100 animate-scale-up max-h-[92vh] flex flex-col">
+      <!-- Modal Header -->
+      <div class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white px-5 py-4 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-xl bg-blue-600 flex items-center justify-center shadow-md font-black text-sm">
+            TP
+          </div>
+          <div>
+            <h3 class="font-bold text-sm">Cài Đặt App Vận Tải Trường Phát</h3>
+            <p class="text-[10px] text-blue-300">Hoạt động mượt mà trên iPhone, iPad & mọi điện thoại Android</p>
+          </div>
+        </div>
+        <button onclick="closeModal('modalInstallApp')" class="text-slate-400 hover:text-white p-1.5 rounded-lg hover:bg-slate-800 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <!-- Platform Selection Tabs -->
+      <div class="flex border-b border-slate-200 bg-slate-50 shrink-0 text-xs font-bold">
+        <button onclick="switchInstallPlatformTab('ios')" id="tabBtnInstallIos" class="flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-blue-600 text-blue-700 bg-white transition">
+          <span class="text-base">🍏</span>
+          <span>iPhone / iPad (iOS)</span>
+        </button>
+        <button onclick="switchInstallPlatformTab('android')" id="tabBtnInstallAndroid" class="flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition">
+          <span class="text-base">🤖</span>
+          <span>Điện Thoại Android</span>
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="p-5 overflow-y-auto custom-scrollbar flex-1 space-y-4 text-xs">
+        
+        <!-- TAB CONTENT: IPHONE (IOS SAFARI) -->
+        <div id="installTabContentIos" class="space-y-3.5">
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
+            <div class="p-2 bg-blue-600 text-white rounded-xl shrink-0 mt-0.5">
+              <i data-lucide="info" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <p class="font-bold text-blue-900 text-xs">Cài đặt trực tiếp không cần vào App Store</p>
+              <p class="text-[11px] text-blue-700 mt-0.5 leading-relaxed">Ứng dụng chuẩn Apple WebApp (PWA), mở nhanh như App gốc, không tốn dung lượng và không vướng thanh địa chỉ.</p>
+            </div>
+          </div>
+
+          <div class="space-y-2.5">
+            <!-- Step 1 -->
+            <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">1</span>
+              <div>
+                <p class="font-bold text-slate-800">Mở liên kết bằng trình duyệt Safari</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Nếu bạn đang mở web từ ứng dụng <b>Zalo</b> hoặc <b>Facebook</b>, hãy nhấn dấu <b>···</b> ở góc trên bên phải và chọn <b>"Mở bằng trình duyệt Safari"</b>.</p>
+              </div>
+            </div>
+
+            <!-- Step 2 -->
+            <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">2</span>
+              <div>
+                <p class="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>Nhấn nút Chia Sẻ</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] font-bold"><i data-lucide="share" class="w-3 h-3 inline mr-1"></i> Share</span>
+                </p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Nút Share là biểu tượng hình vuông có mũi tên chỉ lên, nằm ở thanh công cụ dưới cùng màn hình iPhone.</p>
+              </div>
+            </div>
+
+            <!-- Step 3 -->
+            <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">3</span>
+              <div>
+                <p class="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>Chọn "Thêm vào MH chính"</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] font-bold"><i data-lucide="plus-square" class="w-3 h-3 inline mr-1"></i> Add to Home Screen</span>
+                </p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Cuộn danh sách tùy chọn xuống phía dưới và chọn dòng <b>"Thêm vào MH chính"</b>.</p>
+              </div>
+            </div>
+
+            <!-- Step 4 -->
+            <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0">4</span>
+              <div>
+                <p class="font-bold text-slate-800">Nhấn "Thêm" (Add) ở góc phải trên</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Biểu tượng logo <b>Trường Phát</b> sẽ xuất hiện ngay ngoài màn hình chính iPhone của bạn như một App thực thụ!</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB CONTENT: ANDROID -->
+        <div id="installTabContentAndroid" class="space-y-3.5 hidden">
+          <!-- 1-Click Install Button (When Supported) -->
+          <div id="pwaAndroidAutoInstallBox" class="p-4 bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-300 rounded-2xl text-center space-y-2.5">
+            <div class="w-12 h-12 bg-emerald-600 text-white rounded-2xl flex items-center justify-center mx-auto shadow-md">
+              <i data-lucide="download-cloud" class="w-6 h-6"></i>
+            </div>
+            <div>
+              <h4 class="font-black text-sm text-emerald-950">Cài Đặt Tự Động 1 Chạm</h4>
+              <p class="text-[11px] text-emerald-800 mt-0.5">Nhấn nút bên dưới để tải và cài đặt App ngay vào điện thoại Android của bạn:</p>
+            </div>
+            <button onclick="triggerPwaInstall()" id="btnPwaAutoInstallAndroid" class="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition flex items-center justify-center gap-2">
+              <i data-lucide="smartphone" class="w-4 h-4"></i>
+              <span>⚡ CÀI ĐẶT APP NGAY VÀO MÁY</span>
+            </button>
+          </div>
+
+          <!-- Manual Steps For Android -->
+          <div class="space-y-2.5 pt-1">
+            <p class="font-bold text-slate-700 text-xs">Hoặc cài đặt qua trình duyệt Chrome:</p>
+            
+            <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">1</span>
+              <div>
+                <p class="font-bold text-slate-800">Mở bằng Google Chrome</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Nếu mở từ Zalo, bấm <b>···</b> ở góc trên chọn <b>"Mở bằng trình duyệt Chrome"</b>.</p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">2</span>
+              <div>
+                <p class="font-bold text-slate-800">Nhấn biểu tượng Menu 3 chấm (⋮)</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Biểu tượng <b>⋮</b> nằm ở góc trên cùng bên phải của trình duyệt Chrome.</p>
+              </div>
+            </div>
+
+            <div class="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
+              <span class="w-6 h-6 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0">3</span>
+              <div>
+                <p class="font-bold text-slate-800">Chọn "Cài đặt ứng dụng" hoặc "Thêm vào MH chính"</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Nhấn <b>"Cài đặt"</b> để hoàn tất. Ứng dụng sẽ nằm trên màn hình chính và danh bạ ứng dụng của bạn.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between shrink-0">
+        <span class="text-[11px] text-slate-500 font-medium flex items-center gap-1">
+          <i data-lucide="shield-check" class="w-3.5 h-3.5 text-emerald-600"></i>
+          <span>App an toàn & tự động cập nhật dữ liệu mới</span>
+        </span>
+        <button type="button" onclick="closeModal('modalInstallApp')" class="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs transition">
+          Đã Hiểu
+        </button>
       </div>
     </div>
   </div>

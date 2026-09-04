@@ -1625,3 +1625,114 @@ async function handleUpdatePin(e) {
   }
 }
 
+// ==========================================
+// PWA MOBILE APP INSTALLATION CONTROLLER
+// ==========================================
+let deferredPwaPrompt = null;
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      console.log('✅ ServiceWorker registered with scope:', reg.scope);
+    }).catch((err) => {
+      console.log('ServiceWorker registration error:', err);
+    });
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPwaPrompt = e;
+  console.log('⚡ beforeinstallprompt fired - 1-Click install ready!');
+
+  const btnAuto = document.getElementById('btnPwaAutoInstallAndroid');
+  if (btnAuto) {
+    btnAuto.classList.remove('opacity-50', 'cursor-not-allowed');
+  }
+
+  checkAndShowPwaBanner();
+});
+
+window.addEventListener('appinstalled', () => {
+  console.log('🎉 Vận Tải Trường Phát app was installed successfully!');
+  deferredPwaPrompt = null;
+  const banner = document.getElementById('pwaMobileInstallBanner');
+  if (banner) banner.classList.add('hidden');
+});
+
+function isRunningStandalone() {
+  return window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone || document.referrer.includes('android-app://');
+}
+
+function checkAndShowPwaBanner() {
+  if (isRunningStandalone()) return;
+  if (sessionStorage.getItem('pwa_banner_dismissed')) return;
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  if (isMobile) {
+    setTimeout(() => {
+      const banner = document.getElementById('pwaMobileInstallBanner');
+      if (banner && !isRunningStandalone() && !sessionStorage.getItem('pwa_banner_dismissed')) {
+        banner.classList.remove('hidden');
+        if (window.lucide) lucide.createIcons();
+      }
+    }, 1500);
+  }
+}
+
+function dismissPwaBanner() {
+  const banner = document.getElementById('pwaMobileInstallBanner');
+  if (banner) banner.classList.add('hidden');
+  sessionStorage.setItem('pwa_banner_dismissed', 'true');
+}
+
+function openInstallAppModal() {
+  const isAndroid = /Android/i.test(navigator.userAgent);
+  if (isAndroid) {
+    switchInstallPlatformTab('android');
+  } else {
+    switchInstallPlatformTab('ios');
+  }
+
+  openModal('modalInstallApp');
+}
+
+function switchInstallPlatformTab(platform) {
+  const tabIos = document.getElementById('installTabContentIos');
+  const tabAndroid = document.getElementById('installTabContentAndroid');
+  const btnIos = document.getElementById('tabBtnInstallIos');
+  const btnAndroid = document.getElementById('tabBtnInstallAndroid');
+
+  if (platform === 'ios') {
+    tabIos.classList.remove('hidden');
+    tabAndroid.classList.add('hidden');
+    btnIos.className = 'flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-blue-600 text-blue-700 bg-white transition';
+    btnAndroid.className = 'flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+  } else {
+    tabIos.classList.add('hidden');
+    tabAndroid.classList.remove('hidden');
+    btnAndroid.className = 'flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-emerald-600 text-emerald-700 bg-white transition';
+    btnIos.className = 'flex-1 py-3 px-4 flex items-center justify-center gap-2 border-b-2 border-transparent text-slate-500 hover:text-slate-800 transition';
+  }
+
+  if (window.lucide) lucide.createIcons();
+}
+
+async function triggerPwaInstall() {
+  if (deferredPwaPrompt) {
+    deferredPwaPrompt.prompt();
+    const { outcome } = await deferredPwaPrompt.userChoice;
+    console.log(`User response to the install prompt: ${outcome}`);
+    if (outcome === 'accepted') {
+      closeModal('modalInstallApp');
+      dismissPwaBanner();
+    }
+    deferredPwaPrompt = null;
+  } else {
+    alert('Để cài đặt trên Android: Bạn hãy nhấn vào dấu 3 chấm (⋮) ở góc trên bên phải trình duyệt Chrome và chọn "Cài đặt ứng dụng" hoặc "Thêm vào màn hình chính".');
+  }
+}
+
+// Auto check PWA banner on document ready
+setTimeout(checkAndShowPwaBanner, 1000);
+

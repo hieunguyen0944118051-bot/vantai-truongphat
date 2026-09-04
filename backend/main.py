@@ -66,6 +66,20 @@ def serve_ui():
         return FileResponse(index_file)
     return {"message": "Hệ thống Quản lý Vận tải đang hoạt động!"}
 
+@app.get("/sw.js")
+def serve_service_worker():
+    sw_file = os.path.join(static_path, "sw.js")
+    if os.path.exists(sw_file):
+        return FileResponse(sw_file, media_type="application/javascript", headers={"Service-Worker-Allowed": "/"})
+    return {"error": "sw not found"}
+
+@app.get("/manifest.json")
+def serve_manifest():
+    manifest_file = os.path.join(static_path, "manifest.json")
+    if os.path.exists(manifest_file):
+        return FileResponse(manifest_file, media_type="application/manifest+json")
+    return {"error": "manifest not found"}
+
 @app.get("/weighbridge")
 def serve_weighbridge_ui():
     wb_file = os.path.join(static_path, "weighbridge.html")
