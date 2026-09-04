@@ -34,6 +34,21 @@
 </head>
 <body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col pb-16 md:pb-0">
 
+  <!-- IN-APP BROWSER WARNING BANNER (KHI MỞ TRONG ZALO HOẶC MESSENGER TRÊN IPHONE) -->
+  <div id="inAppBrowserWarningBanner" class="hidden bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 text-slate-950 px-4 py-3 text-xs font-bold border-b border-amber-600 shadow-xl flex items-center justify-between gap-3 sticky top-0 z-[60]">
+    <div class="flex items-center gap-2.5 overflow-hidden">
+      <span class="text-xl shrink-0 animate-bounce">⚠️</span>
+      <div class="truncate">
+        <p class="font-extrabold text-slate-950 text-xs">Bạn đang mở link từ Zalo / Messenger</p>
+        <p class="text-[11px] text-amber-950 mt-0.5 font-semibold">Để cài App: Bấm <b>···</b> góc trên phải ➔ Chọn <b>"Mở bằng Safari"</b>.</p>
+      </div>
+    </div>
+    <button onclick="copyAppUrl()" class="px-3 py-1.5 bg-slate-950 hover:bg-slate-800 text-white rounded-xl text-[11px] font-bold shrink-0 shadow-sm active:scale-95 flex items-center gap-1">
+      <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+      <span>Chép Link</span>
+    </button>
+  </div>
+
   <!-- LOGIN SCREEN (BẢO MẬT BẮT BUỘC NHẬP MẬT KHẨU KHI MỞ LINK/IP) -->
   <div id="loginScreen" class="fixed inset-0 bg-slate-950 z-50 flex items-center justify-center p-4">
     <div class="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-slate-800/20">
@@ -1328,14 +1343,25 @@
         
         <!-- TAB CONTENT: IPHONE (IOS SAFARI) -->
         <div id="installTabContentIos" class="space-y-3.5">
-          <div class="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-3">
-            <div class="p-2 bg-blue-600 text-white rounded-xl shrink-0 mt-0.5">
-              <i data-lucide="info" class="w-4 h-4"></i>
-            </div>
+          <!-- Zalo / FB in-app warning callout -->
+          <div class="p-3.5 bg-amber-50 border-2 border-amber-300 rounded-2xl flex items-start gap-3">
+            <span class="text-xl shrink-0">⚠️</span>
             <div>
-              <p class="font-bold text-blue-900 text-xs">Cài đặt trực tiếp không cần vào App Store</p>
-              <p class="text-[11px] text-blue-700 mt-0.5 leading-relaxed">Ứng dụng chuẩn Apple WebApp (PWA), mở nhanh như App gốc, không tốn dung lượng và không vướng thanh địa chỉ.</p>
+              <p class="font-extrabold text-amber-950 text-xs">LƯU Ý QUAN TRỌNG KHI DÙNG IPHONE:</p>
+              <p class="text-[11px] text-amber-900 mt-0.5 leading-relaxed">Nếu bạn đang mở link từ <b>Zalo</b> hoặc <b>Messenger</b>, bạn sẽ <b>KHÔNG THẤY</b> nút cài đặt. Bạn bắt buộc phải mở bằng trình duyệt <b>Safari</b>!</p>
             </div>
+          </div>
+
+          <!-- Quick Copy Link Box -->
+          <div class="p-3.5 bg-blue-50/80 border border-blue-200 rounded-2xl flex items-center justify-between gap-3">
+            <div class="truncate">
+              <p class="font-bold text-blue-950 text-xs">Đường link web:</p>
+              <p class="text-[11px] text-blue-700 truncate font-mono">https://vantai-truongphat.onrender.com</p>
+            </div>
+            <button onclick="copyAppUrl()" id="btnCopyAppUrl" class="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs shrink-0 shadow-sm flex items-center gap-1.5 transition active:scale-95">
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+              <span>Sao Chép Link</span>
+            </button>
           </div>
 
           <div class="space-y-2.5">
@@ -1343,8 +1369,8 @@
             <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
               <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">1</span>
               <div>
-                <p class="font-bold text-slate-800">Mở liên kết bằng trình duyệt Safari</p>
-                <p class="text-[11px] text-slate-600 mt-0.5">Nếu bạn đang mở web từ ứng dụng <b>Zalo</b> hoặc <b>Facebook</b>, hãy nhấn dấu <b>···</b> ở góc trên bên phải và chọn <b>"Mở bằng trình duyệt Safari"</b>.</p>
+                <p class="font-bold text-slate-800">Mở ứng dụng Safari trên iPhone</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Mở Safari (biểu tượng chiếc la bàn màu xanh) và dán link vào thanh địa chỉ.</p>
               </div>
             </div>
 
@@ -1353,10 +1379,10 @@
               <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">2</span>
               <div>
                 <p class="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>Nhấn nút Chia Sẻ</span>
-                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] font-bold"><i data-lucide="share" class="w-3 h-3 inline mr-1"></i> Share</span>
+                  <span>Nhấn nút Chia Sẻ ở thanh dưới</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-bold border border-blue-300"><i data-lucide="share" class="w-3 h-3 inline mr-1"></i> Nút Share [↑]</span>
                 </p>
-                <p class="text-[11px] text-slate-600 mt-0.5">Nút Share là biểu tượng hình vuông có mũi tên chỉ lên, nằm ở thanh công cụ dưới cùng màn hình iPhone.</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Biểu tượng hình vuông có mũi tên chỉ lên ở thanh công cụ dưới cùng của màn hình Safari.</p>
               </div>
             </div>
 
@@ -1365,10 +1391,10 @@
               <span class="w-6 h-6 rounded-full bg-blue-600 text-white font-black text-xs flex items-center justify-center shrink-0">3</span>
               <div>
                 <p class="font-bold text-slate-800 flex items-center gap-1.5">
-                  <span>Chọn "Thêm vào MH chính"</span>
-                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-slate-200 text-slate-800 text-[10px] font-bold"><i data-lucide="plus-square" class="w-3 h-3 inline mr-1"></i> Add to Home Screen</span>
+                  <span>Cuộn xuống chọn dòng "Thêm vào MH chính"</span>
+                  <span class="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-900 text-[10px] font-bold border border-blue-300"><i data-lucide="plus-square" class="w-3 h-3 inline mr-1"></i> Add to Home Screen</span>
                 </p>
-                <p class="text-[11px] text-slate-600 mt-0.5">Cuộn danh sách tùy chọn xuống phía dưới và chọn dòng <b>"Thêm vào MH chính"</b>.</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">Kéo danh sách menu xuống và chọn <b>"Thêm vào MH chính"</b> (có biểu tượng dấu cộng).</p>
               </div>
             </div>
 
@@ -1376,8 +1402,8 @@
             <div class="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 flex items-start gap-3">
               <span class="w-6 h-6 rounded-full bg-emerald-600 text-white font-black text-xs flex items-center justify-center shrink-0">4</span>
               <div>
-                <p class="font-bold text-slate-800">Nhấn "Thêm" (Add) ở góc phải trên</p>
-                <p class="text-[11px] text-slate-600 mt-0.5">Biểu tượng logo <b>Trường Phát</b> sẽ xuất hiện ngay ngoài màn hình chính iPhone của bạn như một App thực thụ!</p>
+                <p class="font-bold text-slate-800">Nhấn nút "Thêm" (Add) ở góc phải trên</p>
+                <p class="text-[11px] text-slate-600 mt-0.5">✨ Logo <b>Trường Phát</b> sẽ xuất hiện ngay trên màn hình chính iPhone của bạn như một App tải từ App Store!</p>
               </div>
             </div>
           </div>

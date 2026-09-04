@@ -1733,6 +1733,43 @@ async function triggerPwaInstall() {
   }
 }
 
-// Auto check PWA banner on document ready
+function copyAppUrl() {
+  const url = window.location.origin;
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(() => {
+      const btn = document.getElementById('btnCopyAppUrl');
+      if (btn) {
+        btn.innerHTML = '<i data-lucide="check" class="w-3.5 h-3.5 text-emerald-300"></i><span>Đã Sao Chép!</span>';
+        if (window.lucide) lucide.createIcons();
+      }
+      alert('ĐÃ SAO CHÉP LINK WEB!\n\n👉 Bạn hãy mở ứng dụng SAFARI trên iPhone, dán link vào và bấm nút Chia Sẻ [↑] để "Thêm vào MH chính".');
+    }).catch(() => {
+      prompt('Sao chép đường link này và dán vào trình duyệt Safari trên iPhone:', url);
+    });
+  } else {
+    prompt('Sao chép đường link này và dán vào trình duyệt Safari trên iPhone:', url);
+  }
+}
+
+function checkInAppBrowser() {
+  const ua = navigator.userAgent || navigator.vendor || window.opera || '';
+  const isIos = /iPhone|iPad|iPod/i.test(ua);
+  const isZalo = /Zalo|ZaloPC|ZaloTheme/i.test(ua);
+  const isFb = /FBAN|FBAV|Instagram|Messenger/i.test(ua);
+  const isTikTok = /musical_ly|ByteLocale|BytedanceWebview/i.test(ua);
+
+  if (isIos && (isZalo || isFb || isTikTok)) {
+    const topBanner = document.getElementById('inAppBrowserWarningBanner');
+    if (topBanner) {
+      topBanner.classList.remove('hidden');
+      if (window.lucide) lucide.createIcons();
+    }
+  }
+}
+
+// Auto check on load
+window.addEventListener('DOMContentLoaded', checkInAppBrowser);
+setTimeout(checkInAppBrowser, 800);
 setTimeout(checkAndShowPwaBanner, 1000);
+
 
