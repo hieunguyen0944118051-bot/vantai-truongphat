@@ -1724,7 +1724,7 @@ function closeModal(id) {
   document.getElementById(id).classList.add('hidden');
 }
 
-// 10. TƯỜNG LỬA & AN NINH HỆ THỐNG (WAF SHIELD)
+// 10. TƯỜNG LỬA 7 LỚP & AN NINH HỆ THỐNG (WAF SHIELD V5.0)
 async function loadSecurityStatus() {
   try {
     const res = await fetch(API_BASE + '/security/status', { headers: getHeaders() });
@@ -1739,6 +1739,27 @@ async function loadSecurityStatus() {
 
     const currentIpEl = document.getElementById('sec-current-ip');
     if (currentIpEl) currentIpEl.innerText = `IP: ${data.client_ip || '127.0.0.1'}`;
+
+    // Render Ma Trận 7 Lớp Phòng Thủ
+    const layersContainer = document.getElementById('secLayersContainer');
+    if (layersContainer && data.layers) {
+      layersContainer.innerHTML = data.layers.map(l => `
+        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 hover:border-emerald-300 hover:bg-emerald-50/30 transition space-y-1.5 shadow-2xs">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0">
+                ${l.layer}
+              </span>
+              <span class="font-extrabold text-slate-800 text-xs truncate">${l.name}</span>
+            </div>
+            <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
+              ● BẬT
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-500 leading-relaxed">${l.desc}</p>
+        </div>
+      `).join('');
+    }
 
     // Render Blocked IPs
     const blockedContainer = document.getElementById('sec-blocked-list');
@@ -1766,21 +1787,36 @@ async function loadSecurityStatus() {
       if (data.audit_logs && data.audit_logs.length > 0) {
         tbody.innerHTML = data.audit_logs.map(log => {
           let badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 An toàn</span>';
+          let categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">Thông tin</span>';
+
           if (log.is_threat) {
-            badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 Ngăn chặn</span>';
+            badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 ĐÃ CHẶN & KHÓA</span>';
+            if (log.category === 'honeypot_trapped') {
+              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">Bẫy Honeypot</span>';
+            } else if (log.category === 'sqli_blocked') {
+              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">SQLi / XSS Attack</span>';
+            } else if (log.category === 'scanners_blocked') {
+              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Bot Scanner</span>';
+            } else if (log.category === 'ddos_rate_limited') {
+              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">DDoS Rate Limit</span>';
+            } else {
+              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Brute-Force</span>';
+            }
           }
+
           return `
             <tr class="hover:bg-slate-50 border-b border-slate-100">
               <td class="py-2.5 px-3.5 text-slate-500">${log.timestamp}</td>
-              <td class="py-2.5 px-3.5 font-bold text-blue-700">${log.ip}</td>
+              <td class="py-2.5 px-3.5 font-bold text-blue-700 font-mono">${log.ip}</td>
               <td class="py-2.5 px-3.5 font-bold ${log.is_threat ? 'text-rose-600' : 'text-slate-800'}">${log.event_type}</td>
-              <td class="py-2.5 px-3.5 text-slate-700">${log.details}</td>
+              <td class="py-2.5 px-3.5">${categoryTag}</td>
+              <td class="py-2.5 px-3.5 text-slate-700 font-sans">${log.details}</td>
               <td class="py-2.5 px-3.5 text-center">${badge}</td>
             </tr>
           `;
         }).join('');
       } else {
-        tbody.innerHTML = '<tr><td colspan="5" class="py-4 text-center text-slate-400">Chưa ghi nhận sự kiện bất thường nào. Tường lửa hoạt động ổn định.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-400">Chưa ghi nhận sự kiện bất thường nào. Tường lửa 7 lớp hoạt động ổn định.</td></tr>';
       }
     }
     if (window.lucide) lucide.createIcons();

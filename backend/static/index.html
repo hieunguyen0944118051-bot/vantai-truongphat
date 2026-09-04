@@ -746,22 +746,22 @@
           </div>
         </section>
 
-        <!-- TAB MỚI: TƯỜNG LỬA & BẢO MẬT HỆ THỐNG (WAF SHIELD & CHỐNG HACK) -->
+        <!-- TAB MỚI: TƯỜNG LỬA 7 LỚP & BẢO MẬT DOANH NGHIỆP (ENTERPRISE WAF SHIELD V5.0) -->
         <section id="tab-security" class="tab-content hidden space-y-6">
           <div class="bg-white p-5 md:p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
             <!-- Header Tường Lửa -->
             <div class="flex flex-col md:flex-row gap-3 items-center justify-between pb-4 border-b border-slate-100">
               <div class="flex items-center gap-3">
-                <div class="p-3 bg-emerald-100 text-emerald-700 rounded-2xl font-bold shadow-sm">
+                <div class="p-3 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl font-bold shadow-md shadow-emerald-500/20">
                   <i data-lucide="shield-check" class="w-6 h-6"></i>
                 </div>
                 <div>
                   <div class="flex items-center gap-2">
-                    <h3 class="font-black text-slate-800 text-sm md:text-base uppercase tracking-tight">HỆ THỐNG TƯỜNG LỬA & PHÒNG THỦ CHỐNG XÂM NHẬP (WAF SHIELD)</h3>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">● ĐANG BẢO VỆ 24/7</span>
+                    <h3 class="font-black text-slate-900 text-sm md:text-base uppercase tracking-tight">HỆ THỐNG TƯỜNG LỬA 7 LỚP & PHÒNG THỦ CHỦ ĐỘNG (WAF SHIELD V5.0)</h3>
+                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse">● 7 LỚP ĐANG BẢO VỆ 24/7</span>
                   </div>
                   <p class="text-xs text-slate-500 mt-0.5">
-                    Tiêu chuẩn an ninh quốc tế OWASP Top 10 • Phòng chống tấn công Brute-force, DDoS, SQL Injection, XSS, Scanner Bots.
+                    Tiêu chuẩn an ninh quốc tế OWASP Top 10 & ISO 27001 • Bẫy Honeypot • Chống Brute-force • Chống DDoS Burst • Lọc SQLi/XSS • Mã hóa HSTS 256-bit.
                   </p>
                 </div>
               </div>
@@ -774,42 +774,61 @@
               </div>
             </div>
 
-            <!-- 4 Thẻ Trạng Thái An Ninh -->
+            <!-- 4 Thẻ Thống Kê An Ninh Tức Thời (SIEM Metrics) -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-              <div class="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-center justify-between">
+              <div class="p-4 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-950 flex items-center justify-between">
                 <div>
-                  <p class="text-[10px] uppercase font-bold text-emerald-700">Trạng Thái Tường Lửa</p>
-                  <h4 class="text-lg font-black mt-0.5 text-emerald-800">Đang Hoạt Động</h4>
-                  <span class="text-[10px] text-emerald-600">Enterprise WAF v3.5</span>
+                  <p class="text-[10px] uppercase font-bold text-emerald-700">Tường Lửa 7 Lớp</p>
+                  <h4 class="text-lg font-black mt-0.5 text-emerald-900">Bảo Vệ Toàn Diện</h4>
+                  <span class="text-[10px] text-emerald-700 font-semibold">Enterprise Shield v5.0</span>
                 </div>
-                <i data-lucide="shield" class="w-8 h-8 text-emerald-500"></i>
+                <div class="p-2.5 bg-emerald-600 text-white rounded-xl shadow-sm">
+                  <i data-lucide="shield" class="w-6 h-6"></i>
+                </div>
               </div>
 
-              <div class="p-4 rounded-2xl bg-blue-50 border border-blue-200 text-blue-900 flex items-center justify-between">
+              <div class="p-4 rounded-2xl bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 text-blue-950 flex items-center justify-between">
                 <div>
-                  <p class="text-[10px] uppercase font-bold text-blue-700">Đợt Quét Đã Chặn Đứng</p>
-                  <h4 id="sec-attacks-count" class="text-lg font-black mt-0.5 text-blue-800">0 Đợt</h4>
-                  <span class="text-[10px] text-blue-600">Tự động phát hiện & chặn</span>
+                  <p class="text-[10px] uppercase font-bold text-blue-700">Mối Đe Dọa Đã Triệt Hạ</p>
+                  <h4 id="sec-attacks-count" class="text-lg font-black mt-0.5 text-blue-900">0 Đợt</h4>
+                  <span class="text-[10px] text-blue-700 font-semibold">Tự động chặn tức thì</span>
                 </div>
-                <i data-lucide="shield-x" class="w-8 h-8 text-blue-500"></i>
+                <div class="p-2.5 bg-blue-600 text-white rounded-xl shadow-sm">
+                  <i data-lucide="shield-alert" class="w-6 h-6"></i>
+                </div>
               </div>
 
-              <div class="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex items-center justify-between">
+              <div class="p-4 rounded-2xl bg-gradient-to-br from-rose-50 to-red-50 border border-rose-200 text-rose-950 flex items-center justify-between">
                 <div>
-                  <p class="text-[10px] uppercase font-bold text-rose-700">IP Bị Khóa Tạm Thời</p>
-                  <h4 id="sec-blocked-count" class="text-lg font-black mt-0.5 text-rose-800">0 IP</h4>
-                  <span class="text-[10px] text-rose-600">Chặn Brute-force mật khẩu</span>
+                  <p class="text-[10px] uppercase font-bold text-rose-700">IP Bị Khóa Tự Động</p>
+                  <h4 id="sec-blocked-count" class="text-lg font-black mt-0.5 text-rose-900">0 IP</h4>
+                  <span class="text-[10px] text-rose-700 font-semibold">Chống Brute-force & Bot</span>
                 </div>
-                <i data-lucide="ban" class="w-8 h-8 text-rose-500"></i>
+                <div class="p-2.5 bg-rose-600 text-white rounded-xl shadow-sm">
+                  <i data-lucide="ban" class="w-6 h-6"></i>
+                </div>
               </div>
 
-              <div class="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 flex items-center justify-between">
+              <div class="p-4 rounded-2xl bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 text-amber-950 flex items-center justify-between">
                 <div>
-                  <p class="text-[10px] uppercase font-bold text-indigo-700">Bảo Vệ Đăng Nhập 2FA</p>
-                  <h4 class="text-lg font-black mt-0.5 text-indigo-800">Mã PIN Cấp 2</h4>
-                  <span class="text-[10px] text-indigo-600">Chống rò rỉ mật khẩu</span>
+                  <p class="text-[10px] uppercase font-bold text-amber-700">Xác Thực Đa Yếu Tố</p>
+                  <h4 class="text-lg font-black mt-0.5 text-amber-900">2FA Cấp 2 PIN</h4>
+                  <span class="text-[10px] text-amber-700 font-semibold">Chống lộ mật khẩu</span>
                 </div>
-                <i data-lucide="key-round" class="w-8 h-8 text-indigo-500"></i>
+                <div class="p-2.5 bg-amber-600 text-white rounded-xl shadow-sm">
+                  <i data-lucide="key-round" class="w-6 h-6"></i>
+                </div>
+              </div>
+            </div>
+
+            <!-- MA TRẬN 7 LỚP PHÒNG THỦ CHI TIẾT -->
+            <div class="space-y-3">
+              <div class="flex items-center gap-2">
+                <i data-lucide="layers" class="w-4 h-4 text-emerald-600"></i>
+                <h4 class="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Ma Trận 7 Lớp Phòng Thủ Hệ Thống</h4>
+              </div>
+              <div id="secLayersContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                <!-- Rendered dynamically via app.js -->
               </div>
             </div>
 
@@ -874,9 +893,9 @@
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <i data-lucide="scroll-text" class="w-4 h-4 text-slate-700"></i>
-                  <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Nhật Ký An Ninh & Giám Sát Truy Cập Tức Thời (Audit Log)</h4>
+                  <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wider">Nhật Ký An Ninh & Giám Sát Truy Cập Tức Thời (SIEM Audit Log)</h4>
                 </div>
-                <span class="text-[10px] text-slate-500">Tự động ghi nhận mọi nỗ lực đăng nhập & xâm nhập</span>
+                <span class="text-[10px] text-slate-500">Tự động ghi nhận mọi nỗ lực đăng nhập & ngăn chặn xâm nhập</span>
               </div>
               <div class="overflow-x-auto rounded-xl border border-slate-200">
                 <table class="w-full text-left text-xs whitespace-nowrap">
@@ -885,6 +904,7 @@
                       <th class="py-2.5 px-3.5">Thời Gian</th>
                       <th class="py-2.5 px-3.5">Địa Chỉ IP</th>
                       <th class="py-2.5 px-3.5">Loại Sự Kiện</th>
+                      <th class="py-2.5 px-3.5">Phân Loại / Mối Đe Dọa</th>
                       <th class="py-2.5 px-3.5">Chi Tiết Kiểm Soát</th>
                       <th class="py-2.5 px-3.5 text-center">Đánh Giá An Ninh</th>
                     </tr>
@@ -1487,6 +1507,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260904_2330"></script>
+  <script src="/static/app.js?v=20260904_2345"></script>
 </body>
 </html>
