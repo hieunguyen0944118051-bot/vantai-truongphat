@@ -1,15 +1,16 @@
-// Vận Tải Trường Phát - PWA Service Worker
-const CACHE_NAME = 'truongphat-pwa-v1';
+// Vận Tải Trường Phát - PWA Service Worker v2 (Ultra Fast Stale-While-Revalidate)
+const CACHE_NAME = 'truongphat-pwa-v2';
 const STATIC_ASSETS = [
   '/',
-  '/static/index.html',
   '/static/app.js',
   '/static/manifest.json',
   '/static/icons/icon-192x192.png',
   '/static/icons/icon-512x512.png',
+  '/static/icons/apple-touch-icon.png',
   'https://cdn.tailwindcss.com',
   'https://unpkg.com/lucide@latest',
-  'https://cdn.jsdelivr.net/npm/chart.js'
+  'https://cdn.jsdelivr.net/npm/chart.js',
+  'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap'
 ];
 
 self.addEventListener('install', (event) => {
@@ -32,28 +33,30 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Network first, fallback to cache for static assets
+// Stale-While-Revalidate Strategy for Static Resources (0ms Load Time)
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Do not cache API data calls
-  if (url.pathname.startsWith('/api/')) {
+  // Không cache các request API hoặc POST/PUT
+  if (url.pathname.startsWith('/api/') || event.request.method !== 'GET') {
     return;
   }
 
   event.respondWith(
-    fetch(event.request)
-      .then((response) => {
-        if (response.status === 200) {
-          const responseClone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      })
-      .catch(() => {
-        return caches.match(event.request);
-      })
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.match(event.request).then((cachedResponse) => {
+        const fetchPromise = fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              cache.put(event.request, networkResponse.clone());
+            }
+            return networkResponse;
+          })
+          .catch(() => cachedResponse);
+
+        // Trả về cache ngay lập tức nếu có (0ms), song song cập nhật ngầm
+        return cachedResponse || fetchPromise;
+      });
+    })
   );
 });

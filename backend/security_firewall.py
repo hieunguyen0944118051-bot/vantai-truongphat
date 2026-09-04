@@ -147,6 +147,7 @@ class SecurityFirewallMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         if request.url.path.startswith("/static/") and not request.url.path.endswith((".php", ".asp", ".env")):
             response = await call_next(request)
+            response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=604800"
             return self.apply_security_headers(response)
 
         body = b""

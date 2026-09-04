@@ -34,6 +34,7 @@ class GoogleSheetsSyncService:
     def __init__(self):
         self.cached_trips = {}          # date_str -> (timestamp, result_dict)
         self.cached_xlsx = {}           # sheet_id -> (timestamp, bytes)
+        self.cached_weekly_stats = {}   # cache_key -> (timestamp, dict)
         self.cached_maintenance = None  # (timestamp, list)
         self.cached_vehicles = None     # (timestamp, dict)
         self.last_sync_time = None
@@ -332,6 +333,13 @@ class GoogleSheetsSyncService:
 
         month_str = f"{base_date.month:02d}"
         sheet_id = self.get_sheet_id_for_month(month_str) or DEFAULT_SHEET_AUGUST_ID
+        cache_key = f"{sheet_id}_{base_date.strftime('%Y-%m-%d')}"
+
+        now = time.time()
+        if cache_key in self.cached_weekly_stats:
+            ts, stats = self.cached_weekly_stats[cache_key]
+            if now - ts < 600: # Cache 10 phút
+                return stats
 
         days_to_fetch = [base_date - timedelta(days=i) for i in range(7)]
         day_prefixes = [f"{d.day:02d}" for d in days_to_fetch] + [str(d.day) for d in days_to_fetch]
@@ -413,6 +421,7 @@ class GoogleSheetsSyncService:
                         if origin and dest:
                             truck_stats[clean_p]["routes"].add(f"{origin} ➔ {dest}")
 
+            self.cached_weekly_stats[cache_key] = (now, truck_stats)
         except Exception as e:
             print(f"Error calculating weekly stats: {e}")
 

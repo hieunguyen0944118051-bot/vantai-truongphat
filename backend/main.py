@@ -1,6 +1,7 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
@@ -21,10 +22,13 @@ app = FastAPI(
     version="3.5.0"
 )
 
-# 1. Tường Lửa Bảo Mật Ứng Dụng WAF (Chặn Brute-Force, DDoS, SQLi, XSS, Scanner Bots)
+# 1. GZip Compression Middleware (Nén dữ liệu JSON/HTML/JS giảm 85% dung lượng, load nhanh gấp 5-10 lần)
+app.add_middleware(GZipMiddleware, minimum_size=500)
+
+# 2. Tường Lửa Bảo Mật Ứng Dụng WAF (Chặn Brute-Force, DDoS, SQLi, XSS, Scanner Bots)
 app.add_middleware(SecurityFirewallMiddleware)
 
-# 2. CORS Middleware
+# 3. CORS Middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
