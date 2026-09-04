@@ -1651,21 +1651,8 @@ async function loadBarges() {
   try {
     const res = await fetch(API_BASE + '/barges', { headers: getHeaders() });
     const list = await res.json();
-
-      return `
-        <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-          <td class="py-3 px-4 font-bold text-slate-800 flex items-center gap-2">
-            <i data-lucide="ship" class="w-4 h-4 text-cyan-600"></i>
-            <span>${b.name}</span>
-          </td>
-          <td class="py-3 px-4 font-mono text-slate-600">${b.registration_number || '—'}</td>
-          <td class="py-3 px-4 text-right font-bold text-slate-800">${b.payload_capacity ? b.payload_capacity.toLocaleString() + ' Tấn' : '—'}</td>
-          <td class="py-3 px-4 text-center">${typeBadge}</td>
-          <td class="py-3 px-4 text-slate-600">${b.owner_name ? b.owner_name + ' (' + (b.owner_phone || '') + ')' : '<span class="text-slate-400">Tự quản</span>'}</td>
-        </tr>
-      `;
-    }).join('');
-    if (window.lucide) lucide.createIcons();
+    bargesClientCache = list;
+    renderBargesUI(list);
   } catch (err) {
     console.error('Error loading barges', err);
   }
