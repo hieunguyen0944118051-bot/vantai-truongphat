@@ -1,6 +1,6 @@
-// BẢO MẬT PHIÊN AN TOÀN: sessionStorage chống vào thẳng không hỏi mật khẩu
-let token = sessionStorage.getItem('token');
-let currentUser = JSON.parse(sessionStorage.getItem('user') || 'null');
+// BẢO MẬT PHIÊN LÂU DÀI & BỀN VỮNG: Lưu trữ trên localStorage & sessionStorage chống mất đăng nhập trên điện thoại
+let token = localStorage.getItem('token') || sessionStorage.getItem('token');
+let currentUser = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null');
 
 function getFormattedDate(d) {
   const year = d.getFullYear();
@@ -95,23 +95,28 @@ async function initApp() {
   const tripsDateEl = document.getElementById('tripsCurrentDateDisplay');
   if (tripsDateEl) tripsDateEl.innerText = displayDate;
 
-  // Xác thực token nếu đã lưu trước đó
+  // Khôi phục phiên đăng nhập bền vững
   if (token) {
-    try {
-      const res = await fetch(API_BASE + '/auth/me', {
-        headers: getHeaders()
+    // 1. Mở ngay giao diện ứng dụng lập tức (0ms độ trễ)
+    showApp();
+
+    // 2. Xác thực ngầm với máy chủ (Silent Background Re-validation)
+    fetch(API_BASE + '/auth/me', { headers: getHeaders() })
+      .then(async res => {
+        if (res.ok) {
+          currentUser = await res.json();
+          localStorage.setItem('user', JSON.stringify(currentUser));
+          sessionStorage.setItem('user', JSON.stringify(currentUser));
+        } else if (res.status === 401) {
+          // Token thực sự bị vô hiệu hóa
+          console.warn('Phiên đăng nhập đã hết hạn trên máy chủ');
+          logout();
+        }
+      })
+      .catch(err => {
+        // Lỗi kết nối mạng 4G/Wifi chập chờn -> KHÔNG ĐƯỢC LOGOUT
+        console.warn('Mạng chập chờn khi xác thực phiên (giữ nguyên phiên đăng nhập):', err);
       });
-      if (res.ok) {
-        currentUser = await res.json();
-        sessionStorage.setItem('user', JSON.stringify(currentUser));
-        showApp();
-      } else {
-        logout();
-      }
-    } catch (err) {
-      console.warn('Lỗi xác thực phiên cũ:', err);
-      logout();
-    }
   } else {
     showLogin();
   }
@@ -252,9 +257,11 @@ async function handleLogin(e) {
     token = data.access_token;
     currentUser = data.user;
     
+    // Lưu bền vững vào cả localStorage (cho iPhone/Android/PWA) và sessionStorage
+    localStorage.setItem('token', token);
+    localStorage.setItem('user', JSON.stringify(currentUser));
     sessionStorage.setItem('token', token);
     sessionStorage.setItem('user', JSON.stringify(currentUser));
-    localStorage.removeItem('token');
     
     if (alertBox) {
       alertBox.classList.add('hidden');
@@ -274,9 +281,10 @@ async function handleLogin(e) {
 }
 
 function logout() {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
   sessionStorage.removeItem('token');
   sessionStorage.removeItem('user');
-  localStorage.clear();
   token = null;
   currentUser = null;
   showLogin();

@@ -10,7 +10,7 @@ from database import get_db
 
 SECRET_KEY = "antigravity-transport-secret-key-2026-super-secure"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 # 7 days
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 # 365 days (1 year permanent login)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
 
