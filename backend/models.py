@@ -11,8 +11,28 @@ class User(Base):
     password_hash = Column(String, nullable=False)
     full_name = Column(String, nullable=False)
     role = Column(String, default="staff") # admin, manager, staff, viewer
+    salan_role = Column(String, default="nhap_van_hanh") # quan_tri, nhap_van_hanh, chu_hang, ban_giam_doc, ke_toan
+    companies = Column(String, default="TP,TPL,NK")
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    def get_salan_role(self) -> str:
+        if self.role == "admin" or self.username == "admin":
+            return "quan_tri"
+        if self.salan_role:
+            return self.salan_role
+        if self.role in ["manager", "giam_doc"]:
+            return "ban_giam_doc"
+        if self.role in ["accountant", "ke_toan"]:
+            return "ke_toan"
+        return "nhap_van_hanh"
+
+    def get_allowed_companies(self) -> list:
+        if self.get_salan_role() == "quan_tri":
+            return ["TP", "TPL", "NK"]
+        if not self.companies:
+            return ["TP"]
+        return [c.strip() for c in self.companies.split(",") if c.strip()]
 
 class Vehicle(Base):
     __tablename__ = "vehicles"

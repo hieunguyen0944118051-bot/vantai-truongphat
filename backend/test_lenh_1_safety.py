@@ -8,11 +8,15 @@ import os
 import sqlite3
 from fastapi.testclient import TestClient
 import main
+import auth
 from backup_database import backup_database
 from restore_database import verify_and_restore
 
 client = TestClient(main.app)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "transport.db")
+
+admin_token = auth.create_access_token({"sub": "alex", "role": "admin", "salan_role": "quan_tri"})
+auth_headers = {"Authorization": f"Bearer {admin_token}"}
 
 def test_1_soft_delete_dau():
     """1. Gọi API xoá dầu -> dòng vẫn còn trong DB, có da_huy = 1, có dòng nhật ký."""
@@ -29,7 +33,7 @@ def test_1_soft_delete_dau():
     con.close()
 
     # Gọi API xoá
-    res = client.delete(f"/api/salan/dau/{dau_id}?ly_do=Huy%20do%20sai%20so%20lit")
+    res = client.delete(f"/api/salan/dau/{dau_id}?ly_do=Huy%20do%20sai%20so%20lit", headers=auth_headers)
     assert res.status_code == 200, f"Lỗi gọi API xoá dầu: {res.text}"
 
     # Kiểm tra lại DB: dòng KHÔNG bị xoá mà được đánh dấu da_huy = 1
@@ -49,7 +53,7 @@ def test_1_soft_delete_dau():
 def test_2_audit_log_sua_chuyen():
     """2. Sửa đơn giá cước một chuyến -> nhật ký có giá trị cũ và mới."""
     # Lấy thông tin hiện tại của chuyến 1
-    t1_res = client.get("/api/salan/chuyen/1")
+    t1_res = client.get("/api/salan/chuyen/1", headers=auth_headers)
     assert t1_res.status_code == 200
     t1 = t1_res.json()
     don_gia_cu = t1["don_gia_cuoc"]
@@ -58,7 +62,7 @@ def test_2_audit_log_sua_chuyen():
     # Cập nhật chuyến với đơn giá mới
     t1["don_gia_cuoc"] = don_gia_moi
     t1["nguoi_nhap"] = "Alex"
-    put_res = client.put("/api/salan/chuyen/1", json=t1)
+    put_res = client.put("/api/salan/chuyen/1", json=t1, headers=auth_headers)
     assert put_res.status_code == 200
 
     # Kiểm tra nhật ký
@@ -77,7 +81,7 @@ def test_2_audit_log_sua_chuyen():
 
     # Trả lại đơn giá cũ
     t1["don_gia_cuoc"] = don_gia_cu
-    client.put("/api/salan/chuyen/1", json=t1)
+    client.put("/api/salan/chuyen/1", json=t1, headers=auth_headers)
     con.close()
     print("✅ TEST 2 ĐẠT: Sửa chuyến ghi đầy đủ giá trị cũ và giá trị mới vào nhật ký kiểm toán.")
 
@@ -114,7 +118,7 @@ def test_3_immutable_audit_log():
 
 def test_4_protected_seed():
     """4. Gọi seed khi database đã có dữ liệu -> 403, dữ liệu không đổi."""
-    res = client.post("/api/salan/seed-du-lieu-chuan")
+    res = client.post("/api/salan/seed-du-lieu-chuan", headers=auth_headers)
     assert res.status_code == 403, f"Seed không bị chặn: {res.status_code} - {res.text}"
     assert "BẢO VỆ DỮ LIỆU" in res.json()["detail"]
     print("✅ TEST 4 ĐẠT: API seed bị khoá tuyệt đối khi database đã có dữ liệu, trả về mã 403.")

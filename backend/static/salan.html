@@ -39,26 +39,37 @@
         </div>
       </div>
 
-      <!-- ROLE SWITCHER & ACTIONS -->
+      <!-- USER INFO & ACTIONS -->
       <div class="flex items-center space-x-3">
-        <div class="flex items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700 text-xs">
-          <span class="text-slate-400 px-2 font-medium">Vai trò:</span>
+        <div id="userInfoBox" class="flex items-center bg-slate-800/80 rounded-lg px-2.5 py-1.5 border border-slate-700 text-xs">
+          <span class="text-slate-400 mr-1.5">👤</span>
+          <span id="userNameDisplay" class="text-white font-semibold mr-2">Đang tải...</span>
+          <span id="userRoleBadge" class="bg-blue-900/60 text-blue-300 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-700/50">...</span>
+        </div>
+
+        <!-- Optional preview switcher for Alex (Admin only) -->
+        <div id="adminRoleSwitcher" class="hidden items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700 text-xs">
+          <span class="text-slate-400 px-2 font-medium">Xem dạng:</span>
           <select id="userRole" onchange="changeRole()" class="bg-slate-900 text-amber-400 font-semibold rounded px-2 py-1 border border-slate-600 focus:outline-none">
             <option value="quan_tri">👑 Alex (Quản trị)</option>
-            <option value="nhap_van_hanh">✍️ Mới / Hoa (Nhập vận hành)</option>
-            <option value="ke_toan">📊 Liễu / Hoa (Kế toán)</option>
-            <option value="ban_giam_doc">👁️ Ban Giám Đốc (Chỉ xem)</option>
+            <option value="nhap_van_hanh">✍️ Nhập vận hành</option>
+            <option value="ke_toan">📊 Kế toán</option>
+            <option value="ban_giam_doc">👁️ Ban Giám Đốc</option>
           </select>
         </div>
 
-        <button onclick="openModalAddTrip()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow flex items-center space-x-1.5 transition">
+        <button id="btnAddNewTrip" onclick="openModalAddTrip()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow flex items-center space-x-1.5 transition">
           <span>➕</span>
           <span>Thêm Chuyến Mới</span>
         </button>
 
         <a href="/" class="text-xs text-slate-300 hover:text-white px-2 py-1 bg-slate-800 rounded border border-slate-700 transition">
-          Quay lại Hệ thống Xe
+          Hệ thống Xe
         </a>
+
+        <button onclick="handleLogout()" class="text-xs text-rose-300 hover:text-rose-100 px-2 py-1 bg-rose-950/60 hover:bg-rose-900 rounded border border-rose-800/50 transition">
+          Đăng xuất
+        </button>
       </div>
     </div>
 
@@ -717,9 +728,9 @@
         <!-- MODAL FOOTER BUTTONS -->
         <div class="flex justify-end space-x-3 pt-3 border-t border-slate-200">
           <button type="button" onclick="closeModalTrip()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg transition">
-            Huỷ bỏ
+            Đóng
           </button>
-          <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg transition">
+          <button type="submit" id="btnModalSaveTrip" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg transition">
             💾 Lưu Chuyến Sà Lan
           </button>
         </div>
@@ -730,6 +741,8 @@
 
   <script>
     // TOÀN BỘ LOGIC TÍNH TOÁN & GIAO DIỆN PHẦN MỀM SÀ LAN
+    let token = localStorage.getItem('token') || sessionStorage.getItem('token');
+    let currentUser = null;
     let allTrips = [];
     let catalogs = {};
     let currentRole = 'quan_tri';
@@ -737,27 +750,112 @@
     const fmtVND = v => (v || v === 0) ? new Intl.NumberFormat('vi-VN').format(Math.round(v)) + ' ₫' : '—';
     const fmtNum = v => (v || v === 0) ? new Intl.NumberFormat('vi-VN').format(v) : '0';
 
+    async function apiFetch(url, options = {}) {
+      options.headers = options.headers || {};
+      if (token) {
+        options.headers['Authorization'] = 'Bearer ' + token;
+      }
+      options.credentials = 'include';
+      const res = await fetch(url, options);
+      if (res.status === 401) {
+        window.location.href = '/?redirect=' + encodeURIComponent(window.location.pathname);
+        throw new Error('Chưa đăng nhập');
+      }
+      return res;
+    }
+
+    async function handleLogout() {
+      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
+      try {
+        await apiFetch('/api/auth/logout', { method: 'POST' });
+      } catch (e) {}
+      window.location.href = '/';
+    }
+
     async function initApp() {
+      try {
+        const userRes = await apiFetch('/api/auth/me');
+        if (!userRes.ok) {
+          window.location.href = '/?redirect=' + encodeURIComponent(window.location.pathname);
+          return;
+        }
+        currentUser = await userRes.json();
+        setupUserInterface(currentUser);
+      } catch (err) {
+        console.error("Lỗi xác thực:", err);
+        return;
+      }
       await loadCatalogs();
       await loadTrips();
+    }
+
+    function setupUserInterface(user) {
+      document.getElementById('userNameDisplay').innerText = user.full_name || user.username;
+      
+      const roleBadge = document.getElementById('userRoleBadge');
+      const roleSwitcher = document.getElementById('adminRoleSwitcher');
+
+      if (user.role === 'admin' || user.salan_role === 'admin') {
+        currentRole = 'quan_tri';
+        roleBadge.innerText = 'Alex (Quản trị)';
+        roleBadge.className = 'bg-amber-900/60 text-amber-300 px-2 py-0.5 rounded text-[11px] font-bold border border-amber-700/50';
+        roleSwitcher.classList.remove('hidden');
+        roleSwitcher.classList.add('flex');
+        document.getElementById('userRole').value = 'quan_tri';
+      } else {
+        roleSwitcher.classList.add('hidden');
+        roleSwitcher.classList.remove('flex');
+        const sRole = user.salan_role || 'nhap_van_hanh';
+        currentRole = sRole;
+        if (sRole === 'nhap_van_hanh') {
+          roleBadge.innerText = 'Nhập vận hành';
+          roleBadge.className = 'bg-blue-900/60 text-blue-300 px-2 py-0.5 rounded text-[11px] font-medium border border-blue-700/50';
+        } else if (sRole === 'ke_toan') {
+          roleBadge.innerText = 'Kế toán';
+          roleBadge.className = 'bg-emerald-900/60 text-emerald-300 px-2 py-0.5 rounded text-[11px] font-medium border border-emerald-700/50';
+        } else if (sRole === 'ban_giam_doc') {
+          roleBadge.innerText = 'Ban Giám Đốc (Chỉ xem)';
+          roleBadge.className = 'bg-purple-900/60 text-purple-300 px-2 py-0.5 rounded text-[11px] font-medium border border-purple-700/50';
+        }
+      }
       changeRole();
     }
 
     function changeRole() {
-      currentRole = document.getElementById('userRole').value;
+      if (currentUser && (currentUser.role === 'admin' || currentUser.salan_role === 'admin')) {
+        currentRole = document.getElementById('userRole').value;
+      } else if (currentUser) {
+        currentRole = currentUser.salan_role || 'nhap_van_hanh';
+      }
+
       const adminElements = document.querySelectorAll('.role-admin-only');
       const financeElements = document.querySelectorAll('.role-finance-only');
+      const btnAdd = document.getElementById('btnAddNewTrip');
+      const btnSave = document.getElementById('btnModalSaveTrip');
 
       if (currentRole === 'nhap_van_hanh') {
         adminElements.forEach(el => el.classList.add('hidden'));
         financeElements.forEach(el => el.classList.add('hidden'));
+        if (btnAdd) btnAdd.classList.remove('hidden');
+        if (btnSave) btnSave.classList.remove('hidden');
       } else if (currentRole === 'ke_toan') {
         adminElements.forEach(el => el.classList.add('hidden'));
         financeElements.forEach(el => el.classList.remove('hidden'));
-      } else {
-        // quan_tri, ban_giam_doc
+        if (btnAdd) btnAdd.classList.remove('hidden');
+        if (btnSave) btnSave.classList.remove('hidden');
+      } else if (currentRole === 'ban_giam_doc') {
         adminElements.forEach(el => el.classList.remove('hidden'));
         financeElements.forEach(el => el.classList.remove('hidden'));
+        // Ban giám đốc: READ-ONLY!
+        if (btnAdd) btnAdd.classList.add('hidden');
+        if (btnSave) btnSave.classList.add('hidden');
+      } else {
+        // quan_tri (Alex)
+        adminElements.forEach(el => el.classList.remove('hidden'));
+        financeElements.forEach(el => el.classList.remove('hidden'));
+        if (btnAdd) btnAdd.classList.remove('hidden');
+        if (btnSave) btnSave.classList.remove('hidden');
       }
     }
 
@@ -782,7 +880,7 @@
 
     async function loadCatalogs() {
       try {
-        const res = await fetch('/api/salan/danh-muc');
+        const res = await apiFetch('/api/salan/danh-muc');
         catalogs = await res.json();
         
         // Nạp select sà lan
@@ -826,7 +924,7 @@
       if (trangThai) url += `trang_thai=${encodeURIComponent(trangThai)}&`;
 
       try {
-        const res = await fetch(url);
+        const res = await apiFetch(url);
         allTrips = await res.json();
         renderTripTable();
         updateKpis();
@@ -935,11 +1033,20 @@
 
     async function openModalEditTrip(id) {
       try {
-        const res = await fetch(`/api/salan/chuyen/${id}`);
+        const res = await apiFetch(`/api/salan/chuyen/${id}`);
         const t = await res.json();
         
         document.getElementById('editTripId').value = t.id;
-        document.getElementById('modalTitle').innerText = `SỬA THẺ CHUYẾN: ${t.ma_chuyen}`;
+        document.getElementById('modalTitle').innerText = (currentRole === 'ban_giam_doc' ? 'XEM CHI TIẾT CHUYẾN: ' : 'SỬA THẺ CHUYẾN: ') + t.ma_chuyen;
+        
+        const isReadOnly = (currentRole === 'ban_giam_doc');
+        document.querySelectorAll('#tripForm input, #tripForm select, #tripForm textarea').forEach(el => {
+          if (el.type !== 'button' && el.type !== 'submit') {
+            el.disabled = isReadOnly;
+          }
+        });
+        const btnSave = document.getElementById('btnModalSaveTrip');
+        if (btnSave) btnSave.style.display = isReadOnly ? 'none' : 'block';
         
         document.getElementById('formCongTy').value = t.cong_ty || 'TP';
         document.getElementById('formSaLan').value = t.phuong_tien_ma;
@@ -1187,7 +1294,7 @@
       try {
         let tripId = id;
         if (id) {
-          const res = await fetch(`/api/salan/chuyen/${id}`, {
+          const res = await apiFetch(`/api/salan/chuyen/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1195,7 +1302,7 @@
           const resData = await res.json();
           if (!res.ok) throw new Error(resData.detail || 'Lỗi lưu chuyến');
         } else {
-          const res = await fetch('/api/salan/chuyen', {
+          const res = await apiFetch('/api/salan/chuyen', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -1208,7 +1315,7 @@
         // Lưu danh sách dầu & ứng
         for (const f of currentFuelList) {
           if (!f.id) {
-            await fetch(`/api/salan/chuyen/${tripId}/dau`, {
+            await apiFetch(`/api/salan/chuyen/${tripId}/dau`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ngay: f.ngay, so_lit: Number(f.so_lit), gia_dau: Number(f.gia_dau), ghi_chu: f.ghi_chu })
@@ -1217,7 +1324,7 @@
         }
         for (const a of currentAdvanceList) {
           if (!a.id) {
-            await fetch(`/api/salan/chuyen/${tripId}/ung`, {
+            await apiFetch(`/api/salan/chuyen/${tripId}/ung`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ ngay: a.ngay, so_tien: Number(a.so_tien), noi_dung: a.noi_dung })
@@ -1236,7 +1343,7 @@
     async function reSeedSampleData() {
       if (!confirm('Khôi phục danh mục và nạp lại chuyến chuẩn ĐT 26284-C01 khớp sổ?')) return;
       try {
-        const res = await fetch('/api/salan/seed-du-lieu-chuan', { method: 'POST' });
+        const res = await apiFetch('/api/salan/seed-du-lieu-chuan', { method: 'POST' });
         const data = await res.json();
         alert(data.message);
         loadTrips();

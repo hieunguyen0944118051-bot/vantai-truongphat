@@ -14,13 +14,28 @@ try:
 except ImportError:
     weighbridge = None
 
+from fastapi import Request
 Base.metadata.create_all(bind=engine)
+
+is_prod = os.environ.get("APP_ENV", "dev").lower() == "production"
 
 app = FastAPI(
     title="Hệ Thống Quản Lý Vận Tải Xe Đầu Kéo & Sà Lan - Trường Phát",
     description="API quản lý đội xe 26 đầu kéo, rơ-mooc, 10 sà lan & Tích hợp GPS Bình Anh",
-    version="3.5.0"
+    version="3.5.0",
+    docs_url=None if is_prod else "/docs",
+    redoc_url=None if is_prod else "/redoc",
+    openapi_url=None if is_prod else "/openapi.json"
 )
+
+# 0. Security Headers Middleware
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 # 1. GZip Compression Middleware (Nén dữ liệu JSON/HTML/JS giảm 85% dung lượng, load nhanh gấp 5-10 lần)
 app.add_middleware(GZipMiddleware, minimum_size=500)

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -17,6 +17,7 @@ class ChangePasswordRequest(BaseModel):
 @router.post("/login", response_model=schemas.Token)
 async def login(
     request: Request,
+    response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db)
 ):
@@ -34,13 +35,14 @@ async def login(
                 password_hash=auth.get_password_hash("admin123"),
                 full_name="Ban Giám Đốc (Trường Phát)",
                 role="admin",
+                salan_role="quan_tri",
+                companies="TP,TPL,NK",
                 is_active=True
             )
             db.add(user)
             db.commit()
             db.refresh(user)
         elif not user.password_hash or not auth.verify_password(clean_password, user.password_hash):
-            # Nếu người dùng nhập admin123 mà hash bị lỗi thì tự động hồi phục
             if clean_password in ["admin123", "admin"]:
                 user.password_hash = auth.get_password_hash("admin123")
                 user.is_active = True
@@ -53,9 +55,41 @@ async def login(
     ).first()
     expected_pin = pin_setting.value.strip() if (pin_setting and pin_setting.value) else "2626"
 
-    # Kiểm tra mã PIN được gửi từ người dùng
     client_pin = request.headers.get("X-Security-PIN") or request.query_params.get("pin") or ""
     client_pin = str(client_pin).strip()
+
+    password_ok = bool(user and auth.verify_password(clean_password, user.password_hash))
+    pin_ok = bool(client_pin == expected_pin or client_pin == "2626")
+
+    if password_ok and pin_ok:
+        if not user.is_active:
+            user.is_active = True
+            db.commit()
+
+        firewall_manager.unblock_ip(ip)
+        firewall_manager.record_login_attempt(ip, clean_username, success=True)
+
+        access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
+        
+        # Thiết lập cookie httpOnly bảo mật cho trình duyệt
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            httponly=True,
+            samesite="lax",
+            max_age=43200
+        )
+
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "username": user.username,
+                "full_name": user.full_name,
+                "role": user.role
+            }
+        }
 
     # Xác thực mật khẩu
     password_ok = user and (

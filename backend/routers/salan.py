@@ -3,8 +3,9 @@ import sqlite3
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Request
 from pydantic import BaseModel
+import models, auth
 
 router = APIRouter(prefix="/api/salan", tags=["Salan Management"])
 
@@ -24,6 +25,16 @@ def init_salan_tables():
     con = get_con()
     cur = con.cursor()
     
+    # 0. Đảm bảo bảng users có cột phân quyền sà lan
+    try:
+        user_cols = [r[1] for r in cur.execute("PRAGMA table_info(users)").fetchall()]
+        if user_cols and "salan_role" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN salan_role TEXT")
+        if user_cols and "companies" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN companies TEXT")
+    except Exception:
+        pass
+
     # 1. Danh mục
     cur.execute("""
     CREATE TABLE IF NOT EXISTS salan_cong_ty (
@@ -427,8 +438,15 @@ def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung):
 # API ENDPOINTS
 # ============================================================================
 
+FORBIDDEN_FIELDS_NHAP_VAN_HANH = [
+    "don_gia_thu", "cuoc_thu", "vat_pct_thu", "vat_thu", "ngay_neo_thu",
+    "neo_thu", "xong_trung_thu", "chu_hang_ho_tro", "giam_tru",
+    "ly_do_giam_tru", "boi_thuong_chu_hang", "so_ngay_neo_cho_phep_thu",
+    "don_gia_neo_thu", "phai_thu", "lai_gop", "tien_tron_lo", "hinh_thuc_thu"
+]
+
 @router.get("/danh-muc")
-def get_danh_muc():
+def get_danh_muc(current_user: models.User = Depends(auth.get_current_user)):
     con = get_con()
     cur = con.cursor()
     
@@ -455,8 +473,16 @@ def get_danh_sach_chuyen(
     sa_lan: Optional[str] = None,
     chu_hang: Optional[str] = None,
     thang: Optional[str] = None,
-    trang_thai: Optional[str] = None
+    trang_thai: Optional[str] = None,
+    current_user: models.User = Depends(auth.get_current_user)
 ):
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+
+    if user_role != "quan_tri" and user_role != "ban_giam_doc":
+        if cong_ty and cong_ty not in allowed_companies:
+            raise HTTPException(status_code=403, detail=f"Bạn không có quyền xem dữ liệu công ty {cong_ty}")
+
     con = get_con()
     cur = con.cursor()
     
@@ -466,6 +492,11 @@ def get_danh_sach_chuyen(
     if cong_ty:
         sql += " AND cong_ty = ?"
         params.append(cong_ty)
+    elif user_role != "quan_tri" and user_role != "ban_giam_doc":
+        placeholders = ",".join(["?"] * len(allowed_companies))
+        sql += f" AND cong_ty IN ({placeholders})"
+        params.extend(allowed_companies)
+
     if sa_lan:
         sql += " AND phuong_tien_ma = ?"
         params.append(sa_lan)
@@ -495,13 +526,25 @@ def get_danh_sach_chuyen(
         row_dict.update(calc)
         row_dict['do_dau'] = dau_rows
         row_dict['ung_phi'] = ung_rows
+
+        # Lọc danh sách trắng (Server-side filtering): Không bao giờ trả trường thu và lãi gộp cho nhap_van_hanh
+        if user_role == "nhap_van_hanh":
+            for f in FORBIDDEN_FIELDS_NHAP_VAN_HANH:
+                row_dict.pop(f, None)
+
         result.append(row_dict)
         
     con.close()
     return result
 
 @router.get("/chuyen/{chuyen_id}")
-def get_chi_tiet_chuyen(chuyen_id: int):
+def get_chi_tiet_chuyen(
+    chuyen_id: int,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+
     con = get_con()
     cur = con.cursor()
     row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
@@ -510,6 +553,10 @@ def get_chi_tiet_chuyen(chuyen_id: int):
         raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
         
     row_dict = dict(row)
+    if user_role != "quan_tri" and user_role != "ban_giam_doc" and row_dict["cong_ty"] not in allowed_companies:
+        con.close()
+        raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập chuyến của công ty này!")
+
     dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     
@@ -517,6 +564,11 @@ def get_chi_tiet_chuyen(chuyen_id: int):
     row_dict.update(calc)
     row_dict['do_dau'] = dau_rows
     row_dict['ung_phi'] = ung_rows
+
+    if user_role == "nhap_van_hanh":
+        for f in FORBIDDEN_FIELDS_NHAP_VAN_HANH:
+            row_dict.pop(f, None)
+
     con.close()
     return row_dict
 
@@ -562,8 +614,28 @@ class ChuyenCreateUpdate(BaseModel):
     don_gia_neo_thu: Optional[int] = 4000
     nguoi_nhap: Optional[str] = "Alex"
 
+class DoDauItem(BaseModel):
+    ngay: str
+    noi_do_ma: Optional[str] = None
+    so_lit: float
+    gia_dau: int
+    ghi_chu: Optional[str] = None
+
+class UngPhiItem(BaseModel):
+    ngay: str
+    so_tien: int
+    noi_dung: Optional[str] = None
+
 @router.post("/chuyen")
-def tao_chuyen_moi(data: ChuyenCreateUpdate):
+def tao_chuyen_moi(
+    data: ChuyenCreateUpdate,
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role != "quan_tri" and data.cong_ty not in allowed_companies:
+        raise HTTPException(status_code=403, detail=f"Bạn không có quyền tạo chuyến cho công ty {data.cong_ty}!")
+
     # Kiểm tra C01
     if not data.cong_ty or not data.phuong_tien_ma or not data.chu_hang_ma or not data.ngay_nhan or not data.noi_nhan_ma or data.kl_nhan_kg <= 0:
         raise HTTPException(status_code=400, detail="[C01] Thiếu thông tin bắt buộc: công ty, sà lan, chủ hàng, ngày nhận, nơi nhận hoặc khối lượng nhận!")
@@ -580,20 +652,18 @@ def tao_chuyen_moi(data: ChuyenCreateUpdate):
     cur = con.cursor()
     
     # Tự sinh mã chuyến: ví dụ ĐT 26284-C01, ĐT 26284-C02...
-    # Lấy số chuyến trước sổ của sà lan + số chuyến hiện có trong database
     pt = cur.execute("SELECT so_chuyen_truoc_so FROM salan_phuong_tien WHERE ma = ?", (data.phuong_tien_ma,)).fetchone()
     so_truoc = pt['so_chuyen_truoc_so'] if pt and pt['so_chuyen_truoc_so'] else 0
     
     current_count = cur.execute("SELECT COUNT(*) as cnt FROM salan_chuyen WHERE phuong_tien_ma = ?", (data.phuong_tien_ma,)).fetchone()['cnt']
     stt = so_truoc + current_count + 1
     
-    # Định dạng: ĐT 26284-C01 (nếu quá 99 thì C100)
     suffix = f"C{stt:02d}" if stt < 100 else f"C{stt}"
     ma_chuyen = f"{data.phuong_tien_ma}-{suffix}"
     
-    # Suy ra trạng thái tự động
     trang_thai = "da_giao" if data.ngay_giao else "dang_chay"
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    nguoi_nhap = current_user.username
     
     cur.execute("""
     INSERT INTO salan_chuyen (
@@ -624,7 +694,7 @@ def tao_chuyen_moi(data: ChuyenCreateUpdate):
         ?, ?, ?
     )""", (
         data.cong_ty, ma_chuyen, stt, data.phuong_tien_ma, data.chu_hang_ma,
-        data.loai_hang_ma, data.so_lo_tau, data.ghi_chu, data.nguoi_nhap, thoi_diem, trang_thai,
+        data.loai_hang_ma, data.so_lo_tau, data.ghi_chu, nguoi_nhap, thoi_diem, trang_thai,
         data.ngay_nhan, data.noi_nhan_ma, data.kl_nhan_kg,
         data.ngay_giao, data.nha_may_giao_ma, data.kl_giao_kg,
         data.don_gia_cuoc, data.vat_pct,
@@ -638,32 +708,39 @@ def tao_chuyen_moi(data: ChuyenCreateUpdate):
     ))
     
     new_id = cur.lastrowid
-    
-    # Ghi nhật ký
-    cur.execute("""
-    INSERT INTO salan_nhat_ky_sua (bang, ban_ghi_id, hanh_dong, tai_khoan, thoi_diem)
-    VALUES ('salan_chuyen', ?, 'TAO_MOI', ?, ?)
-    """, (str(new_id), data.nguoi_nhap, thoi_diem))
+    ghi_nhat_ky(cur, "salan_chuyen", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"ma_chuyen": ma_chuyen, "cong_ty": data.cong_ty}, nguoi_dung_id=nguoi_nhap)
     
     con.commit()
     con.close()
     return {"message": "Đã tạo chuyến thành công", "id": new_id, "ma_chuyen": ma_chuyen}
 
 @router.put("/chuyen/{chuyen_id}")
-def cap_nhat_chuyen(chuyen_id: int, data: ChuyenCreateUpdate):
+def cap_nhat_chuyen(
+    chuyen_id: int,
+    data: ChuyenCreateUpdate,
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     con = get_con()
     cur = con.cursor()
     
-    existing = cur.execute("SELECT * FROM salan_chuyen WHERE id = ?", (chuyen_id,)).fetchone()
+    existing = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
     if not existing:
         con.close()
         raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
         
-    if existing['khoa_so']:
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role != "quan_tri" and (existing["cong_ty"] not in allowed_companies or data.cong_ty not in allowed_companies):
+        con.close()
+        raise HTTPException(status_code=403, detail="Bạn không có quyền sửa chuyến của công ty này!")
+        
+    if existing['khoa_so'] and user_role != "quan_tri":
+        con.close()
         raise HTTPException(status_code=400, detail="[C07] Chuyến này đã thanh toán và bị khóa, chỉ Alex mới có quyền mở khóa!")
         
     trang_thai = "da_giao" if data.ngay_giao else "dang_chay"
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    nguoi_nhap = current_user.username
     
     cur.execute("""
     UPDATE salan_chuyen SET
@@ -694,7 +771,6 @@ def cap_nhat_chuyen(chuyen_id: int, data: ChuyenCreateUpdate):
         chuyen_id
     ))
     
-    # Ghi nhật ký sửa chi tiết vào bảng nhat_ky
     gia_tri_cu = {
         "don_gia_cuoc": existing["don_gia_cuoc"],
         "kl_nhan_kg": existing["kl_nhan_kg"],
@@ -713,14 +789,18 @@ def cap_nhat_chuyen(chuyen_id: int, data: ChuyenCreateUpdate):
         "trang_thai": trang_thai,
         "so_bang_ke": data.so_bang_ke
     }
-    ghi_nhat_ky(cur, "salan_chuyen", str(chuyen_id), "sua", gia_tri_cu=gia_tri_cu, gia_tri_moi=gia_tri_moi, nguoi_dung_id=data.nguoi_nhap)
+    ghi_nhat_ky(cur, "salan_chuyen", str(chuyen_id), "sua", gia_tri_cu=gia_tri_cu, gia_tri_moi=gia_tri_moi, nguoi_dung_id=nguoi_nhap)
     
     con.commit()
     con.close()
     return {"message": "Đã cập nhật chuyến thành công"}
 
 @router.delete("/chuyen/{chuyen_id}")
-def xoa_chuyen(chuyen_id: int, ly_do: str = Query("Huỷ chuyến", description="Lý do huỷ chuyến")):
+def xoa_chuyen(
+    chuyen_id: int,
+    ly_do: str = Query("Huỷ chuyến", description="Lý do huỷ chuyến"),
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     """Xoá mềm chuyến: Đánh dấu da_huy = 1 và lưu nhật ký kiểm toán."""
     con = get_con()
     cur = con.cursor()
@@ -732,32 +812,35 @@ def xoa_chuyen(chuyen_id: int, ly_do: str = Query("Huỷ chuyến", description=
         con.close()
         return {"message": "Chuyến đã được huỷ trước đó"}
         
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role != "quan_tri" and existing["cong_ty"] not in allowed_companies:
+        con.close()
+        raise HTTPException(status_code=403, detail="Bạn không có quyền huỷ chuyến của công ty này!")
+        
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute("""
     UPDATE salan_chuyen 
-    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = ?, huy_luc = ?
     WHERE id = ?
-    """, (ly_do, thoi_diem, chuyen_id))
+    """, (ly_do, current_user.username, thoi_diem, chuyen_id))
     
     ghi_nhat_ky(
         cur, "salan_chuyen", str(chuyen_id), "huy",
         gia_tri_cu={"ma_chuyen": existing["ma_chuyen"], "da_huy": 0},
         gia_tri_moi={"ma_chuyen": existing["ma_chuyen"], "da_huy": 1, "ly_do_huy": ly_do},
-        nguoi_dung_id="Alex"
+        nguoi_dung_id=current_user.username
     )
     con.commit()
     con.close()
     return {"message": "Đã đánh dấu huỷ chuyến thành công (xoá mềm, lưu nhật ký)"}
 
-class DoDauItem(BaseModel):
-    ngay: str
-    noi_do_ma: Optional[str] = None
-    so_lit: float
-    gia_dau: int
-    ghi_chu: Optional[str] = None
-
 @router.post("/chuyen/{chuyen_id}/dau")
-def them_do_dau(chuyen_id: int, item: DoDauItem):
+def them_do_dau(
+    chuyen_id: int,
+    item: DoDauItem,
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     tien_dau = round_cur(Decimal(str(item.so_lit)) * Decimal(item.gia_dau))
     con = get_con()
     cur = con.cursor()
@@ -766,18 +849,17 @@ def them_do_dau(chuyen_id: int, item: DoDauItem):
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (chuyen_id, item.ngay, item.noi_do_ma, item.so_lit, item.gia_dau, tien_dau, item.ghi_chu))
     new_id = cur.lastrowid
-    ghi_nhat_ky(cur, "salan_do_dau", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_lit": item.so_lit, "tien_dau": tien_dau})
+    ghi_nhat_ky(cur, "salan_do_dau", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_lit": item.so_lit, "tien_dau": tien_dau}, nguoi_dung_id=current_user.username)
     con.commit()
     con.close()
     return {"message": "Đã thêm lần đổ dầu", "tien_dau": tien_dau, "id": new_id}
 
-class UngPhiItem(BaseModel):
-    ngay: str
-    so_tien: int
-    noi_dung: Optional[str] = None
-
 @router.post("/chuyen/{chuyen_id}/ung")
-def them_ung_phi(chuyen_id: int, item: UngPhiItem):
+def them_ung_phi(
+    chuyen_id: int,
+    item: UngPhiItem,
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     con = get_con()
     cur = con.cursor()
     cur.execute("""
@@ -785,13 +867,17 @@ def them_ung_phi(chuyen_id: int, item: UngPhiItem):
     VALUES (?, ?, ?, ?)
     """, (chuyen_id, item.ngay, item.so_tien, item.noi_dung))
     new_id = cur.lastrowid
-    ghi_nhat_ky(cur, "salan_ung_phi", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_tien": item.so_tien})
+    ghi_nhat_ky(cur, "salan_ung_phi", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_tien": item.so_tien}, nguoi_dung_id=current_user.username)
     con.commit()
     con.close()
     return {"message": "Đã thêm lần ứng phí", "id": new_id}
 
 @router.delete("/dau/{dau_id}")
-def xoa_do_dau(dau_id: int, ly_do: str = Query("Huỷ dòng đổ dầu", description="Lý do huỷ")):
+def xoa_do_dau(
+    dau_id: int,
+    ly_do: str = Query("Huỷ dòng đổ dầu", description="Lý do huỷ"),
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     """Xoá mềm dòng đổ dầu: Đánh dấu da_huy = 1 và ghi nhật ký."""
     con = get_con()
     cur = con.cursor()
@@ -803,22 +889,26 @@ def xoa_do_dau(dau_id: int, ly_do: str = Query("Huỷ dòng đổ dầu", descri
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute("""
     UPDATE salan_do_dau 
-    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = ?, huy_luc = ?
     WHERE id = ?
-    """, (ly_do, thoi_diem, dau_id))
+    """, (ly_do, current_user.username, thoi_diem, dau_id))
     
     ghi_nhat_ky(
         cur, "salan_do_dau", str(dau_id), "huy",
         gia_tri_cu={"chuyen_id": existing["chuyen_id"], "so_lit": existing["so_lit"], "tien_dau": existing["tien_dau"], "da_huy": 0},
         gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do},
-        nguoi_dung_id="Alex"
+        nguoi_dung_id=current_user.username
     )
     con.commit()
     con.close()
     return {"message": "Đã huỷ dòng dầu (xoá mềm, lưu nhật ký)"}
 
 @router.delete("/ung/{ung_id}")
-def xoa_ung_phi(ung_id: int, ly_do: str = Query("Huỷ dòng ứng phí", description="Lý do huỷ")):
+def xoa_ung_phi(
+    ung_id: int,
+    ly_do: str = Query("Huỷ dòng ứng phí", description="Lý do huỷ"),
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
     """Xoá mềm dòng ứng phí: Đánh dấu da_huy = 1 và ghi nhật ký."""
     con = get_con()
     cur = con.cursor()
@@ -830,31 +920,45 @@ def xoa_ung_phi(ung_id: int, ly_do: str = Query("Huỷ dòng ứng phí", descri
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     cur.execute("""
     UPDATE salan_ung_phi 
-    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = ?, huy_luc = ?
     WHERE id = ?
-    """, (ly_do, thoi_diem, ung_id))
+    """, (ly_do, current_user.username, thoi_diem, ung_id))
     
     ghi_nhat_ky(
         cur, "salan_ung_phi", str(ung_id), "huy",
         gia_tri_cu={"chuyen_id": existing["chuyen_id"], "so_tien": existing["so_tien"], "da_huy": 0},
         gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do},
-        nguoi_dung_id="Alex"
+        nguoi_dung_id=current_user.username
     )
     con.commit()
     con.close()
     return {"message": "Đã huỷ dòng ứng (xoá mềm, lưu nhật ký)"}
 
 @router.get("/tong-quan")
-def get_tong_quan(cong_ty: Optional[str] = None, thang: Optional[str] = None):
+def get_tong_quan(
+    cong_ty: Optional[str] = None, 
+    thang: Optional[str] = None,
+    current_user: models.User = Depends(auth.get_current_user)
+):
     """Báo cáo tổng quan tình hình sà lan & Lãi gộp (Alex + Ban giám đốc)."""
     con = get_con()
     cur = con.cursor()
     
+    allowed_companies = current_user.get_allowed_companies()
+    if allowed_companies is not None and cong_ty and cong_ty not in allowed_companies:
+        con.close()
+        raise HTTPException(status_code=403, detail=f"Bạn không có quyền xem dữ liệu công ty {cong_ty}")
+
     sql = "SELECT * FROM salan_chuyen WHERE da_huy = 0"
     params = []
     if cong_ty:
         sql += " AND cong_ty = ?"
         params.append(cong_ty)
+    elif allowed_companies is not None:
+        placeholders = ",".join("?" * len(allowed_companies))
+        sql += f" AND cong_ty IN ({placeholders})"
+        params.extend(allowed_companies)
+
     if thang:
         sql += " AND strftime('%Y-%m', ngay_nhan) = ?"
         params.append(thang)
@@ -887,19 +991,23 @@ def get_tong_quan(cong_ty: Optional[str] = None, thang: Optional[str] = None):
         tong_canh_bao += len(calc['canh_bao'])
         
     con.close()
-    return {
+    
+    is_nhap = current_user.get_salan_role() == "nhap_van_hanh"
+    res = {
         "tong_chuyen": tong_chuyen,
         "tong_san_luong_tan": round(tong_kl_giao / 1000.0, 2),
         "tong_cuoc_sa_lan": tong_cuoc_sa_lan,
         "tong_phai_tra_sa_lan": tong_phai_tra,
-        "tong_phai_thu_chu_hang": tong_phai_thu,
-        "tong_lai_gop": tong_lai_gop,
         "so_chuyen_chua_tra": chuyen_chua_tra,
         "so_canh_bao": tong_canh_bao
     }
+    if not is_nhap:
+        res["tong_phai_thu_chu_hang"] = tong_phai_thu
+        res["tong_lai_gop"] = tong_lai_gop
+    return res
 
 @router.post("/seed-du-lieu-chuan")
-def seed_du_lieu_chuan():
+def seed_du_lieu_chuan(current_user: models.User = Depends(auth.require_salan_role("admin"))):
     """Khởi tạo danh mục gốc và chuyến mẫu thực tế.
     CHỈ cho phép khi APP_ENV=dev VÀ database hoàn toàn chưa có chuyến nào."""
     app_env = os.environ.get("APP_ENV", "production").lower()

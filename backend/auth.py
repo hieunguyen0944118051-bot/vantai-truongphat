@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 import bcrypt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 import models
@@ -10,9 +10,9 @@ from database import get_db
 
 SECRET_KEY = "antigravity-transport-secret-key-2026-super-secure"
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 365 # 365 days (1 year permanent login)
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12 # 12 hours according to Lenh 2
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=False)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     if not plain_password or not hashed_password:
@@ -54,12 +54,26 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> models.User:
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.User:
+    """Xác thực người dùng từ Bearer Authorization header hoặc Cookie httpOnly."""
+    token = None
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+    if not token:
+        token = request.cookies.get("access_token")
+    if not token:
+        # Fallback query param for image signed urls / print views
+        token = request.query_params.get("token")
+
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Không thể xác thực thông tin đăng nhập",
+        detail="Chưa đăng nhập hoặc phiên làm việc đã hết hạn. Vui lòng đăng nhập lại!",
         headers={"WWW-Authenticate": "Bearer"},
     )
+    if not token:
+        raise credentials_exception
+
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username: str = payload.get("sub")
@@ -67,6 +81,7 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
             raise credentials_exception
     except JWTError:
         raise credentials_exception
+
     user = db.query(models.User).filter(models.User.username == username).first()
     if user is None:
         raise credentials_exception
@@ -83,3 +98,27 @@ def require_role(roles: list):
             )
         return current_user
     return role_checker
+
+def require_salan_role(*allowed_roles):
+    """Kiểm tra vai trò cho module sà lan (quan_tri, nhap_van_hanh, ke_toan, ban_giam_doc, chu_hang)."""
+    def checker(current_user: models.User = Depends(get_current_user)):
+        user_role = current_user.get_salan_role()
+        if user_role == "quan_tri":
+            return current_user
+        if user_role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Quyền hạn không đủ! Vai trò '{user_role}' không được phép truy cập chức năng này."
+            )
+        return current_user
+    return checker
+
+def require_salan_write_permission(current_user: models.User = Depends(get_current_user)):
+    """Chặn vai trò chỉ xem (ban_giam_doc) ghi dữ liệu."""
+    user_role = current_user.get_salan_role()
+    if user_role == "ban_giam_doc":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Ban Giám Đốc chỉ có quyền xem, không được thêm/sửa/xoá trực tiếp dữ liệu chuyến!"
+        )
+    return current_user
