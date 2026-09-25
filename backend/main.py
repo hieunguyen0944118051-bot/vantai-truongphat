@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from database import engine, Base, SessionLocal
 import models, auth
-from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, security
+from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, security, salan
 from security_firewall import SecurityFirewallMiddleware, firewall_manager
 
 try:
@@ -50,6 +50,7 @@ app.include_router(maintenance.router)
 app.include_router(assistant.router)
 app.include_router(gps.router)
 app.include_router(traffic_fines.router)
+app.include_router(salan.router)
 if weighbridge:
     app.include_router(weighbridge.router)
 
@@ -90,6 +91,13 @@ def serve_weighbridge_ui():
     if os.path.exists(wb_file):
         return FileResponse(wb_file)
     return FileResponse(os.path.join(static_path, "index.html"))
+
+@app.get("/salan")
+def serve_salan_ui():
+    salan_file = os.path.join(static_path, "salan.html")
+    if os.path.exists(salan_file):
+        return FileResponse(salan_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    return {"message": "Salan UI file not found"}
 
 @app.on_event("startup")
 def init_db():

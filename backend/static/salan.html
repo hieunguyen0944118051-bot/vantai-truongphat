@@ -1,0 +1,1470 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản Lý Vận Tải Sà Lan — Trường Phát Logistics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #f1f5f9; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    /* Quy ước màu đặc tả Mục 8 */
+    .field-input { background-color: #f0f7ff; border: 1.5px solid #3d85c6; color: #0f172a; }
+    .field-input:focus { outline: none; border-color: #1e40af; box-shadow: 0 0 0 2px rgba(61,133,198,0.25); }
+    .field-calc { background-color: #fff8f0; border: 1.5px solid #c25e00; color: #9a3412; font-weight: 600; }
+    @media print {
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
+      #print-area { position: absolute; left: 0; top: 0; width: 100%; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col">
+
+  <!-- TOP HEADER -->
+  <header class="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white shadow-lg sticky top-0 z-40 border-b border-blue-900/50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center shadow-inner text-2xl font-black">
+          🚢
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-white uppercase">Vận Tải Sà Lan — Trường Phát</h1>
+            <span class="text-xs bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-500/30">Bước 0 + 1</span>
+          </div>
+          <p class="text-xs text-slate-400">TP • TPL • Nguyên Khang — Quản lý Chuyến, Cước, Neo, Hao hụt & Lãi gộp</p>
+        </div>
+      </div>
+
+      <!-- ROLE SWITCHER & ACTIONS -->
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center bg-slate-800/80 rounded-lg p-1 border border-slate-700 text-xs">
+          <span class="text-slate-400 px-2 font-medium">Vai trò:</span>
+          <select id="userRole" onchange="changeRole()" class="bg-slate-900 text-amber-400 font-semibold rounded px-2 py-1 border border-slate-600 focus:outline-none">
+            <option value="quan_tri">👑 Alex (Quản trị)</option>
+            <option value="nhap_van_hanh">✍️ Mới / Hoa (Nhập vận hành)</option>
+            <option value="ke_toan">📊 Liễu / Hoa (Kế toán)</option>
+            <option value="ban_giam_doc">👁️ Ban Giám Đốc (Chỉ xem)</option>
+          </select>
+        </div>
+
+        <button onclick="openModalAddTrip()" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-3 py-2 rounded-lg shadow flex items-center space-x-1.5 transition">
+          <span>➕</span>
+          <span>Thêm Chuyến Mới</span>
+        </button>
+
+        <a href="/" class="text-xs text-slate-300 hover:text-white px-2 py-1 bg-slate-800 rounded border border-slate-700 transition">
+          Quay lại Hệ thống Xe
+        </a>
+      </div>
+    </div>
+
+    <!-- NAVIGATION TABS -->
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 flex space-x-2 border-t border-slate-800/60 overflow-x-auto text-xs font-semibold">
+      <button onclick="switchTab('trips')" id="tab-btn-trips" class="py-2.5 px-3 border-b-2 border-blue-400 text-blue-400 transition flex items-center space-x-1">
+        <span>📋</span><span>Sổ Chuyến Sà Lan</span>
+      </button>
+      <button onclick="switchTab('payment')" id="tab-btn-payment" class="py-2.5 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+        <span>💵</span><span>Thanh Toán & In Phiếu</span>
+      </button>
+      <button onclick="switchTab('customers')" id="tab-btn-customers" class="py-2.5 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1 role-finance-only">
+        <span>🏢</span><span>Công Nợ Chủ Hàng</span>
+      </button>
+      <button onclick="switchTab('summary')" id="tab-btn-summary" class="py-2.5 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1 role-admin-only">
+        <span>📈</span><span>Tổng Quan & Lãi Gộp</span>
+      </button>
+      <button onclick="switchTab('settings')" id="tab-btn-settings" class="py-2.5 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1">
+        <span>⚙️</span><span>Danh Mục & Định Mức</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- QUICK KPI CARDS (DỮ LIỆU TỔNG QUAN) -->
+  <section class="max-w-7xl mx-auto px-4 sm:px-6 pt-5 pb-1 w-full">
+    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Tổng số chuyến</p>
+        <p id="kpi-chuyen" class="text-xl font-bold text-slate-800 mono mt-0.5">0</p>
+        <p class="text-[10px] text-slate-400 mt-1"><span id="kpi-chua-tra" class="text-amber-600 font-bold">0</span> chưa trả xong</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Sản lượng giao</p>
+        <p id="kpi-san-luong" class="text-xl font-bold text-blue-700 mono mt-0.5">0 <span class="text-xs font-normal">tấn</span></p>
+        <p class="text-[10px] text-slate-400 mt-1">Chuẩn khối lượng giao</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Tổng cước sà lan</p>
+        <p id="kpi-cuoc-salan" class="text-lg font-bold text-slate-700 mono mt-0.5">0 ₫</p>
+        <p class="text-[10px] text-slate-400 mt-1">Trước VAT & neo</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Còn phải trả sà lan</p>
+        <p id="kpi-phai-tra" class="text-lg font-bold text-amber-700 mono mt-0.5">0 ₫</p>
+        <p class="text-[10px] text-slate-400 mt-1">Đã trừ dầu, ứng, phạt</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm role-finance-only">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Tổng phải thu C.Hàng</p>
+        <p id="kpi-phai-thu" class="text-lg font-bold text-emerald-700 mono mt-0.5">0 ₫</p>
+        <p class="text-[10px] text-slate-400 mt-1">Cước thu + Neo + VAT</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-sm role-admin-only">
+        <p class="text-[11px] font-semibold text-emerald-800 uppercase flex items-center justify-between">
+          <span>Lãi gộp ước tính</span>
+          <span>💰</span>
+        </p>
+        <p id="kpi-lai-gop" class="text-lg font-extrabold text-emerald-800 mono mt-0.5">0 ₫</p>
+        <p class="text-[10px] text-emerald-600 mt-1">Trước VAT (Alex & BGĐ)</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- MAIN CONTENT AREA -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-4 w-full flex-1">
+    
+    <!-- TAB 1: SỔ CHUYẾN SÀ LAN -->
+    <div id="tab-trips" class="space-y-4">
+      
+      <!-- TOOLBAR & FILTERS -->
+      <div class="bg-white p-3.5 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Công ty -->
+          <select id="filterCongTy" onchange="loadTrips()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium bg-slate-50">
+            <option value="">🏢 Tất cả công ty</option>
+            <option value="TP">Trường Phát (TP)</option>
+            <option value="TPL">Trường Phát Logistics (TPL)</option>
+            <option value="NK">Nguyên Khang (NK)</option>
+          </select>
+
+          <!-- Sà lan -->
+          <select id="filterSaLan" onchange="loadTrips()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium bg-slate-50">
+            <option value="">🚢 Tất cả sà lan</option>
+          </select>
+
+          <!-- Chủ hàng -->
+          <select id="filterChuHang" onchange="loadTrips()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium bg-slate-50">
+            <option value="">🏭 Tất cả chủ hàng</option>
+          </select>
+
+          <!-- Trạng thái -->
+          <select id="filterTrangThai" onchange="loadTrips()" class="border border-slate-300 rounded-lg px-2.5 py-1.5 font-medium bg-slate-50">
+            <option value="">⚡ Mọi trạng thái</option>
+            <option value="dang_chay">Đang chạy</option>
+            <option value="da_giao">Đã giao</option>
+            <option value="da_tra_sa_lan">Đã trả xong</option>
+          </select>
+        </div>
+
+        <div class="flex items-center space-x-2">
+          <button onclick="reSeedSampleData()" title="Khôi phục lại dữ liệu mẫu chuẩn (ĐT 26284-C01, SG 8888)" class="text-slate-600 hover:text-blue-700 bg-slate-100 hover:bg-slate-200 px-2.5 py-1.5 rounded-lg border border-slate-300 transition">
+            🔄 Nạp dữ liệu mẫu sổ
+          </button>
+          <span class="text-slate-400">|</span>
+          <span id="tripCountBadge" class="bg-blue-50 text-blue-700 font-bold px-2 py-1 rounded-md border border-blue-200">
+            0 chuyến
+          </span>
+        </div>
+      </div>
+
+      <!-- BẢNG DANH SÁCH CHUYẾN SÀ LAN -->
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[11px] border-b border-slate-200">
+                <th class="p-3">Mã Chuyến</th>
+                <th class="p-3">Ngày Nhận</th>
+                <th class="p-3">Sà Lan</th>
+                <th class="p-3">Chủ Hàng / Hàng</th>
+                <th class="p-3">Tuyến Vận Chuyển</th>
+                <th class="p-3 text-right">K/L Giao (kg)</th>
+                <th class="p-3 text-right">Cước Sà Lan</th>
+                <th class="p-3 text-right">Dầu & Ứng</th>
+                <th class="p-3 text-right">Hao Hụt / Thưởng</th>
+                <th class="p-3 text-right font-extrabold text-amber-900 bg-amber-50/60">Còn Phải Trả</th>
+                <th class="p-3 text-right role-finance-only text-emerald-900 bg-emerald-50/60">Phải Thu</th>
+                <th class="p-3 text-center">Trạng Thái</th>
+                <th class="p-3 text-center">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody id="tripTableBody" class="divide-y divide-slate-100 font-medium">
+              <!-- Render động -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- TAB 2: THANH TOÁN SÀ LAN & IN PHIẾU -->
+    <div id="tab-payment" class="hidden space-y-4">
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">Lập Phiếu Thanh Toán Sà Lan & In Phiếu (Mục 8 - Màn hình 5)</h3>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Chọn Sà Lan / Đối tác nhận tiền:</label>
+            <select id="paySelectSaLan" onchange="loadSaLanUnpaidTrips()" class="w-full border border-slate-300 rounded-lg p-2 font-medium bg-slate-50">
+              <option value="">-- Chọn Sà Lan Cần Thanh Toán --</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Số tiền thanh toán đợt này (VNĐ):</label>
+            <input type="number" id="payAmountInput" placeholder="Ví dụ: 50,000,000" class="w-full border border-slate-300 rounded-lg p-2 font-bold text-amber-700 mono">
+          </div>
+
+          <div class="flex items-end">
+            <button onclick="generatePaymentVoucher()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-2.5 rounded-lg shadow transition flex items-center justify-center space-x-1.5">
+              <span>🧾</span><span>Gợi Ý Phân Bổ & Xem Phiếu In</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- DANH SÁCH CHUYẾN CHƯA TRẢ CỦA SÀ LAN NÀY -->
+        <div class="mt-5 border-t border-slate-200 pt-4">
+          <h4 class="text-xs font-bold text-slate-700 uppercase mb-2">Các chuyến chưa trả của sà lan này:</h4>
+          <div id="unpaidTripsContainer" class="text-xs text-slate-500 italic">
+            Chưa chọn sà lan.
+          </div>
+        </div>
+      </div>
+
+      <!-- KHUNG BẢN IN PHIẾU THANH TOÁN CHUẨN A4 -->
+      <div id="print-area" class="bg-white p-8 rounded-xl border border-slate-300 shadow-md max-w-4xl mx-auto hidden">
+        <div class="border-b-2 border-slate-800 pb-4 mb-4 flex justify-between items-start">
+          <div>
+            <h2 class="text-base font-extrabold text-slate-900 uppercase">CÔNG TY TNHH VẬN TẢI TRƯỜNG PHÁT</h2>
+            <p class="text-xs text-slate-500">ĐC: TP. Hồ Chí Minh • MST: 0312345678 • Hotline: 0908.xxx.xxx</p>
+          </div>
+          <div class="text-right">
+            <p class="text-sm font-bold text-slate-800">PHIẾU THANH TOÁN CƯỚC SÀ LAN</p>
+            <p id="print-so-phieu" class="text-xs text-slate-500 mono">Số: PTT-2026/001</p>
+            <p id="print-ngay" class="text-xs text-slate-500">Ngày: 25/09/2026</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 text-xs mb-4">
+          <div>
+            <p><strong>Người nhận tiền:</strong> <span id="print-nguoi-nhan">Nguyễn Văn Hiệp</span></p>
+            <p><strong>Số hiệu sà lan:</strong> <span id="print-sa-lan" class="font-bold">ĐT 26284</span></p>
+            <p><strong>Số tài khoản:</strong> <span id="print-stk" class="mono">19034567890 (Techcombank)</span></p>
+          </div>
+          <div>
+            <p><strong>Đơn vị thanh toán:</strong> <span id="print-cong-ty">Công ty TNHH Vận tải Trường Phát</span></p>
+            <p><strong>Hình thức:</strong> Chuyển khoản ngân hàng</p>
+            <p><strong>Nội dung:</strong> Thanh toán tiền cước vận chuyển đường thủy</p>
+          </div>
+        </div>
+
+        <table class="w-full text-xs border border-slate-400 mb-4 border-collapse">
+          <thead>
+            <tr class="bg-slate-100 font-bold border-b border-slate-400 text-slate-700">
+              <th class="p-2 border-r border-slate-300">STT</th>
+              <th class="p-2 border-r border-slate-300">Mã Chuyến</th>
+              <th class="p-2 border-r border-slate-300">Ngày Giao</th>
+              <th class="p-2 border-r border-slate-300 text-right">K/L (Tấn)</th>
+              <th class="p-2 border-r border-slate-300 text-right">Tiền Cước</th>
+              <th class="p-2 border-r border-slate-300 text-right">Neo / Hỗ Trợ</th>
+              <th class="p-2 border-r border-slate-300 text-right">Trừ Dầu</th>
+              <th class="p-2 border-r border-slate-300 text-right">Trừ Ứng</th>
+              <th class="p-2 border-r border-slate-300 text-right">Bồi Thường</th>
+              <th class="p-2 text-right">Còn Lại</th>
+            </tr>
+          </thead>
+          <tbody id="print-table-body">
+            <!-- Dòng in -->
+          </tbody>
+          <tfoot>
+            <tr class="font-bold bg-slate-50 border-t-2 border-slate-800">
+              <td colspan="9" class="p-2 text-right">TỔNG CỘNG THANH TOÁN ĐỢT NÀY:</td>
+              <td id="print-tong-tien" class="p-2 text-right mono text-sm font-black text-slate-900">0 ₫</td>
+            </tr>
+          </tfoot>
+        </table>
+
+        <p class="text-xs italic mb-6">Số tiền viết bằng chữ: <span id="print-tien-chu" class="font-semibold text-slate-800">Không đồng</span>.</p>
+
+        <div class="grid grid-cols-4 gap-4 text-center text-xs mt-8 pt-4">
+          <div>
+            <p class="font-bold">NGƯỜI LẬP BIỂU</p>
+            <p class="text-[10px] text-slate-400 italic">(Ký, họ tên)</p>
+            <div class="h-16"></div>
+            <p class="font-semibold">Mới / Hoa</p>
+          </div>
+          <div>
+            <p class="font-bold">KẾ TOÁN</p>
+            <p class="text-[10px] text-slate-400 italic">(Ký, họ tên)</p>
+            <div class="h-16"></div>
+            <p class="font-semibold">Liễu / Hoa</p>
+          </div>
+          <div>
+            <p class="font-bold">BAN GIÁM ĐỐC</p>
+            <p class="text-[10px] text-slate-400 italic">(Duyệt chi)</p>
+            <div class="h-16"></div>
+            <p class="font-semibold">Alex Nguyễn</p>
+          </div>
+          <div>
+            <p class="font-bold">ĐẠI DIỆN SÀ LAN</p>
+            <p class="text-[10px] text-slate-400 italic">(Ký, xác nhận)</p>
+            <div class="h-16"></div>
+            <p class="font-semibold">Chủ sà lan</p>
+          </div>
+        </div>
+
+        <div class="mt-8 pt-4 border-t border-slate-200 flex justify-end no-print">
+          <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-4 py-2 rounded shadow transition flex items-center space-x-1.5 text-xs">
+            <span>🖨️</span><span>In Ngay (Khổ A4)</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 3: CÔNG NỢ CHỦ HÀNG -->
+    <div id="tab-customers" class="hidden space-y-4">
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-2">Bảng Kê Công Nợ Chủ Hàng (Phía Thu)</h3>
+        <p class="text-xs text-slate-500 mb-4">Quản lý cước thu, neo thu, bù trừ hao hụt và tiến độ xuất hoá đơn cho chủ hàng (CJ, Greenfeed, De Heus...).</p>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                <th class="p-3">Mã Chuyến</th>
+                <th class="p-3">Ngày Giao</th>
+                <th class="p-3">Chủ Hàng</th>
+                <th class="p-3">Hàng Hóa</th>
+                <th class="p-3 text-right">Sản Lượng (Tấn)</th>
+                <th class="p-3 text-right">Đơn Giá Thu</th>
+                <th class="p-3 text-right">Cước Thu</th>
+                <th class="p-3 text-right">Neo Thu</th>
+                <th class="p-3 text-right">VAT Thu</th>
+                <th class="p-3 text-right font-bold text-emerald-800 bg-emerald-50">TỔNG PHẢI THU</th>
+              </tr>
+            </thead>
+            <tbody id="customerTableBody" class="divide-y divide-slate-100 font-medium">
+              <!-- Render động -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 4: TỔNG QUAN & LÃI GỘP -->
+    <div id="tab-summary" class="hidden space-y-4">
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Báo Cáo Lãi Gộp Chuyến Sà Lan (Trước VAT)</h3>
+            <p class="text-xs text-slate-500">Chỉ hiển thị cho Alex & Ban Giám Đốc. Doanh thu cước thu trừ chi phí cước, neo, hỗ trợ sà lan.</p>
+          </div>
+          <span class="text-xs bg-amber-100 text-amber-800 px-2.5 py-1 rounded-full font-bold border border-amber-300">
+            🔒 Bảo mật cấp cao
+          </span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold uppercase text-[11px] border-b border-slate-200">
+                <th class="p-3">Mã Chuyến</th>
+                <th class="p-3">Sà Lan</th>
+                <th class="p-3">Chủ Hàng</th>
+                <th class="p-3 text-right">Thu Trước VAT (A)</th>
+                <th class="p-3 text-right">Chi Sà Lan Trước VAT (B)</th>
+                <th class="p-3 text-right font-extrabold text-emerald-700 bg-emerald-50">LÃI GỘP (A - B)</th>
+                <th class="p-3 text-center">Tỷ Suất Lãi</th>
+              </tr>
+            </thead>
+            <tbody id="summaryTableBody" class="divide-y divide-slate-100 font-medium">
+              <!-- Render động -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB 5: DANH MỤC & ĐỊNH MỨC -->
+    <div id="tab-settings" class="hidden space-y-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Đội sà lan -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <h4 class="text-xs font-bold text-slate-800 uppercase mb-2">Đội Sà Lan Đang Hoạt Động</h4>
+          <ul id="settingBargeList" class="space-y-2 text-xs divide-y divide-slate-100">
+            <!-- Render -->
+          </ul>
+        </div>
+
+        <!-- Chủ hàng & Định mức hao hụt -->
+        <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <h4 class="text-xs font-bold text-slate-800 uppercase mb-2">Chủ Hàng & Định Mức Hao Hụt</h4>
+          <ul id="settingCustomerList" class="space-y-2 text-xs divide-y divide-slate-100">
+            <!-- Render -->
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- MODAL: THẺ CHUYẾN SÀ LAN (NHẬP / SỬA CHI TIẾT) -->
+  <div id="tripModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-3 hidden overflow-y-auto">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col border border-slate-300">
+      
+      <!-- MODAL HEADER -->
+      <div class="px-6 py-4 bg-slate-900 text-white rounded-t-2xl flex items-center justify-between border-b border-slate-800">
+        <div class="flex items-center space-x-3">
+          <span class="text-2xl">🚢</span>
+          <div>
+            <h3 id="modalTitle" class="text-base font-bold text-white tracking-wide">THẺ CHUYẾN SÀ LAN</h3>
+            <p class="text-xs text-slate-400">
+              <span class="inline-block w-2.5 h-2.5 bg-[#3d85c6] rounded-sm mr-1"></span> Ô xanh: Nhập tay &nbsp;|&nbsp;
+              <span class="inline-block w-2.5 h-2.5 bg-[#c25e00] rounded-sm mr-1"></span> Ô cam: Hệ thống tự tính chuẩn từng đồng
+            </p>
+          </div>
+        </div>
+        <button onclick="closeModalTrip()" class="text-slate-400 hover:text-white text-xl font-bold p-1">✕</button>
+      </div>
+
+      <!-- MODAL BODY (FORM NHẬP LIỆU THEO TRÌNH TỰ NGHIỆP VỤ) -->
+      <form id="tripForm" onsubmit="saveTrip(event)" class="p-6 overflow-y-auto space-y-6 text-xs flex-1">
+        <input type="hidden" id="editTripId">
+
+        <!-- CẢNH BÁO NẾU CÓ -->
+        <div id="modalWarnings" class="hidden p-3 bg-red-50 border-l-4 border-red-500 rounded text-red-700 text-xs"></div>
+
+        <!-- KHỐI 1: THÔNG TIN CHUYẾN -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h4 class="font-bold text-slate-700 uppercase mb-3 text-[11px] tracking-wider flex items-center">
+            <span class="w-2 h-2 rounded-full bg-blue-600 mr-2"></span>
+            1. Thông Tin Chuyến & Phương Tiện
+          </h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Công ty:</label>
+              <select id="formCongTy" class="field-input w-full rounded-lg p-2 font-medium">
+                <option value="TP">Trường Phát (TP)</option>
+                <option value="TPL">Trường Phát Logistics (TPL)</option>
+                <option value="NK">Nguyên Khang (NK)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Số hiệu Sà lan:</label>
+              <select id="formSaLan" onchange="autoFillBargeInfo()" class="field-input w-full rounded-lg p-2 font-bold text-blue-900">
+                <!-- Nạp động -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Chủ hàng:</label>
+              <select id="formChuHang" onchange="autoFillCustomerParams()" class="field-input w-full rounded-lg p-2 font-bold text-slate-900">
+                <!-- Nạp động -->
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Loại hàng hoá:</label>
+              <select id="formLoaiHang" class="field-input w-full rounded-lg p-2 font-medium">
+                <!-- Nạp động -->
+              </select>
+            </div>
+            <div class="col-span-2">
+              <label class="block text-slate-600 font-semibold mb-1">Số lô / Tên tàu:</label>
+              <input type="text" id="formSoLoTau" placeholder="VD: Lô 12 - Tàu Ocean Queen" class="field-input w-full rounded-lg p-2">
+            </div>
+            <div class="col-span-2">
+              <label class="block text-slate-600 font-semibold mb-1">Ghi chú chuyến:</label>
+              <input type="text" id="formGhiChu" placeholder="Ghi chú về chuyến đi" class="field-input w-full rounded-lg p-2">
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 2 & 3: NHẬN HÀNG VÀ GIAO HÀNG (2 CỘT SONG SONG) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- NHẬN HÀNG -->
+          <div class="bg-blue-50/50 p-4 rounded-xl border border-blue-200">
+            <h4 class="font-bold text-blue-900 uppercase mb-3 text-[11px] tracking-wider">
+              2. Nhận Hàng (Bắt buộc)
+            </h4>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Ngày nhận:</label>
+                <input type="date" id="formNgayNhan" required onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2 font-medium">
+              </div>
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Nơi nhận:</label>
+                <select id="formNoiNhan" required class="field-input w-full rounded-lg p-2 font-medium">
+                  <!-- Nạp động -->
+                </select>
+              </div>
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Khối lượng nhận (kg):</label>
+                <input type="number" id="formKlNhan" required oninput="calculateFormLive()" placeholder="VD: 1,100,000" class="field-input w-full rounded-lg p-2 font-bold mono">
+              </div>
+            </div>
+          </div>
+
+          <!-- GIAO HÀNG -->
+          <div class="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200">
+            <h4 class="font-bold text-emerald-900 uppercase mb-3 text-[11px] tracking-wider">
+              3. Giao Hàng (Điền khi đã giao)
+            </h4>
+            <div class="space-y-3">
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Ngày giao:</label>
+                <input type="date" id="formNgayGiao" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2 font-medium">
+              </div>
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Nhà máy giao:</label>
+                <select id="formNhaMayGiao" class="field-input w-full rounded-lg p-2 font-medium">
+                  <!-- Nạp động -->
+                </select>
+              </div>
+              <div>
+                <label class="block text-slate-600 font-semibold mb-1">Khối lượng giao (kg):</label>
+                <input type="number" id="formKlGiao" oninput="calculateFormLive()" placeholder="VD: 1,098,070" class="field-input w-full rounded-lg p-2 font-bold mono">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 4: CƯỚC SÀ LAN & NEO -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h4 class="font-bold text-slate-700 uppercase mb-3 text-[11px] tracking-wider">
+            4. Cước Sà Lan & Tiền Neo
+          </h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Đơn giá cước (đ/tấn):</label>
+              <input type="number" id="formDonGiaCuoc" oninput="calculateFormLive()" placeholder="VD: 61,000" class="field-input w-full rounded-lg p-2 font-bold mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Thuế VAT sà lan:</label>
+              <select id="formVatPct" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2">
+                <option value="0">0%</option>
+                <option value="0.08">8%</option>
+                <option value="0.10">10%</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Thành tiền Cước (đ):</label>
+              <input type="text" id="calcCuoc" readonly class="field-calc w-full rounded-lg p-2 mono text-right">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Tiền VAT cước (đ):</label>
+              <input type="text" id="calcVatCuoc" readonly class="field-calc w-full rounded-lg p-2 mono text-right">
+            </div>
+
+            <!-- Neo -->
+            <div class="flex items-center pt-5">
+              <label class="flex items-center space-x-2 font-bold text-slate-700 cursor-pointer">
+                <input type="checkbox" id="formCoTinhNeo" onchange="calculateFormLive()" class="w-4 h-4 text-blue-600 rounded">
+                <span>Có tính tiền Neo?</span>
+              </label>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Đơn giá neo (đ/tấn/ngày):</label>
+              <input type="number" id="formDonGiaNeo" value="3000" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Ngày cho phép (ngày):</label>
+              <input type="number" id="formNgayChoPhep" value="2" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Tiền Neo sà lan (đ):</label>
+              <input type="text" id="calcTienNeo" readonly class="field-calc w-full rounded-lg p-2 mono text-right">
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 5: HỖ TRỢ, PHUN TRÙNG & HAO HỤT -->
+        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+          <h4 class="font-bold text-slate-700 uppercase mb-3 text-[11px] tracking-wider">
+            5. Hỗ Trợ, Phun Trùng, Hao Hụt & Thưởng/Bồi Thường
+          </h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Tiền Hỗ trợ (đ):</label>
+              <input type="number" id="formHoTro" value="0" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Ghi chú hỗ trợ:</label>
+              <input type="text" id="formGhiChuHoTro" placeholder="Lý do hỗ trợ" class="field-input w-full rounded-lg p-2">
+            </div>
+            <div class="flex items-center pt-5">
+              <label class="flex items-center space-x-2 font-bold text-slate-700 cursor-pointer">
+                <input type="checkbox" id="formCoPhunTrung" onchange="calculateFormLive()" class="w-4 h-4 text-blue-600 rounded">
+                <span>Có Phun trùng?</span>
+              </label>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Tiền Phun trùng (đ):</label>
+              <input type="text" id="calcTienPhunTrung" readonly class="field-calc w-full rounded-lg p-2 mono text-right">
+            </div>
+
+            <!-- Hao hụt -->
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Tỷ lệ hao hụt cho phép:</label>
+              <input type="number" step="0.0001" id="formHhChoPhep" value="0.0010" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Giá bồi thường (đ/kg):</label>
+              <input type="number" id="formGiaBoiThuong" value="7500" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Hụt vượt định mức (kg):</label>
+              <input type="text" id="calcHutVuot" readonly class="field-calc w-full rounded-lg p-2 mono text-right">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Bồi thường trừ cước (đ):</label>
+              <input type="text" id="calcBoiThuong" readonly class="field-calc w-full rounded-lg p-2 mono text-right text-red-700 font-bold">
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 6: ĐỔ DẦU & ỨNG PHÍ (DANH SÁCH NHIỀU LẦN) -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <!-- BẢNG DẦU -->
+          <div class="bg-amber-50/40 p-4 rounded-xl border border-amber-200">
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-bold text-amber-900 uppercase text-[11px]">Đổ Dầu Nhiều Lần</h4>
+              <button type="button" onclick="addFuelRowUI()" class="bg-amber-600 hover:bg-amber-500 text-white px-2 py-1 rounded text-[11px] font-semibold">
+                ➕ Thêm Lần Đổ Dầu
+              </button>
+            </div>
+            <div id="fuelRowsContainer" class="space-y-2">
+              <!-- Render động -->
+            </div>
+            <div class="mt-2 text-right font-bold text-amber-900">
+              Tổng tiền dầu: <span id="calcTongDau" class="mono">0</span> ₫
+            </div>
+          </div>
+
+          <!-- BẢNG ỨNG -->
+          <div class="bg-slate-100 p-4 rounded-xl border border-slate-300">
+            <div class="flex justify-between items-center mb-2">
+              <h4 class="font-bold text-slate-800 uppercase text-[11px]">Ứng Phí Nhiều Lần</h4>
+              <button type="button" onclick="addAdvanceRowUI()" class="bg-slate-700 hover:bg-slate-600 text-white px-2 py-1 rounded text-[11px] font-semibold">
+                ➕ Thêm Lần Ứng
+              </button>
+            </div>
+            <div id="advanceRowsContainer" class="space-y-2">
+              <!-- Render động -->
+            </div>
+            <div class="mt-2 text-right font-bold text-slate-900">
+              Tổng tiền ứng: <span id="calcTongUng" class="mono">0</span> ₫
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 7: TỔNG KẾT & CÒN LẠI PHẢI TRẢ SÀ LAN -->
+        <div class="bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 p-5 rounded-2xl border-2 border-amber-500/40 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <p class="text-xs font-bold text-amber-900 uppercase tracking-wider">CÒN LẠI PHẢI TRẢ SÀ LAN</p>
+            <p class="text-[11px] text-amber-800">= Cước + VAT + Neo + Hỗ trợ + Thưởng − Dầu − Ứng − Bồi thường</p>
+          </div>
+          <div class="text-right">
+            <p id="calcConLaiPhaiTra" class="text-2xl font-black text-amber-900 mono">0 ₫</p>
+            <div class="flex items-center space-x-2 mt-1">
+              <input type="text" id="formSoBangKe" placeholder="Số bảng kê (BK-2026-xxx)" class="field-input text-xs p-1.5 rounded">
+              <input type="text" id="formSoHoaDonVao" placeholder="Số HĐ sà lan xuất" class="field-input text-xs p-1.5 rounded">
+            </div>
+          </div>
+        </div>
+
+        <!-- KHỐI 8: PHÍA THU CHỦ HÀNG & LÃI GỘP (CHỈ QUẢN TRỊ & KẾ TOÁN) -->
+        <div class="bg-emerald-50/60 p-4 rounded-xl border border-emerald-300 role-finance-only">
+          <h4 class="font-bold text-emerald-900 uppercase mb-3 text-[11px] tracking-wider">
+            Phía Thu Chủ Hàng & Lãi Gộp Chuyến
+          </h4>
+          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Hình thức thu:</label>
+              <select id="formHinhThucThu" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2 font-medium">
+                <option value="theo_tan">Theo tấn thực tế</option>
+                <option value="tron_lo">Trọn lô</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Đơn giá thu (đ/tấn):</label>
+              <input type="number" id="formDonGiaThu" oninput="calculateFormLive()" placeholder="VD: 75,000" class="field-input w-full rounded-lg p-2 font-bold mono">
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">VAT thu %:</label>
+              <select id="formVatThuPct" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2">
+                <option value="0.08">8%</option>
+                <option value="0.10">10%</option>
+                <option value="0">0%</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">Xông trùng thu (đ):</label>
+              <input type="number" id="formXongTrungThu" value="0" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
+            </div>
+
+            <div>
+              <label class="block text-slate-600 font-semibold mb-1">TỔNG PHẢI THU (đ):</label>
+              <input type="text" id="calcPhaiThu" readonly class="field-calc w-full rounded-lg p-2 mono text-right font-extrabold text-emerald-800 bg-emerald-100/50">
+            </div>
+            <div class="col-span-3 role-admin-only">
+              <label class="block text-emerald-900 font-bold mb-1">LÃI GỘP CHUYẾN (Trước VAT — Alex & BGĐ):</label>
+              <input type="text" id="calcLaiGop" readonly class="w-full rounded-lg p-2 mono text-right font-black text-emerald-950 bg-emerald-200/60 border border-emerald-400 text-sm">
+            </div>
+          </div>
+        </div>
+
+        <!-- MODAL FOOTER BUTTONS -->
+        <div class="flex justify-end space-x-3 pt-3 border-t border-slate-200">
+          <button type="button" onclick="closeModalTrip()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg transition">
+            Huỷ bỏ
+          </button>
+          <button type="submit" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-lg shadow-lg transition">
+            💾 Lưu Chuyến Sà Lan
+          </button>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    // TOÀN BỘ LOGIC TÍNH TOÁN & GIAO DIỆN PHẦN MỀM SÀ LAN
+    let allTrips = [];
+    let catalogs = {};
+    let currentRole = 'quan_tri';
+
+    const fmtVND = v => (v || v === 0) ? new Intl.NumberFormat('vi-VN').format(Math.round(v)) + ' ₫' : '—';
+    const fmtNum = v => (v || v === 0) ? new Intl.NumberFormat('vi-VN').format(v) : '0';
+
+    async function initApp() {
+      await loadCatalogs();
+      await loadTrips();
+      changeRole();
+    }
+
+    function changeRole() {
+      currentRole = document.getElementById('userRole').value;
+      const adminElements = document.querySelectorAll('.role-admin-only');
+      const financeElements = document.querySelectorAll('.role-finance-only');
+
+      if (currentRole === 'nhap_van_hanh') {
+        adminElements.forEach(el => el.classList.add('hidden'));
+        financeElements.forEach(el => el.classList.add('hidden'));
+      } else if (currentRole === 'ke_toan') {
+        adminElements.forEach(el => el.classList.add('hidden'));
+        financeElements.forEach(el => el.classList.remove('hidden'));
+      } else {
+        // quan_tri, ban_giam_doc
+        adminElements.forEach(el => el.classList.remove('hidden'));
+        financeElements.forEach(el => el.classList.remove('hidden'));
+      }
+    }
+
+    function switchTab(tab) {
+      ['trips', 'payment', 'customers', 'summary', 'settings'].forEach(t => {
+        const el = document.getElementById('tab-' + t);
+        const btn = document.getElementById('tab-btn-' + t);
+        if (el) el.classList.toggle('hidden', t !== tab);
+        if (btn) {
+          if (t === tab) {
+            btn.className = "py-2.5 px-3 border-b-2 border-blue-400 text-blue-400 transition flex items-center space-x-1 font-bold";
+          } else {
+            btn.className = "py-2.5 px-3 border-b-2 border-transparent text-slate-400 hover:text-slate-200 transition flex items-center space-x-1";
+          }
+        }
+      });
+      if (tab === 'payment') renderPaymentTab();
+      if (tab === 'customers') renderCustomerTab();
+      if (tab === 'summary') renderSummaryTab();
+      if (tab === 'settings') renderSettingsTab();
+    }
+
+    async function loadCatalogs() {
+      try {
+        const res = await fetch('/api/salan/danh-muc');
+        catalogs = await res.json();
+        
+        // Nạp select sà lan
+        const saLanOptions = '<option value="">-- Chọn Sà Lan --</option>' + 
+          catalogs.phuong_tien.map(p => `<option value="${p.ma}">${p.ma} (${p.phan_loai_sa_lan || 'Sà lan'})</option>`).join('');
+        document.getElementById('formSaLan').innerHTML = saLanOptions;
+        document.getElementById('filterSaLan').innerHTML = '<option value="">🚢 Tất cả sà lan</option>' + 
+          catalogs.phuong_tien.map(p => `<option value="${p.ma}">${p.ma}</option>`).join('');
+        document.getElementById('paySelectSaLan').innerHTML = saLanOptions;
+
+        // Nạp select chủ hàng
+        const chuHangOptions = '<option value="">-- Chọn Chủ Hàng --</option>' + 
+          catalogs.chu_hang.map(c => `<option value="${c.ma}">${c.ten_chuan}</option>`).join('');
+        document.getElementById('formChuHang').innerHTML = chuHangOptions;
+        document.getElementById('filterChuHang').innerHTML = '<option value="">🏭 Tất cả chủ hàng</option>' + 
+          catalogs.chu_hang.map(c => `<option value="${c.ma}">${c.ten_chuan}</option>`).join('');
+
+        // Nạp select loại hàng
+        document.getElementById('formLoaiHang').innerHTML = 
+          catalogs.loai_hang.map(l => `<option value="${l.ma}">${l.ten}</option>`).join('');
+
+        // Nạp địa điểm
+        const ddOptions = catalogs.dia_diem.map(d => `<option value="${d.ma}">${d.ten} (${d.tinh || ''})</option>`).join('');
+        document.getElementById('formNoiNhan').innerHTML = '<option value="">-- Chọn Nơi Nhận --</option>' + ddOptions;
+        document.getElementById('formNhaMayGiao').innerHTML = '<option value="">-- Chọn Nhà Máy Giao --</option>' + ddOptions;
+      } catch (err) {
+        console.error("Lỗi tải danh mục:", err);
+      }
+    }
+
+    async function loadTrips() {
+      const congTy = document.getElementById('filterCongTy').value;
+      const saLan = document.getElementById('filterSaLan').value;
+      const chuHang = document.getElementById('filterChuHang').value;
+      const trangThai = document.getElementById('filterTrangThai').value;
+
+      let url = '/api/salan/chuyen?';
+      if (congTy) url += `cong_ty=${encodeURIComponent(congTy)}&`;
+      if (saLan) url += `sa_lan=${encodeURIComponent(saLan)}&`;
+      if (chuHang) url += `chu_hang=${encodeURIComponent(chuHang)}&`;
+      if (trangThai) url += `trang_thai=${encodeURIComponent(trangThai)}&`;
+
+      try {
+        const res = await fetch(url);
+        allTrips = await res.json();
+        renderTripTable();
+        updateKpis();
+      } catch (err) {
+        console.error("Lỗi tải danh sách chuyến:", err);
+      }
+    }
+
+    function renderTripTable() {
+      const tbody = document.getElementById('tripTableBody');
+      document.getElementById('tripCountBadge').innerText = `${allTrips.length} chuyến`;
+
+      if (allTrips.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="13" class="p-8 text-center text-slate-400 italic">Chưa có chuyến sà lan nào. Bấm "+ Thêm Chuyến Mới" hoặc "Nạp dữ liệu mẫu sổ" để bắt đầu!</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = allTrips.map(t => {
+        const warns = t.canh_bao || [];
+        const warnBadges = warns.map(w => `<span class="inline-block bg-red-100 text-red-800 text-[10px] font-bold px-1.5 py-0.5 rounded border border-red-300" title="${w.noi_dung}">⚠️ ${w.ma}</span>`).join(' ');
+
+        let statusBadge = `<span class="bg-blue-100 text-blue-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Đang chạy</span>`;
+        if (t.trang_thai === 'da_giao') statusBadge = `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Đã giao</span>`;
+        if (t.da_tra_tien) statusBadge = `<span class="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Đã thanh toán</span>`;
+
+        return `
+          <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-3">
+              <span class="font-extrabold text-blue-900 mono">${t.ma_chuyen}</span>
+              <div class="text-[10px] text-slate-400">${t.cong_ty} • #${t.so_thu_tu}</div>
+              ${warnBadges}
+            </td>
+            <td class="p-3 mono">${t.ngay_nhan || '—'}</td>
+            <td class="p-3 font-bold text-slate-800">${t.phuong_tien_ma}</td>
+            <td class="p-3">
+              <div class="font-semibold text-slate-800">${t.chu_hang_ma}</div>
+              <div class="text-[10px] text-slate-400">${t.loai_hang_ma || ''} ${t.so_lo_tau ? `(${t.so_lo_tau})` : ''}</div>
+            </td>
+            <td class="p-3">
+              <span class="text-slate-600">${t.noi_nhan_ma}</span> ➔ <span class="text-slate-800 font-semibold">${t.nha_may_giao_ma || 'Chưa giao'}</span>
+            </td>
+            <td class="p-3 text-right mono font-bold">${t.kl_giao_kg ? fmtNum(t.kl_giao_kg) : '—'}</td>
+            <td class="p-3 text-right mono">${fmtVND(t.cuoc)}</td>
+            <td class="p-3 text-right mono text-slate-600">
+              <div>Dầu: ${fmtVND(t.tien_dau)}</div>
+              <div>Ứng: ${fmtVND(t.tien_ung)}</div>
+            </td>
+            <td class="p-3 text-right mono">
+              <div>Hụt: ${t.hao_hut_kg ? fmtNum(t.hao_hut_kg) + ' kg' : '0 kg'}</div>
+              ${t.boi_thuong > 0 ? `<div class="text-red-600 font-bold">Phạt: -${fmtVND(t.boi_thuong)}</div>` : ''}
+              ${t.tien_thuong > 0 ? `<div class="text-emerald-600 font-bold">Thưởng: +${fmtVND(t.tien_thuong)}</div>` : ''}
+            </td>
+            <td class="p-3 text-right mono font-extrabold text-amber-900 bg-amber-50/50">
+              ${fmtVND(t.con_lai_phai_tra)}
+            </td>
+            <td class="p-3 text-right mono font-bold text-emerald-900 bg-emerald-50/50 role-finance-only">
+              ${fmtVND(t.phai_thu)}
+            </td>
+            <td class="p-3 text-center">${statusBadge}</td>
+            <td class="p-3 text-center space-x-1">
+              <button onclick="openModalEditTrip(${t.id})" class="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded border border-slate-300 font-semibold transition" title="Sửa chuyến">
+                ✏️ Sửa
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+      changeRole();
+    }
+
+    function updateKpis() {
+      let klGiao = 0, cuoc = 0, phaiTra = 0, phaiThu = 0, laiGop = 0, chuaTra = 0;
+      allTrips.forEach(t => {
+        klGiao += (t.kl_giao_kg || 0);
+        cuoc += (t.cuoc || 0);
+        phaiTra += (t.con_lai_phai_tra || 0);
+        phaiThu += (t.phai_thu || 0);
+        laiGop += (t.lai_gop || 0);
+        if (!t.da_tra_tien) chuaTra++;
+      });
+
+      document.getElementById('kpi-chuyen').innerText = allTrips.length;
+      document.getElementById('kpi-chua-tra').innerText = chuaTra;
+      document.getElementById('kpi-san-luong').innerHTML = `${fmtNum(Math.round(klGiao / 1000))} <span class="text-xs font-normal">tấn</span>`;
+      document.getElementById('kpi-cuoc-salan').innerText = fmtVND(cuoc);
+      document.getElementById('kpi-phai-tra').innerText = fmtVND(phaiTra);
+      document.getElementById('kpi-phai-thu').innerText = fmtVND(phaiThu);
+      document.getElementById('kpi-lai-gop').innerText = fmtVND(laiGop);
+    }
+
+    // FORM THẺ CHUYẾN & TÍNH TOÁN REAL-TIME
+    let currentFuelList = [];
+    let currentAdvanceList = [];
+
+    function openModalAddTrip() {
+      document.getElementById('editTripId').value = '';
+      document.getElementById('modalTitle').innerText = 'THÊM MỚI CHUYẾN SÀ LAN';
+      document.getElementById('tripForm').reset();
+      currentFuelList = [];
+      currentAdvanceList = [];
+      renderFuelRows();
+      renderAdvanceRows();
+      calculateFormLive();
+      document.getElementById('tripModal').classList.remove('hidden');
+    }
+
+    async function openModalEditTrip(id) {
+      try {
+        const res = await fetch(`/api/salan/chuyen/${id}`);
+        const t = await res.json();
+        
+        document.getElementById('editTripId').value = t.id;
+        document.getElementById('modalTitle').innerText = `SỬA THẺ CHUYẾN: ${t.ma_chuyen}`;
+        
+        document.getElementById('formCongTy').value = t.cong_ty || 'TP';
+        document.getElementById('formSaLan').value = t.phuong_tien_ma;
+        document.getElementById('formChuHang').value = t.chu_hang_ma;
+        document.getElementById('formLoaiHang').value = t.loai_hang_ma || '';
+        document.getElementById('formSoLoTau').value = t.so_lo_tau || '';
+        document.getElementById('formGhiChu').value = t.ghi_chu || '';
+
+        document.getElementById('formNgayNhan').value = t.ngay_nhan || '';
+        document.getElementById('formNoiNhan').value = t.noi_nhan_ma || '';
+        document.getElementById('formKlNhan').value = t.kl_nhan_kg || '';
+
+        document.getElementById('formNgayGiao').value = t.ngay_giao || '';
+        document.getElementById('formNhaMayGiao').value = t.nha_may_giao_ma || '';
+        document.getElementById('formKlGiao').value = t.kl_giao_kg || '';
+
+        document.getElementById('formDonGiaCuoc').value = t.don_gia_cuoc || 0;
+        document.getElementById('formVatPct').value = t.vat_pct || 0;
+        document.getElementById('formCoTinhNeo').checked = !!t.co_tinh_neo;
+        document.getElementById('formDonGiaNeo').value = t.don_gia_neo || 3000;
+        document.getElementById('formNgayChoPhep').value = t.ngay_cho_phep || 2;
+
+        document.getElementById('formHoTro').value = t.ho_tro || 0;
+        document.getElementById('formGhiChuHoTro').value = t.ghi_chu_ho_tro || '';
+        document.getElementById('formCoPhunTrung').checked = !!t.co_phun_trung;
+
+        document.getElementById('formHhChoPhep').value = t.hh_cho_phep_pct || 0.0010;
+        document.getElementById('formGiaBoiThuong').value = t.gia_boi_thuong || 0;
+
+        document.getElementById('formSoBangKe').value = t.so_bang_ke || '';
+        document.getElementById('formSoHoaDonVao').value = t.so_hoa_don_dau_vao || '';
+
+        document.getElementById('formHinhThucThu').value = t.hinh_thuc_thu || 'theo_tan';
+        document.getElementById('formDonGiaThu').value = t.don_gia_thu || 0;
+        document.getElementById('formVatThuPct').value = t.vat_pct_thu || 0.08;
+        document.getElementById('formXongTrungThu').value = t.xong_trung_thu || 0;
+
+        currentFuelList = t.do_dau || [];
+        currentAdvanceList = t.ung_phi || [];
+        renderFuelRows();
+        renderAdvanceRows();
+
+        calculateFormLive();
+        document.getElementById('tripModal').classList.remove('hidden');
+      } catch (err) {
+        alert("Lỗi tải chi tiết chuyến!");
+      }
+    }
+
+    function closeModalTrip() {
+      document.getElementById('tripModal').classList.add('hidden');
+    }
+
+    function addFuelRowUI() {
+      const today = document.getElementById('formNgayNhan').value || new Date().toISOString().slice(0, 10);
+      currentFuelList.push({ ngay: today, so_lit: 400, gia_dau: 19000, tien_dau: 7600000, ghi_chu: 'Cây dầu' });
+      renderFuelRows();
+      calculateFormLive();
+    }
+
+    function removeFuelRowUI(idx) {
+      currentFuelList.splice(idx, 1);
+      renderFuelRows();
+      calculateFormLive();
+    }
+
+    function renderFuelRows() {
+      const c = document.getElementById('fuelRowsContainer');
+      if (currentFuelList.length === 0) {
+        c.innerHTML = '<p class="text-slate-400 italic text-[11px]">Chưa có lần đổ dầu nào.</p>';
+        return;
+      }
+      c.innerHTML = currentFuelList.map((f, i) => `
+        <div class="flex items-center space-x-1.5 bg-white p-2 rounded-lg border border-amber-200">
+          <input type="date" value="${f.ngay}" onchange="currentFuelList[${i}].ngay=this.value" class="field-input p-1 rounded text-xs w-28">
+          <input type="number" value="${f.so_lit}" oninput="currentFuelList[${i}].so_lit=Number(this.value); currentFuelList[${i}].tien_dau=Math.round(this.value*currentFuelList[${i}].gia_dau); calculateFormLive()" placeholder="Lít" class="field-input p-1 rounded text-xs w-20 mono">
+          <span class="text-slate-400">lít x</span>
+          <input type="number" value="${f.gia_dau}" oninput="currentFuelList[${i}].gia_dau=Number(this.value); currentFuelList[${i}].tien_dau=Math.round(this.value*currentFuelList[${i}].so_lit); calculateFormLive()" placeholder="Giá" class="field-input p-1 rounded text-xs w-20 mono">
+          <span class="text-slate-400">=</span>
+          <span class="mono font-bold text-amber-800 text-xs">${fmtNum(f.tien_dau || (f.so_lit * f.gia_dau))}đ</span>
+          <button type="button" onclick="removeFuelRowUI(${i})" class="text-red-500 font-bold px-1.5">✕</button>
+        </div>
+      `).join('');
+    }
+
+    function addAdvanceRowUI() {
+      const today = document.getElementById('formNgayNhan').value || new Date().toISOString().slice(0, 10);
+      currentAdvanceList.push({ ngay: today, so_tien: 5000000, noi_dung: 'Ứng phí' });
+      renderAdvanceRows();
+      calculateFormLive();
+    }
+
+    function removeAdvanceRowUI(idx) {
+      currentAdvanceList.splice(idx, 1);
+      renderAdvanceRows();
+      calculateFormLive();
+    }
+
+    function renderAdvanceRows() {
+      const c = document.getElementById('advanceRowsContainer');
+      if (currentAdvanceList.length === 0) {
+        c.innerHTML = '<p class="text-slate-400 italic text-[11px]">Chưa có lần ứng phí nào.</p>';
+        return;
+      }
+      c.innerHTML = currentAdvanceList.map((a, i) => `
+        <div class="flex items-center space-x-1.5 bg-white p-2 rounded-lg border border-slate-200">
+          <input type="date" value="${a.ngay}" onchange="currentAdvanceList[${i}].ngay=this.value" class="field-input p-1 rounded text-xs w-28">
+          <input type="number" value="${a.so_tien}" oninput="currentAdvanceList[${i}].so_tien=Number(this.value); calculateFormLive()" placeholder="Tiền ứng" class="field-input p-1 rounded text-xs w-28 mono font-bold">
+          <input type="text" value="${a.noi_dung || ''}" onchange="currentAdvanceList[${i}].noi_dung=this.value" placeholder="Nội dung ứng" class="field-input p-1 rounded text-xs flex-1">
+          <button type="button" onclick="removeAdvanceRowUI(${i})" class="text-red-500 font-bold px-1.5">✕</button>
+        </div>
+      `).join('');
+    }
+
+    // TÍNH TOÁN CÔNG THỨC TRỰC TIẾP TRÊN FORM
+    function calculateFormLive() {
+      const klNhan = Number(document.getElementById('formKlNhan').value) || 0;
+      const klGiao = Number(document.getElementById('formKlGiao').value) || 0;
+      const donGiaCuoc = Number(document.getElementById('formDonGiaCuoc').value) || 0;
+      const vatPct = Number(document.getElementById('formVatPct').value) || 0;
+
+      const ngayNhan = document.getElementById('formNgayNhan').value;
+      const ngayGiao = document.getElementById('formNgayGiao').value;
+
+      let ngayThucTe = 0;
+      if (ngayNhan && ngayGiao) {
+        const dN = new Date(ngayNhan);
+        const dG = new Date(ngayGiao);
+        ngayThucTe = Math.max(0, Math.round((dG - dN) / (1000 * 60 * 60 * 24)));
+      }
+
+      const T = klGiao / 1000;
+      const cuoc = Math.round(T * donGiaCuoc);
+      const vatCuoc = Math.round(cuoc * vatPct);
+
+      document.getElementById('calcCuoc').value = fmtNum(cuoc) + ' ₫';
+      document.getElementById('calcVatCuoc').value = fmtNum(vatCuoc) + ' ₫';
+
+      // Neo
+      const coTinhNeo = document.getElementById('formCoTinhNeo').checked;
+      const donGiaNeo = Number(document.getElementById('formDonGiaNeo').value) || 3000;
+      const ngayChoPhep = Number(document.getElementById('formNgayChoPhep').value) || 2;
+      const ngayNeo = Math.max(0, ngayThucTe - ngayChoPhep);
+      const tienNeo = coTinhNeo ? Math.round(T * donGiaNeo * ngayNeo) : 0;
+      document.getElementById('calcTienNeo').value = fmtNum(tienNeo) + ' ₫';
+
+      // Phun trùng & Hỗ trợ
+      const hoTro = Number(document.getElementById('formHoTro').value) || 0;
+      const coPhunTrung = document.getElementById('formCoPhunTrung').checked;
+      const tienPhunTrung = coPhunTrung ? Math.round(T * 3000) : 0;
+      document.getElementById('calcTienPhunTrung').value = fmtNum(tienPhunTrung) + ' ₫';
+
+      // Dầu & Ứng
+      const tongDau = currentFuelList.reduce((s, f) => s + (Number(f.so_lit) * Number(f.gia_dau)), 0);
+      const tongUng = currentAdvanceList.reduce((s, a) => s + Number(a.so_tien), 0);
+      document.getElementById('calcTongDau').innerText = fmtNum(tongDau);
+      document.getElementById('calcTongUng').innerText = fmtNum(tongUng);
+
+      // Hao hụt & Bồi thường
+      const hhChoPhep = Number(document.getElementById('formHhChoPhep').value) || 0.0010;
+      const giaBoiThuong = Number(document.getElementById('formGiaBoiThuong').value) || 0;
+      
+      let haoHutKg = 0, hutVuotKg = 0, boiThuong = 0;
+      if (ngayGiao && klGiao > 0) {
+        haoHutKg = klNhan - klGiao;
+        const mucChoPhepKg = Math.round(klNhan * hhChoPhep);
+        hutVuotKg = Math.max(0, haoHutKg - mucChoPhepKg);
+        boiThuong = Math.round(hutVuotKg * giaBoiThuong);
+      }
+      document.getElementById('calcHutVuot').value = fmtNum(hutVuotKg) + ' kg';
+      document.getElementById('calcBoiThuong').value = fmtNum(boiThuong) + ' ₫';
+
+      // Còn lại phải trả
+      let conLai = 0;
+      if (ngayGiao && klGiao > 0) {
+        conLai = cuoc + vatCuoc + tienNeo + hoTro + tienPhunTrung - tongDau - tongUng - boiThuong;
+      } else {
+        conLai = hoTro - tongDau - tongUng;
+      }
+      document.getElementById('calcConLaiPhaiTra').innerText = fmtVND(conLai);
+
+      // Phía thu
+      const hinhThucThu = document.getElementById('formHinhThucThu').value;
+      const donGiaThu = Number(document.getElementById('formDonGiaThu').value) || 0;
+      const vatThuPct = Number(document.getElementById('formVatThuPct').value) || 0.08;
+      const xongTrungThu = Number(document.getElementById('formXongTrungThu').value) || 0;
+
+      const cuocThu = Math.round(T * donGiaThu);
+      const vatThu = Math.round(cuocThu * vatThuPct);
+      const neoThu = Math.round(T * 4000 * Math.max(0, ngayThucTe - 2));
+      const phaiThu = cuocThu + vatThu + neoThu + xongTrungThu;
+      document.getElementById('calcPhaiThu').value = fmtNum(phaiThu) + ' ₫';
+
+      // Lãi gộp
+      const thuTruocVat = cuocThu + neoThu + xongTrungThu;
+      const chiTruocVat = cuoc + tienNeo + hoTro + tienPhunTrung - boiThuong;
+      const laiGop = (ngayGiao && klGiao > 0) ? (thuTruocVat - chiTruocVat) : 0;
+      document.getElementById('calcLaiGop').value = fmtNum(laiGop) + ' ₫';
+    }
+
+    async function saveTrip(e) {
+      e.preventDefault();
+      const id = document.getElementById('editTripId').value;
+      
+      const payload = {
+        cong_ty: document.getElementById('formCongTy').value,
+        phuong_tien_ma: document.getElementById('formSaLan').value,
+        chu_hang_ma: document.getElementById('formChuHang').value,
+        loai_hang_ma: document.getElementById('formLoaiHang').value,
+        so_lo_tau: document.getElementById('formSoLoTau').value,
+        ghi_chu: document.getElementById('formGhiChu').value,
+        
+        ngay_nhan: document.getElementById('formNgayNhan').value,
+        noi_nhan_ma: document.getElementById('formNoiNhan').value,
+        kl_nhan_kg: Number(document.getElementById('formKlNhan').value),
+        
+        ngay_giao: document.getElementById('formNgayGiao').value || null,
+        nha_may_giao_ma: document.getElementById('formNhaMayGiao').value || null,
+        kl_giao_kg: Number(document.getElementById('formKlGiao').value) || 0,
+        
+        don_gia_cuoc: Number(document.getElementById('formDonGiaCuoc').value) || 0,
+        vat_pct: Number(document.getElementById('formVatPct').value) || 0,
+        co_tinh_neo: document.getElementById('formCoTinhNeo').checked,
+        don_gia_neo: Number(document.getElementById('formDonGiaNeo').value) || 3000,
+        ngay_cho_phep: Number(document.getElementById('formNgayChoPhep').value) || 2,
+        
+        ho_tro: Number(document.getElementById('formHoTro').value) || 0,
+        ghi_chu_ho_tro: document.getElementById('formGhiChuHoTro').value,
+        co_phun_trung: document.getElementById('formCoPhunTrung').checked,
+        don_gia_phun_trung: 3000,
+        
+        hh_cho_phep_pct: Number(document.getElementById('formHhChoPhep').value) || 0.0010,
+        gia_boi_thuong: Number(document.getElementById('formGiaBoiThuong').value) || 0,
+        
+        so_bang_ke: document.getElementById('formSoBangKe').value,
+        so_hoa_don_dau_vao: document.getElementById('formSoHoaDonVao').value,
+        
+        hinh_thuc_thu: document.getElementById('formHinhThucThu').value,
+        don_gia_thu: Number(document.getElementById('formDonGiaThu').value) || 0,
+        vat_pct_thu: Number(document.getElementById('formVatThuPct').value) || 0.08,
+        xong_trung_thu: Number(document.getElementById('formXongTrungThu').value) || 0,
+        nguoi_nhap: 'Alex'
+      };
+
+      try {
+        let tripId = id;
+        if (id) {
+          const res = await fetch(`/api/salan/chuyen/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const resData = await res.json();
+          if (!res.ok) throw new Error(resData.detail || 'Lỗi lưu chuyến');
+        } else {
+          const res = await fetch('/api/salan/chuyen', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          });
+          const resData = await res.json();
+          if (!res.ok) throw new Error(resData.detail || 'Lỗi tạo chuyến');
+          tripId = resData.id;
+        }
+
+        // Lưu danh sách dầu & ứng
+        for (const f of currentFuelList) {
+          if (!f.id) {
+            await fetch(`/api/salan/chuyen/${tripId}/dau`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ngay: f.ngay, so_lit: Number(f.so_lit), gia_dau: Number(f.gia_dau), ghi_chu: f.ghi_chu })
+            });
+          }
+        }
+        for (const a of currentAdvanceList) {
+          if (!a.id) {
+            await fetch(`/api/salan/chuyen/${tripId}/ung`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ngay: a.ngay, so_tien: Number(a.so_tien), noi_dung: a.noi_dung })
+            });
+          }
+        }
+
+        alert('✅ Đã lưu chuyến sà lan thành công!');
+        closeModalTrip();
+        loadTrips();
+      } catch (err) {
+        alert('❌ ' + err.message);
+      }
+    }
+
+    async function reSeedSampleData() {
+      if (!confirm('Khôi phục danh mục và nạp lại chuyến chuẩn ĐT 26284-C01 khớp sổ?')) return;
+      try {
+        const res = await fetch('/api/salan/seed-du-lieu-chuan', { method: 'POST' });
+        const data = await res.json();
+        alert(data.message);
+        loadTrips();
+      } catch (err) {
+        alert('Lỗi nạp dữ liệu');
+      }
+    }
+
+    // TAB THANH TOÁN SÀ LAN & IN PHIẾU
+    let currentBargeUnpaidTrips = [];
+
+    function renderPaymentTab() {
+      // Nothing special here initially
+    }
+
+    function loadSaLanUnpaidTrips() {
+      const saLan = document.getElementById('paySelectSaLan').value;
+      if (!saLan) {
+        document.getElementById('unpaidTripsContainer').innerHTML = 'Chưa chọn sà lan.';
+        return;
+      }
+
+      currentBargeUnpaidTrips = allTrips.filter(t => t.phuong_tien_ma === saLan && !t.da_tra_tien);
+      if (currentBargeUnpaidTrips.length === 0) {
+        document.getElementById('unpaidTripsContainer').innerHTML = '<p class="text-emerald-600 font-bold">✨ Sà lan này đã thanh toán xong hết mọi chuyến!</p>';
+        return;
+      }
+
+      const totalUnpaid = currentBargeUnpaidTrips.reduce((s, t) => s + t.con_lai_phai_tra, 0);
+      document.getElementById('payAmountInput').value = totalUnpaid;
+
+      document.getElementById('unpaidTripsContainer').innerHTML = `
+        <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 mb-3">
+          <p class="font-bold text-amber-900">Tổng còn phải trả sà lan ${saLan}: <span class="mono text-base font-black">${fmtVND(totalUnpaid)}</span> (${currentBargeUnpaidTrips.length} chuyến)</p>
+        </div>
+        <table class="w-full text-xs border border-slate-200 divide-y divide-slate-200">
+          <thead class="bg-slate-50 font-bold">
+            <tr>
+              <th class="p-2">Mã Chuyến</th>
+              <th class="p-2">Ngày Nhận</th>
+              <th class="p-2">Chủ Hàng</th>
+              <th class="p-2 text-right">K/L Giao (Tấn)</th>
+              <th class="p-2 text-right">Tiền Cước</th>
+              <th class="p-2 text-right">Dầu & Ứng</th>
+              <th class="p-2 text-right text-amber-900 font-bold">Còn Phải Trả</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-100">
+            ${currentBargeUnpaidTrips.map(t => `
+              <tr>
+                <td class="p-2 font-bold mono text-blue-900">${t.ma_chuyen}</td>
+                <td class="p-2 mono">${t.ngay_nhan}</td>
+                <td class="p-2">${t.chu_hang_ma}</td>
+                <td class="p-2 text-right mono">${t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '—'}</td>
+                <td class="p-2 text-right mono">${fmtVND(t.cuoc)}</td>
+                <td class="p-2 text-right mono">${fmtVND(t.tien_dau + t.tien_ung)}</td>
+                <td class="p-2 text-right mono font-extrabold text-amber-800">${fmtVND(t.con_lai_phai_tra)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+
+    function generatePaymentVoucher() {
+      const saLan = document.getElementById('paySelectSaLan').value;
+      if (!saLan || currentBargeUnpaidTrips.length === 0) {
+        alert("Vui lòng chọn sà lan có chuyến chưa trả!");
+        return;
+      }
+
+      const payAmount = Number(document.getElementById('payAmountInput').value) || 0;
+      const printArea = document.getElementById('print-area');
+      printArea.classList.remove('hidden');
+
+      document.getElementById('print-so-phieu').innerText = `Số: PTT-${saLan.replace(/\\s+/g, '')}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`;
+      document.getElementById('print-ngay').innerText = `Ngày: ${new Date().toLocaleDateString('vi-VN')}`;
+      document.getElementById('print-sa-lan').innerText = saLan;
+
+      const ptInfo = catalogs.phuong_tien.find(p => p.ma === saLan) || {};
+      const dtInfo = catalogs.doi_tac.find(d => d.id === ptInfo.doi_tac_id) || {};
+      document.getElementById('print-nguoi-nhan').innerText = dtInfo.ten || 'Chủ sà lan ' + saLan;
+      document.getElementById('print-stk').innerText = `${dtInfo.so_tai_khoan || '—'} (${dtInfo.ngan_hang || '—'})`;
+
+      const tbody = document.getElementById('print-table-body');
+      tbody.innerHTML = currentBargeUnpaidTrips.map((t, idx) => `
+        <tr class="border-b border-slate-300">
+          <td class="p-2 border-r border-slate-300 text-center">${idx + 1}</td>
+          <td class="p-2 border-r border-slate-300 font-bold mono">${t.ma_chuyen}</td>
+          <td class="p-2 border-r border-slate-300 mono text-center">${t.ngay_giao || '—'}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono">${t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '0'}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.cuoc)}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.tien_neo + t.ho_tro + t.tien_phun_trung)}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_dau)}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_ung)}</td>
+          <td class="p-2 border-r border-slate-300 text-right mono text-red-600">${fmtNum(t.boi_thuong)}</td>
+          <td class="p-2 text-right mono font-bold text-slate-900">${fmtNum(t.con_lai_phai_tra)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('print-tong-tien').innerText = fmtVND(payAmount);
+      document.getElementById('print-tien-chu').innerText = docSoTien(payAmount);
+
+      printArea.scrollIntoView({ behavior: 'smooth' });
+    }
+
+    // ĐỌC TIỀN BẰNG CHỮ TIẾNG VIỆT
+    function docSoTien(so) {
+      if (!so || so === 0) return 'Không đồng';
+      const ChuSo = [' không ', ' một ', ' hai ', ' ba ', ' bốn ', ' năm ', ' sáu ', ' bảy ', ' tám ', ' chín '];
+      const Tien = ['', ' nghìn', ' triệu', ' tỷ', ' nghìn tỷ', ' triệu tỷ'];
+      let lan = 0, i = 0, so_tmp = so, viTri = [], ketQua = '', dau = '';
+      if (so < 0) { so_tmp = -so; dau = 'Âm '; }
+      while (so_tmp > 0) {
+        viTri[lan] = so_tmp % 1000;
+        so_tmp = Math.floor(so_tmp / 1000);
+        lan++;
+      }
+      if (viTri.length === 0) return 'Không đồng';
+      for (i = lan - 1; i >= 0; i--) {
+        if (viTri[i] > 0) {
+          ketQua += docBaSo(viTri[i]) + Tien[i] + ' ';
+        }
+      }
+      ketQua = ketQua.trim();
+      return dau + ketQua.charAt(0).toUpperCase() + ketQua.slice(1) + ' đồng';
+    }
+
+    function docBaSo(baso) {
+      const ChuSo = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín'];
+      let tram = Math.floor(baso / 100);
+      let chuc = Math.floor((baso % 100) / 10);
+      let donvi = baso % 10;
+      let kq = '';
+      if (tram > 0) kq += ChuSo[tram] + ' trăm ';
+      if (chuc === 0 && donvi > 0) kq += 'lẻ ' + ChuSo[donvi];
+      if (chuc === 1) kq += 'mười ' + (donvi === 5 ? 'lăm' : ChuSo[donvi]);
+      if (chuc > 1) kq += ChuSo[chuc] + ' mươi ' + (donvi === 1 ? 'mốt' : (donvi === 5 ? 'lăm' : (donvi > 0 ? ChuSo[donvi] : '')));
+      return kq.trim();
+    }
+
+    // TAB CÔNG NỢ CHỦ HÀNG
+    function renderCustomerTab() {
+      const tbody = document.getElementById('customerTableBody');
+      const deliveredTrips = allTrips.filter(t => t.kl_giao_kg > 0);
+      tbody.innerHTML = deliveredTrips.map(t => `
+        <tr class="hover:bg-slate-50 border-b border-slate-100">
+          <td class="p-3 font-bold mono text-blue-900">${t.ma_chuyen}</td>
+          <td class="p-3 mono">${t.ngay_giao || '—'}</td>
+          <td class="p-3 font-semibold">${t.chu_hang_ma}</td>
+          <td class="p-3">${t.loai_hang_ma || '—'}</td>
+          <td class="p-3 text-right mono">${(t.kl_giao_kg / 1000).toFixed(3)}</td>
+          <td class="p-3 text-right mono">${fmtNum(t.don_gia_thu)} đ</td>
+          <td class="p-3 text-right mono">${fmtVND(t.cuoc_thu)}</td>
+          <td class="p-3 text-right mono">${fmtVND(t.neo_thu)}</td>
+          <td class="p-3 text-right mono">${fmtVND(t.vat_thu)}</td>
+          <td class="p-3 text-right mono font-extrabold text-emerald-800 bg-emerald-50/60">${fmtVND(t.phai_thu)}</td>
+        </tr>
+      `).join('');
+    }
+
+    // TAB BÁO CÁO LÃI GỘP
+    function renderSummaryTab() {
+      const tbody = document.getElementById('summaryTableBody');
+      const deliveredTrips = allTrips.filter(t => t.kl_giao_kg > 0);
+      tbody.innerHTML = deliveredTrips.map(t => {
+        const thuTruocVat = (t.cuoc_thu || 0) + (t.neo_thu || 0) + (t.xong_trung_thu || 0);
+        const chiTruocVat = (t.cuoc || 0) + (t.tien_neo || 0) + (t.ho_tro || 0) + (t.tien_phun_trung || 0) - (t.boi_thuong || 0);
+        const tySuat = thuTruocVat > 0 ? ((t.lai_gop / thuTruocVat) * 100).toFixed(1) : 0;
+        return `
+          <tr class="hover:bg-slate-50 border-b border-slate-100">
+            <td class="p-3 font-bold mono text-blue-900">${t.ma_chuyen}</td>
+            <td class="p-3 font-bold text-slate-800">${t.phuong_tien_ma}</td>
+            <td class="p-3 font-semibold">${t.chu_hang_ma}</td>
+            <td class="p-3 text-right mono font-bold text-slate-800">${fmtVND(thuTruocVat)}</td>
+            <td class="p-3 text-right mono text-slate-600">${fmtVND(chiTruocVat)}</td>
+            <td class="p-3 text-right mono font-black text-emerald-700 bg-emerald-50/60">${fmtVND(t.lai_gop)}</td>
+            <td class="p-3 text-center font-bold mono ${tySuat > 20 ? 'text-emerald-600' : 'text-amber-600'}">${tySuat}%</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    // TAB DANH MỤC
+    function renderSettingsTab() {
+      const bList = document.getElementById('settingBargeList');
+      bList.innerHTML = catalogs.phuong_tien.map(p => `
+        <li class="py-2 flex justify-between items-center">
+          <div>
+            <span class="font-bold text-blue-900">${p.ma}</span>
+            <span class="text-slate-500 text-[11px]"> • Loại: ${p.phan_loai_sa_lan || 'Sà lan'}</span>
+          </div>
+          <span class="text-[11px] text-slate-400">Đăng kiểm: ${p.han_dang_kiem || 'Chưa có'}</span>
+        </li>
+      `).join('');
+
+      const cList = document.getElementById('settingCustomerList');
+      cList.innerHTML = catalogs.chu_hang.map(c => `
+        <li class="py-2 flex justify-between items-center">
+          <div>
+            <span class="font-bold text-slate-800">${c.ten_chuan}</span>
+            <span class="text-slate-400 text-[11px]"> (${c.ma})</span>
+          </div>
+          <span class="text-[11px] font-semibold text-amber-700">Định mức HH: ${(c.hh_cho_phep_pct * 100).toFixed(2)}% • Neo: ${fmtNum(c.don_gia_neo_thu)}đ/ngày</span>
+        </li>
+      `).join('');
+    }
+
+    function autoFillCustomerParams() {
+      const chMa = document.getElementById('formChuHang').value;
+      const ch = catalogs.chu_hang.find(c => c.ma === chMa);
+      if (ch) {
+        document.getElementById('formHhChoPhep').value = ch.hh_cho_phep_pct || 0.0010;
+        document.getElementById('formNgayChoPhep').value = ch.ngay_cho_phep_nhan_giao || 2;
+        calculateFormLive();
+      }
+    }
+
+    function autoFillBargeInfo() {
+      // Nothing needed right now
+    }
+
+    // STARTUP
+    window.addEventListener('DOMContentLoaded', initApp);
+  </script>
+</body>
+</html>
