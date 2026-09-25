@@ -218,34 +218,100 @@
     <!-- TAB 2: THANH TOÁN SÀ LAN & IN PHIẾU -->
     <div id="tab-payment" class="hidden space-y-4">
       <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
-        <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider mb-3">Lập Phiếu Thanh Toán Sà Lan & In Phiếu (Mục 8 - Màn hình 5)</h3>
+        <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+          <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Lập Phiếu Thanh Toán Sà Lan & In Phiếu (Mục 8 - Màn hình 5)</h3>
+          <span class="text-xs bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded border border-blue-200">Chỉ Quản trị Alex được lưu / huỷ phiếu</span>
+        </div>
         
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs mb-4">
           <div>
-            <label class="block text-slate-600 font-semibold mb-1">Chọn Sà Lan / Đối tác nhận tiền:</label>
+            <label class="block text-slate-600 font-semibold mb-1">Công ty thanh toán:</label>
+            <select id="paySelectCongTy" onchange="loadSaLanUnpaidTrips()" class="w-full border border-slate-300 rounded-lg p-2 font-medium bg-slate-50">
+              <option value="TP">Công ty TNHH Vận tải Trường Phát (TP)</option>
+              <option value="TPL">Công ty TNHH Trường Phát Logistics (TPL)</option>
+              <option value="NK">Công ty CP TM & VT Nguyên Khang (NK)</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Chọn Sà Lan cần trả tiền:</label>
             <select id="paySelectSaLan" onchange="loadSaLanUnpaidTrips()" class="w-full border border-slate-300 rounded-lg p-2 font-medium bg-slate-50">
               <option value="">-- Chọn Sà Lan Cần Thanh Toán --</option>
             </select>
           </div>
 
           <div>
-            <label class="block text-slate-600 font-semibold mb-1">Số tiền thanh toán đợt này (VNĐ):</label>
-            <input type="number" id="payAmountInput" placeholder="Ví dụ: 50,000,000" class="w-full border border-slate-300 rounded-lg p-2 font-bold text-amber-700 mono">
+            <label class="block text-slate-600 font-semibold mb-1">Ngày lập phiếu:</label>
+            <input type="date" id="payNgayInput" class="w-full border border-slate-300 rounded-lg p-2 font-medium">
           </div>
 
-          <div class="flex items-end">
-            <button onclick="generatePaymentVoucher()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-2.5 rounded-lg shadow transition flex items-center justify-center space-x-1.5">
-              <span>🧾</span><span>Gợi Ý Phân Bổ & Xem Phiếu In</span>
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Người duyệt chi:</label>
+            <select id="payNguoiDuyet" class="w-full border border-slate-300 rounded-lg p-2 font-medium bg-slate-50">
+              <option value="GĐ">Giám Đốc (GĐ)</option>
+              <option value="Phó GĐ">Phó Giám Đốc (Phó GĐ)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Ghi chú phiếu:</label>
+            <input type="text" id="payGhiChuInput" placeholder="Ví dụ: Quyết toán tiền cước đợt 1..." class="w-full border border-slate-300 rounded-lg p-2">
+          </div>
+
+          <div>
+            <label class="block text-slate-600 font-semibold mb-1">Số tiền thanh toán đợt này (VNĐ):</label>
+            <input type="number" id="payAmountInput" placeholder="Ví dụ: 48,157,270" class="w-full border border-slate-300 rounded-lg p-2 font-bold text-amber-700 mono">
+          </div>
+
+          <div class="flex items-end space-x-2">
+            <button onclick="applyFIFOAllocation()" class="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold p-2.5 rounded-lg shadow transition flex items-center justify-center space-x-1">
+              <span>⚡</span><span>Gợi Ý Phân Bổ FIFO</span>
+            </button>
+            <button onclick="savePaymentVoucher()" class="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold p-2.5 rounded-lg shadow transition flex items-center justify-center space-x-1">
+              <span>💾</span><span>Lưu & In Phiếu</span>
             </button>
           </div>
         </div>
 
         <!-- DANH SÁCH CHUYẾN CHƯA TRẢ CỦA SÀ LAN NÀY -->
         <div class="mt-5 border-t border-slate-200 pt-4">
-          <h4 class="text-xs font-bold text-slate-700 uppercase mb-2">Các chuyến chưa trả của sà lan này:</h4>
+          <div class="flex justify-between items-center mb-2">
+            <h4 class="text-xs font-bold text-slate-700 uppercase">Danh sách chuyến chưa thanh toán đủ:</h4>
+            <div id="paySummaryBadge" class="text-xs font-bold text-slate-600"></div>
+          </div>
           <div id="unpaidTripsContainer" class="text-xs text-slate-500 italic">
             Chưa chọn sà lan.
           </div>
+        </div>
+      </div>
+
+      <!-- LỊCH SỬ PHIẾU THANH TOÁN ĐÃ LẬP -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm">
+        <div class="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+          <h3 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Lịch Sử Phiếu Thanh Toán Sà Lan Đã Lập</h3>
+          <button onclick="loadPaymentHistory()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold px-2.5 py-1 rounded transition">🔄 Tải lại lịch sử</button>
+        </div>
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-100 text-slate-700 font-bold border-b border-slate-200">
+                <th class="p-2.5">Số Phiếu</th>
+                <th class="p-2.5">Ngày</th>
+                <th class="p-2.5">Công Ty</th>
+                <th class="p-2.5">Đối Tác / Sà Lan</th>
+                <th class="p-2.5 text-right">Số Tiền (VNĐ)</th>
+                <th class="p-2.5">Người Duyệt</th>
+                <th class="p-2.5">Ghi Chú</th>
+                <th class="p-2.5 text-center">Trạng Thái</th>
+                <th class="p-2.5 text-center">Thao Tác</th>
+              </tr>
+            </thead>
+            <tbody id="paymentHistoryTableBody" class="divide-y divide-slate-100">
+              <tr><td colspan="9" class="p-3 text-center text-slate-400 italic">Đang tải lịch sử...</td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -1603,7 +1669,6 @@
         }
       }
     }
-    }
 
     async function reSeedSampleData() {
       if (!confirm('Khôi phục danh mục và nạp lại chuyến chuẩn ĐT 26284-C01 khớp sổ?')) return;
@@ -1617,102 +1682,356 @@
       }
     }
 
-    // TAB THANH TOÁN SÀ LAN & IN PHIẾU
+    // ============================================================================
+    // TAB 2: THANH TOÁN SÀ LAN & IN PHIẾU
+    // ============================================================================
     let currentBargeUnpaidTrips = [];
 
     function renderPaymentTab() {
-      // Nothing special here initially
+      const payNgay = document.getElementById('payNgayInput');
+      if (payNgay && !payNgay.value) {
+        payNgay.value = new Date().toISOString().slice(0, 10);
+      }
+      
+      const selSaLan = document.getElementById('paySelectSaLan');
+      if (selSaLan && selSaLan.options.length <= 1 && catalogs.phuong_tien) {
+        selSaLan.innerHTML = '<option value="">-- Chọn Sà Lan Cần Thanh Toán --</option>' +
+          catalogs.phuong_tien.map(p => `<option value="${p.ma}">${p.ma} (${p.phan_loai_sa_lan || 'Sà lan'})</option>`).join('');
+      }
+
+      loadPaymentHistory();
     }
 
-    function loadSaLanUnpaidTrips() {
+    async function loadSaLanUnpaidTrips() {
       const saLan = document.getElementById('paySelectSaLan').value;
+      const congTy = document.getElementById('paySelectCongTy').value;
+      const container = document.getElementById('unpaidTripsContainer');
+      const badge = document.getElementById('paySummaryBadge');
+
       if (!saLan) {
-        document.getElementById('unpaidTripsContainer').innerHTML = 'Chưa chọn sà lan.';
+        container.innerHTML = '<p class="italic text-slate-400">Vui lòng chọn sà lan ở trên để xem công nợ còn lại.</p>';
+        if (badge) badge.innerText = '';
         return;
       }
 
-      currentBargeUnpaidTrips = allTrips.filter(t => t.phuong_tien_ma === saLan && !t.da_tra_tien);
-      if (currentBargeUnpaidTrips.length === 0) {
-        document.getElementById('unpaidTripsContainer').innerHTML = '<p class="text-emerald-600 font-bold">✨ Sà lan này đã thanh toán xong hết mọi chuyến!</p>';
-        return;
+      container.innerHTML = '<p class="italic text-slate-500">Đang tải danh sách chuyến chưa trả từ hệ thống...</p>';
+
+      try {
+        const url = `/api/salan/thanh-toan/chuyen-chua-tra?cong_ty=${encodeURIComponent(congTy)}&phuong_tien_ma=${encodeURIComponent(saLan)}`;
+        const res = await apiFetch(url);
+        if (!res.ok) throw new Error('Không thể tải danh sách chuyến chưa trả');
+        currentBargeUnpaidTrips = await res.json();
+
+        if (currentBargeUnpaidTrips.length === 0) {
+          container.innerHTML = '<p class="text-emerald-700 font-bold p-3 bg-emerald-50 rounded-lg border border-emerald-200">✨ Sà lan này đã thanh toán xong hết mọi chuyến (không còn dư nợ)!</p>';
+          if (badge) badge.innerText = 'Còn nợ: 0 đ';
+          document.getElementById('payAmountInput').value = 0;
+          return;
+        }
+
+        const totalRemaining = currentBargeUnpaidTrips.reduce((s, t) => s + (t.con_no || 0), 0);
+        document.getElementById('payAmountInput').value = totalRemaining;
+        if (badge) badge.innerHTML = `<span class="text-amber-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Tổng còn nợ: ${fmtVND(totalRemaining)} (${currentBargeUnpaidTrips.length} chuyến)</span>`;
+
+        container.innerHTML = `
+          <div class="overflow-x-auto border border-slate-200 rounded-lg">
+            <table class="w-full text-xs text-left border-collapse">
+              <thead class="bg-slate-100 font-bold text-slate-700 border-b border-slate-200">
+                <tr>
+                  <th class="p-2">Mã Chuyến</th>
+                  <th class="p-2">Ngày Nhận</th>
+                  <th class="p-2">Chủ Hàng & Tuyến</th>
+                  <th class="p-2 text-right">K/L Giao (Tấn)</th>
+                  <th class="p-2 text-right">Cước Sà Lan</th>
+                  <th class="p-2 text-right">Dầu & Ứng</th>
+                  <th class="p-2 text-right">Bồi Thường</th>
+                  <th class="p-2 text-right font-extrabold text-amber-900 bg-amber-50/70">Còn Nợ</th>
+                  <th class="p-2">Số Bảng Kê</th>
+                  <th class="p-2 text-right w-36 bg-blue-50/70 text-blue-900 font-bold">Số Tiền Trả Đợt Này</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100">
+                ${currentBargeUnpaidTrips.map(t => {
+                  const ton = t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '—';
+                  const c04Badge = (!t.co_the_thanh_toan) 
+                    ? `<span class="block text-[10px] bg-red-100 text-red-700 px-1 py-0.5 rounded font-bold mt-0.5">⚠️ Chặn C04: Thiếu bảng kê HKD</span>`
+                    : '';
+                  return `
+                    <tr class="${!t.co_the_thanh_toan ? 'bg-red-50/30' : ''}">
+                      <td class="p-2 font-bold mono text-blue-900">${t.ma_chuyen}</td>
+                      <td class="p-2 mono">${fmtDateVN(t.ngay_nhan)}</td>
+                      <td class="p-2">
+                        <div class="font-semibold text-slate-800">${t.chu_hang_ten || t.chu_hang_ma}</div>
+                        <div class="text-[10px] text-slate-400">${t.noi_nhan_ten || t.noi_nhan_ma} ➔ ${t.nha_may_giao_ten || t.nha_may_giao_ma || '—'}</div>
+                      </td>
+                      <td class="p-2 text-right mono">${ton}</td>
+                      <td class="p-2 text-right mono">${fmtNum(t.cuoc)}</td>
+                      <td class="p-2 text-right mono text-slate-600">${fmtNum(t.tien_dau + t.tien_ung)}</td>
+                      <td class="p-2 text-right mono text-red-600">${fmtNum(t.boi_thuong)}</td>
+                      <td class="p-2 text-right mono font-extrabold text-amber-800 bg-amber-50/40">${fmtVND(t.con_no)}</td>
+                      <td class="p-2 mono">
+                        ${t.so_bang_ke || '<span class="text-slate-400 italic">Chưa có</span>'}
+                        ${c04Badge}
+                      </td>
+                      <td class="p-2 text-right bg-blue-50/30">
+                        <input type="number" 
+                          class="pay-alloc-input w-full text-right border border-slate-300 rounded px-2 py-1 font-bold text-blue-900 mono text-xs focus:ring-2 focus:ring-blue-500" 
+                          data-chuyen-id="${t.id}"
+                          data-con-no="${t.con_no}"
+                          data-co-the="${t.co_the_thanh_toan ? '1' : '0'}"
+                          value="${t.co_the_thanh_toan ? t.con_no : 0}"
+                          oninput="recalcAllocatedTotal()"
+                        >
+                      </td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+        applyFIFOAllocation();
+      } catch (err) {
+        container.innerHTML = `<p class="text-red-600 font-bold">Lỗi: ${err.message}</p>`;
       }
-
-      const totalUnpaid = currentBargeUnpaidTrips.reduce((s, t) => s + t.con_lai_phai_tra, 0);
-      document.getElementById('payAmountInput').value = totalUnpaid;
-
-      document.getElementById('unpaidTripsContainer').innerHTML = `
-        <div class="bg-amber-50/60 p-3 rounded-xl border border-amber-200 mb-3">
-          <p class="font-bold text-amber-900">Tổng còn phải trả sà lan ${saLan}: <span class="mono text-base font-black">${fmtVND(totalUnpaid)}</span> (${currentBargeUnpaidTrips.length} chuyến)</p>
-        </div>
-        <table class="w-full text-xs border border-slate-200 divide-y divide-slate-200">
-          <thead class="bg-slate-50 font-bold">
-            <tr>
-              <th class="p-2">Mã Chuyến</th>
-              <th class="p-2">Ngày Nhận</th>
-              <th class="p-2">Chủ Hàng</th>
-              <th class="p-2 text-right">K/L Giao (Tấn)</th>
-              <th class="p-2 text-right">Tiền Cước</th>
-              <th class="p-2 text-right">Dầu & Ứng</th>
-              <th class="p-2 text-right text-amber-900 font-bold">Còn Phải Trả</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-slate-100">
-            ${currentBargeUnpaidTrips.map(t => `
-              <tr>
-                <td class="p-2 font-bold mono text-blue-900">${t.ma_chuyen}</td>
-                <td class="p-2 mono">${t.ngay_nhan}</td>
-                <td class="p-2">${t.chu_hang_ma}</td>
-                <td class="p-2 text-right mono">${t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '—'}</td>
-                <td class="p-2 text-right mono">${fmtVND(t.cuoc)}</td>
-                <td class="p-2 text-right mono">${fmtVND(t.tien_dau + t.tien_ung)}</td>
-                <td class="p-2 text-right mono font-extrabold text-amber-800">${fmtVND(t.con_lai_phai_tra)}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
     }
 
-    function generatePaymentVoucher() {
-      const saLan = document.getElementById('paySelectSaLan').value;
-      if (!saLan || currentBargeUnpaidTrips.length === 0) {
-        alert("Vui lòng chọn sà lan có chuyến chưa trả!");
+    function applyFIFOAllocation() {
+      const payAmount = Number(document.getElementById('payAmountInput').value) || 0;
+      let remaining = payAmount;
+
+      const inputs = document.querySelectorAll('.pay-alloc-input');
+      inputs.forEach(inp => {
+        const canPay = inp.getAttribute('data-co-the') === '1';
+        const conNo = Number(inp.getAttribute('data-con-no')) || 0;
+        if (!canPay || remaining <= 0) {
+          inp.value = 0;
+        } else {
+          const alloc = Math.min(remaining, conNo);
+          inp.value = alloc;
+          remaining -= alloc;
+        }
+      });
+
+      recalcAllocatedTotal();
+    }
+
+    function recalcAllocatedTotal() {
+      const inputs = document.querySelectorAll('.pay-alloc-input');
+      let total = 0;
+      inputs.forEach(inp => {
+        total += Number(inp.value) || 0;
+      });
+      const badge = document.getElementById('paySummaryBadge');
+      const targetAmount = Number(document.getElementById('payAmountInput').value) || 0;
+      if (badge) {
+        const diff = targetAmount - total;
+        if (diff === 0) {
+          badge.innerHTML = `<span class="text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded border border-emerald-200 font-bold">✅ Đã phân bổ khớp 100%: ${fmtVND(total)}</span>`;
+        } else {
+          badge.innerHTML = `<span class="text-red-700 bg-red-50 px-2.5 py-1 rounded border border-red-200 font-bold">⚠️ Phân bổ ${fmtVND(total)} lệch ${fmtVND(Math.abs(diff))} so với số tiền cần trả!</span>`;
+        }
+      }
+    }
+
+    async function savePaymentVoucher() {
+      if (currentUser && currentUser.salan_role && currentUser.salan_role !== 'quan_tri') {
+        alert('⛔ Chỉ Quản trị viên (Alex) mới có quyền lưu phiếu thanh toán!');
         return;
       }
 
-      const payAmount = Number(document.getElementById('payAmountInput').value) || 0;
-      const printArea = document.getElementById('print-area');
-      printArea.classList.remove('hidden');
+      const congTy = document.getElementById('paySelectCongTy').value;
+      const saLan = document.getElementById('paySelectSaLan').value;
+      const ngay = document.getElementById('payNgayInput').value;
+      const nguoiDuyet = document.getElementById('payNguoiDuyet').value;
+      const ghiChu = document.getElementById('payGhiChuInput').value;
+      const soTien = Number(document.getElementById('payAmountInput').value) || 0;
 
-      document.getElementById('print-so-phieu').innerText = `Số: PTT-${saLan.replace(/\\s+/g, '')}-${new Date().toISOString().slice(2, 10).replace(/-/g, '')}`;
-      document.getElementById('print-ngay').innerText = `Ngày: ${new Date().toLocaleDateString('vi-VN')}`;
-      document.getElementById('print-sa-lan').innerText = saLan;
+      if (!saLan) { alert('Vui lòng chọn sà lan!'); return; }
+      if (!ngay) { alert('Vui lòng chọn ngày lập phiếu!'); return; }
+      if (soTien <= 0) { alert('Số tiền thanh toán phải lớn hơn 0!'); return; }
+
+      const inputs = document.querySelectorAll('.pay-alloc-input');
+      const phanBo = [];
+      let totalAlloc = 0;
+
+      for (const inp of inputs) {
+        const val = Number(inp.value) || 0;
+        if (val > 0) {
+          const chuyenId = Number(inp.getAttribute('data-chuyen-id'));
+          const conNo = Number(inp.getAttribute('data-con-no'));
+          const canPay = inp.getAttribute('data-co-the') === '1';
+
+          if (!canPay) {
+            alert('[C04] Có chuyến thuộc sà lan hộ kinh doanh nhưng chưa có số bảng kê!');
+            return;
+          }
+          if (val > conNo) {
+            alert(`[C05] Số tiền phân bổ ${fmtVND(val)} vượt quá số còn nợ ${fmtVND(conNo)}!`);
+            return;
+          }
+          phanBo.push({ chuyen_id: chuyenId, so_tien_phan_bo: val });
+          totalAlloc += val;
+        }
+      }
+
+      if (phanBo.length === 0) {
+        alert('Cần phân bổ số tiền thanh toán vào ít nhất 1 chuyến!');
+        return;
+      }
+      if (totalAlloc !== soTien) {
+        alert(`Tổng phân bổ (${fmtVND(totalAlloc)}) không khớp với số tiền thanh toán (${fmtVND(soTien)})!`);
+        return;
+      }
 
       const ptInfo = catalogs.phuong_tien.find(p => p.ma === saLan) || {};
-      const dtInfo = catalogs.doi_tac.find(d => d.id === ptInfo.doi_tac_id) || {};
-      document.getElementById('print-nguoi-nhan').innerText = dtInfo.ten || 'Chủ sà lan ' + saLan;
-      document.getElementById('print-stk').innerText = `${dtInfo.so_tai_khoan || '—'} (${dtInfo.ngan_hang || '—'})`;
+      const payload = {
+        ngay: ngay,
+        cong_ty: congTy,
+        doi_tac_id: ptInfo.doi_tac_id || null,
+        phuong_tien_ma: saLan,
+        so_tien: soTien,
+        nguoi_duyet: nguoiDuyet,
+        ghi_chu: ghiChu,
+        phan_bo: phanBo
+      };
 
-      const tbody = document.getElementById('print-table-body');
-      tbody.innerHTML = currentBargeUnpaidTrips.map((t, idx) => `
-        <tr class="border-b border-slate-300">
-          <td class="p-2 border-r border-slate-300 text-center">${idx + 1}</td>
-          <td class="p-2 border-r border-slate-300 font-bold mono">${t.ma_chuyen}</td>
-          <td class="p-2 border-r border-slate-300 mono text-center">${t.ngay_giao || '—'}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono">${t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '0'}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.cuoc)}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.tien_neo + t.ho_tro + t.tien_phun_trung)}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_dau)}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_ung)}</td>
-          <td class="p-2 border-r border-slate-300 text-right mono text-red-600">${fmtNum(t.boi_thuong)}</td>
-          <td class="p-2 text-right mono font-bold text-slate-900">${fmtNum(t.con_lai_phai_tra)}</td>
-        </tr>
-      `).join('');
+      try {
+        const res = await apiFetch('/api/salan/thanh-toan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Lỗi lưu phiếu thanh toán');
 
-      document.getElementById('print-tong-tien').innerText = fmtVND(payAmount);
-      document.getElementById('print-tien-chu').innerText = docSoTien(payAmount);
+        alert(`✅ ${data.message}\nSố phiếu: ${data.so_phieu}\nSố tiền: ${fmtVND(data.so_tien)}`);
+        
+        // Hiển thị ngay phiếu in và cuộn tới
+        renderVoucherPreview(data.id);
+        
+        // Tải lại danh sách chưa trả và lịch sử
+        loadSaLanUnpaidTrips();
+        loadPaymentHistory();
+        loadTrips();
+      } catch (err) {
+        alert('❌ ' + err.message);
+      }
+    }
 
-      printArea.scrollIntoView({ behavior: 'smooth' });
+    async function loadPaymentHistory() {
+      const tbody = document.getElementById('paymentHistoryTableBody');
+      if (!tbody) return;
+      try {
+        const res = await apiFetch('/api/salan/thanh-toan');
+        if (!res.ok) throw new Error('Không thể tải lịch sử thanh toán');
+        const list = await res.json();
+
+        if (list.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="9" class="p-3 text-center text-slate-400 italic">Chưa có phiếu thanh toán nào được lập.</td></tr>';
+          return;
+        }
+
+        tbody.innerHTML = list.map(item => {
+          const statusBadge = item.da_huy
+            ? '<span class="bg-red-100 text-red-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Đã Huỷ</span>'
+            : '<span class="bg-emerald-100 text-emerald-800 text-[10px] px-1.5 py-0.5 rounded font-bold">Hợp Lệ</span>';
+          
+          const cancelBtn = (!item.da_huy)
+            ? `<button onclick="cancelPayment(${item.id}, '${item.so_phieu}')" class="text-xs bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold px-2 py-1 rounded transition border border-rose-200">❌ Huỷ</button>`
+            : '';
+
+          return `
+            <tr class="hover:bg-slate-50 transition border-b border-slate-100 ${item.da_huy ? 'opacity-60 bg-slate-50' : ''}">
+              <td class="p-2.5 font-bold mono text-blue-900">${item.so_phieu}</td>
+              <td class="p-2.5 mono">${fmtDateVN(item.ngay)}</td>
+              <td class="p-2.5 font-bold">${item.cong_ty}</td>
+              <td class="p-2.5">
+                <span class="font-bold text-slate-800">${item.phuong_tien_ma || '—'}</span>
+                <span class="block text-[10px] text-slate-500">${item.doi_tac_ten || ''}</span>
+              </td>
+              <td class="p-2.5 text-right font-black mono text-emerald-800">${fmtVND(item.so_tien)}</td>
+              <td class="p-2.5">${item.nguoi_duyet || 'GĐ'}</td>
+              <td class="p-2.5 text-slate-500 max-w-xs truncate">${item.ghi_chu || '—'}</td>
+              <td class="p-2.5 text-center">${statusBadge}</td>
+              <td class="p-2.5 text-center space-x-1 whitespace-nowrap">
+                <button onclick="renderVoucherPreview(${item.id})" class="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold px-2 py-1 rounded transition border border-blue-200">🖨️ In Phiếu</button>
+                ${cancelBtn}
+              </td>
+            </tr>
+          `;
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="9" class="p-3 text-center text-red-500 font-bold">Lỗi: ${err.message}</td></tr>`;
+      }
+    }
+
+    async function cancelPayment(id, soPhieu) {
+      if (currentUser && currentUser.salan_role && currentUser.salan_role !== 'quan_tri') {
+        alert('⛔ Chỉ Quản trị viên (Alex) mới có quyền huỷ phiếu thanh toán!');
+        return;
+      }
+
+      const lyDo = prompt(`Nhập lý do huỷ phiếu thanh toán ${soPhieu}:`);
+      if (!lyDo || !lyDo.trim()) {
+        alert('Bắt buộc phải nhập lý do huỷ phiếu!');
+        return;
+      }
+
+      try {
+        const res = await apiFetch(`/api/salan/thanh-toan/${id}?ly_do=${encodeURIComponent(lyDo)}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Lỗi huỷ phiếu');
+
+        alert(`✅ ${data.message}`);
+        loadPaymentHistory();
+        loadSaLanUnpaidTrips();
+        loadTrips();
+      } catch (err) {
+        alert('❌ ' + err.message);
+      }
+    }
+
+    async function renderVoucherPreview(paymentId) {
+      try {
+        const res = await apiFetch(`/api/salan/thanh-toan/${paymentId}`);
+        if (!res.ok) throw new Error('Không thể tải chi tiết phiếu thanh toán');
+        const d = await res.json();
+
+        const printArea = document.getElementById('print-area');
+        printArea.classList.remove('hidden');
+
+        document.getElementById('print-cong-ty').innerText = d.cong_ty_ten || 'CÔNG TY TNHH VẬN TẢI TRƯỜNG PHÁT';
+        document.getElementById('print-so-phieu').innerText = `Số: ${d.so_phieu}`;
+        document.getElementById('print-ngay').innerText = `Ngày: ${fmtDateVN(d.ngay)}`;
+        document.getElementById('print-sa-lan').innerText = d.phuong_tien_ma || '—';
+        document.getElementById('print-nguoi-nhan').innerText = d.doi_tac_ten || '—';
+        document.getElementById('print-stk').innerText = `${d.so_tai_khoan || '—'} (${d.ngan_hang || '—'})`;
+
+        const tbody = document.getElementById('print-table-body');
+        tbody.innerHTML = d.danh_sach_chuyen.map((t, idx) => `
+          <tr class="border-b border-slate-300">
+            <td class="p-2 border-r border-slate-300 text-center">${idx + 1}</td>
+            <td class="p-2 border-r border-slate-300 font-bold mono">${t.ma_chuyen}</td>
+            <td class="p-2 border-r border-slate-300 mono text-center">${fmtDateVN(t.ngay_giao) || '—'}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono">${t.kl_giao_kg ? (t.kl_giao_kg / 1000).toFixed(3) : '0'}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.cuoc)}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono">${fmtNum(t.tien_neo + t.ho_tro + t.tien_phun_trung)}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_dau)}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono text-slate-700">${fmtNum(t.tien_ung)}</td>
+            <td class="p-2 border-r border-slate-300 text-right mono text-red-600">${fmtNum(t.boi_thuong)}</td>
+            <td class="p-2 text-right mono font-bold text-slate-900">${fmtNum(t.so_tien_phan_bo)}</td>
+          </tr>
+        `).join('');
+
+        document.getElementById('print-tong-tien').innerText = fmtVND(d.so_tien);
+        document.getElementById('print-tien-chu').innerText = d.so_tien_bang_chu;
+
+        printArea.scrollIntoView({ behavior: 'smooth' });
+      } catch (err) {
+        alert('❌ Lỗi xem phiếu: ' + err.message);
+      }
     }
 
     // ĐỌC TIỀN BẰNG CHỮ TIẾNG VIỆT

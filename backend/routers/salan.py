@@ -204,8 +204,25 @@ def init_salan_tables():
         phuong_tien_ma TEXT,
         so_tien INTEGER NOT NULL,
         nguoi_duyet TEXT,
-        ghi_chu TEXT
+        ghi_chu TEXT,
+        da_huy INTEGER DEFAULT 0,
+        huy_boi TEXT,
+        huy_luc TEXT,
+        ly_do_huy TEXT,
+        tao_boi TEXT,
+        tao_luc TEXT
     )""")
+    try:
+        tt_cols = [r[1] for r in cur.execute("PRAGMA table_info(salan_thanh_toan)").fetchall()]
+        for c, t in [("da_huy", "INTEGER DEFAULT 0"), ("huy_boi", "TEXT"), ("huy_luc", "TEXT"), ("ly_do_huy", "TEXT"), ("tao_boi", "TEXT"), ("tao_luc", "TEXT")]:
+            if c not in tt_cols:
+                cur.execute(f"ALTER TABLE salan_thanh_toan ADD COLUMN {c} {t}")
+        chuyen_cols = [r[1] for r in cur.execute("PRAGMA table_info(salan_chuyen)").fetchall()]
+        for c, t in [("mo_khoa_boi", "TEXT"), ("mo_khoa_luc", "TEXT"), ("ly_do_mo_khoa", "TEXT")]:
+            if c not in chuyen_cols:
+                cur.execute(f"ALTER TABLE salan_chuyen ADD COLUMN {c} {t}")
+    except Exception:
+        pass
     
     cur.execute("""
     CREATE TABLE IF NOT EXISTS salan_thanh_toan_chuyen (
@@ -937,7 +954,7 @@ def cap_nhat_chuyen(
         
     if existing['khoa_so'] and user_role != "quan_tri":
         con.close()
-        raise HTTPException(status_code=400, detail="[C07] Chuyến này đã thanh toán và bị khóa, chỉ Alex mới có quyền mở khóa!")
+        raise HTTPException(status_code=403, detail="[C07] Chuyến này đã thanh toán và bị khóa, chỉ Alex mới có quyền mở khóa!")
 
     # Concurrency control (phien_ban)
     existing_dict = dict(existing)
@@ -1577,3 +1594,603 @@ def get_cong_no_chu_hang(current_user: models.User = Depends(auth.get_current_us
             detail="Phần B (Bảng kê chủ hàng) hiện đang tắt theo Lệnh Antigravity. Chỉ mở khi Alex quyết định thực hiện Lệnh 8."
         )
     return {"message": "Dữ liệu công nợ chủ hàng (Phần B)"}
+
+# ============================================================================
+# LỆNH 6: THANH TOÁN SÀ LAN & IN PHIẾU
+# ============================================================================
+
+def doc_so_ba_chu_so(baso: int, day_du: bool = True) -> str:
+    chu_so = ['không', 'một', 'hai', 'ba', 'bốn', 'năm', 'sáu', 'bảy', 'tám', 'chín']
+    tram = baso // 100
+    chuc = (baso % 100) // 10
+    don_vi = baso % 10
+    ket_qua = []
+    if tram > 0 or day_du:
+        ket_qua.append(chu_so[tram] + ' trăm')
+    if chuc > 1:
+        ket_qua.append(chu_so[chuc] + ' mươi')
+        if don_vi == 1:
+            ket_qua.append('mốt')
+        elif don_vi == 5:
+            ket_qua.append('lăm')
+        elif don_vi > 0:
+            ket_qua.append(chu_so[don_vi])
+    elif chuc == 1:
+        ket_qua.append('mười')
+        if don_vi == 5:
+            ket_qua.append('lăm')
+        elif don_vi > 0:
+            ket_qua.append(chu_so[don_vi])
+    elif chuc == 0 and (tram > 0 or day_du):
+        if don_vi > 0:
+            ket_qua.append('lẻ ' + chu_so[don_vi])
+    elif chuc == 0 and tram == 0:
+        if don_vi > 0:
+            ket_qua.append(chu_so[don_vi])
+    return ' '.join(ket_qua)
+
+def doc_so_tien_viet_nam(so_tien: int) -> str:
+    if so_tien == 0:
+        return 'Không đồng'
+    if so_tien < 0:
+        return 'Âm ' + doc_so_tien_viet_nam(-so_tien).lower()
+    
+    don_vi_lon = ['', 'nghìn', 'triệu', 'tỷ', 'nghìn tỷ', 'triệu tỷ']
+    chuoi_so = str(so_tien)
+    nhom = []
+    while len(chuoi_so) > 0:
+        nhom.append(int(chuoi_so[-3:]))
+        chuoi_so = chuoi_so[:-3]
+    
+    ket_qua = []
+    for i in range(len(nhom) - 1, -1, -1):
+        baso = nhom[i]
+        if baso > 0:
+            day_du = (i < len(nhom) - 1)
+            doc_baso = doc_so_ba_chu_so(baso, day_du)
+            ket_qua.append(doc_baso + (' ' + don_vi_lon[i] if don_vi_lon[i] else ''))
+            
+    doc = ' '.join(ket_qua).strip()
+    return doc[0].upper() + doc[1:] + ' đồng'
+
+def tinh_toan_chuyen_db(row_dict, cur):
+    c_id = row_dict["id"]
+    dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+    ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+    tep_rows = [dict(t) for t in cur.execute("SELECT id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai, da_huy FROM salan_tep_dinh_kem WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+    return tinh_toan_chuyen(row_dict, dau_rows, ung_rows, tep_rows)
+
+class ThanhToanChuyenItem(BaseModel):
+    chuyen_id: int
+    so_tien_phan_bo: int
+
+class ThanhToanCreate(BaseModel):
+    ngay: str # YYYY-MM-DD
+    cong_ty: str
+    doi_tac_id: Optional[int] = None
+    phuong_tien_ma: Optional[str] = None
+    so_tien: int
+    nguoi_duyet: Optional[str] = "GĐ"
+    ghi_chu: Optional[str] = ""
+    phan_bo: List[ThanhToanChuyenItem]
+
+class MoKhoaChuyenRequest(BaseModel):
+    ly_do: str
+
+@router.get("/thanh-toan/chuyen-chua-tra")
+def get_chuyen_chua_tra(
+    cong_ty: Optional[str] = None,
+    doi_tac_id: Optional[int] = None,
+    phuong_tien_ma: Optional[str] = None,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Lấy danh sách các chuyến sà lan chưa thanh toán đủ, sắp xếp FIFO chuyến cũ nhất trước."""
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role not in ("quan_tri", "ban_giam_doc"):
+        if cong_ty and cong_ty not in allowed_companies:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem dữ liệu công ty này!")
+
+    con = get_con()
+    cur = con.cursor()
+
+    chu_hang_map = {r['ma']: r['ten_chuan'] for r in cur.execute("SELECT ma, ten_chuan FROM salan_chu_hang").fetchall()}
+    dia_diem_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_dia_diem").fetchall()}
+    pt_dict = {r['ma']: dict(r) for r in cur.execute("SELECT * FROM salan_phuong_tien").fetchall()}
+
+    query = "SELECT * FROM salan_chuyen WHERE da_huy = 0"
+    params = []
+
+    if cong_ty:
+        query += " AND cong_ty = ?"
+        params.append(cong_ty)
+    elif user_role not in ("quan_tri", "ban_giam_doc"):
+        placeholders = ",".join("?" * len(allowed_companies))
+        query += f" AND cong_ty IN ({placeholders})"
+        params.extend(allowed_companies)
+
+    if phuong_tien_ma:
+        query += " AND phuong_tien_ma = ?"
+        params.append(phuong_tien_ma)
+
+    trips = cur.execute(query, params).fetchall()
+
+    result = []
+    for r in trips:
+        t_dict = dict(r)
+        pt_info = pt_dict.get(t_dict["phuong_tien_ma"], {})
+        
+        if doi_tac_id is not None and pt_info.get("doi_tac_id") != doi_tac_id:
+            continue
+
+        calc = tinh_toan_chuyen_db(t_dict, cur)
+        con_lai_phai_tra = calc["con_lai_phai_tra"]
+
+        # Tổng đã phân bổ trước đó từ các phiếu thanh toán hợp lệ (chưa huỷ)
+        paid_row = cur.execute("""
+            SELECT COALESCE(SUM(tc.so_tien_phan_bo), 0) as da_tra
+            FROM salan_thanh_toan_chuyen tc
+            JOIN salan_thanh_toan t ON tc.thanh_toan_id = t.id
+            WHERE tc.chuyen_id = ? AND t.da_huy = 0
+        """, (t_dict["id"],)).fetchone()
+        da_tra_truoc = paid_row["da_tra"] if paid_row else 0
+        con_no = con_lai_phai_tra - da_tra_truoc
+
+        if con_no <= 0 and t_dict.get("da_tra_tien") == 1:
+            continue
+
+        # Kiểm tra điều kiện C04: Sà lan hộ kinh doanh phải có số bảng kê
+        is_hkd = (pt_info.get("phan_loai_sa_lan") == "ho_kinh_doanh")
+        has_bk = bool(t_dict.get("so_bang_ke") and str(t_dict.get("so_bang_ke")).strip())
+        co_the_thanh_toan = True
+        ly_do_chan = None
+        if is_hkd and not has_bk:
+            co_the_thanh_toan = False
+            ly_do_chan = "[C04] Sà lan hộ kinh doanh chưa có số bảng kê!"
+
+        result.append({
+            "id": t_dict["id"],
+            "cong_ty": t_dict["cong_ty"],
+            "ma_chuyen": t_dict["ma_chuyen"],
+            "phuong_tien_ma": t_dict["phuong_tien_ma"],
+            "doi_tac_id": pt_info.get("doi_tac_id"),
+            "chu_hang_ma": t_dict["chu_hang_ma"],
+            "chu_hang_ten": chu_hang_map.get(t_dict["chu_hang_ma"], t_dict["chu_hang_ma"]),
+            "noi_nhan_ma": t_dict["noi_nhan_ma"],
+            "noi_nhan_ten": dia_diem_map.get(t_dict["noi_nhan_ma"], t_dict["noi_nhan_ma"]),
+            "nha_may_giao_ma": t_dict.get("nha_may_giao_ma"),
+            "nha_may_giao_ten": dia_diem_map.get(t_dict.get("nha_may_giao_ma"), t_dict.get("nha_may_giao_ma")),
+            "ngay_nhan": t_dict["ngay_nhan"],
+            "ngay_giao": t_dict.get("ngay_giao"),
+            "kl_giao_kg": t_dict.get("kl_giao_kg") or 0,
+            "cuoc": calc["cuoc"],
+            "tien_dau": calc["tien_dau"],
+            "tien_ung": calc["tien_ung"],
+            "boi_thuong": calc["boi_thuong"],
+            "con_lai_phai_tra": con_lai_phai_tra,
+            "da_tra_truoc": da_tra_truoc,
+            "con_no": max(0, con_no),
+            "so_bang_ke": t_dict.get("so_bang_ke"),
+            "is_hkd": is_hkd,
+            "co_the_thanh_toan": co_the_thanh_toan,
+            "ly_do_chan": ly_do_chan,
+            "khoa_so": t_dict.get("khoa_so", 0)
+        })
+
+    con.close()
+    # Sắp xếp FIFO: ngày nhận cũ nhất trước, sau đó theo ID chuyến
+    result.sort(key=lambda x: (x["ngay_nhan"] or "", x["id"]))
+    return result
+
+@router.post("/thanh-toan")
+def tao_thanh_toan(
+    data: ThanhToanCreate,
+    current_user: models.User = Depends(auth.require_salan_role("quan_tri"))
+):
+    """Lưu phiếu thanh toán cước sà lan và tự động phân bổ vào các chuyến (Chỉ Quản trị Alex)."""
+    if data.so_tien <= 0:
+        raise HTTPException(status_code=400, detail="Số tiền thanh toán phải lớn hơn 0!")
+
+    if not data.phan_bo:
+        raise HTTPException(status_code=400, detail="Cần chọn ít nhất 1 chuyến để phân bổ thanh toán!")
+
+    total_allocated = sum(item.so_tien_phan_bo for item in data.phan_bo)
+    if total_allocated != data.so_tien:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Tổng số tiền phân bổ ({total_allocated:,} đ) không khớp với số tiền thanh toán ({data.so_tien:,} đ)!"
+        )
+
+    con = get_con()
+    cur = con.cursor()
+
+    pt_dict = {r['ma']: dict(r) for r in cur.execute("SELECT * FROM salan_phuong_tien").fetchall()}
+
+    # Kiểm tra ràng buộc C04 & C05 cho từng chuyến
+    trip_data = []
+    for item in data.phan_bo:
+        if item.so_tien_phan_bo <= 0:
+            con.close()
+            raise HTTPException(status_code=400, detail="Số tiền phân bổ cho mỗi chuyến phải lớn hơn 0!")
+
+        row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (item.chuyen_id,)).fetchone()
+        if not row:
+            con.close()
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy chuyến ID {item.chuyen_id}")
+
+        t_dict = dict(row)
+        pt_info = pt_dict.get(t_dict["phuong_tien_ma"], {})
+        
+        # Kiểm tra C04: Sà lan hộ kinh doanh phải có số bảng kê
+        is_hkd = (pt_info.get("phan_loai_sa_lan") == "ho_kinh_doanh")
+        has_bk = bool(t_dict.get("so_bang_ke") and str(t_dict.get("so_bang_ke")).strip())
+        if is_hkd and not has_bk:
+            con.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"[C04] Chặn C04: Phương tiện {t_dict['phuong_tien_ma']} là hộ kinh doanh nhưng chuyến {t_dict['ma_chuyen']} chưa có số bảng kê!"
+            )
+
+        # Tính còn nợ
+        calc = tinh_toan_chuyen_db(t_dict, cur)
+        con_lai_phai_tra = calc["con_lai_phai_tra"]
+        paid_row = cur.execute("""
+            SELECT COALESCE(SUM(tc.so_tien_phan_bo), 0) as da_tra
+            FROM salan_thanh_toan_chuyen tc
+            JOIN salan_thanh_toan t ON tc.thanh_toan_id = t.id
+            WHERE tc.chuyen_id = ? AND t.da_huy = 0
+        """, (t_dict["id"],)).fetchone()
+        da_tra_truoc = paid_row["da_tra"] if paid_row else 0
+        con_no = con_lai_phai_tra - da_tra_truoc
+
+        # Kiểm tra C05: Không phân bổ vượt số còn nợ
+        if item.so_tien_phan_bo > con_no:
+            con.close()
+            raise HTTPException(
+                status_code=400,
+                detail=f"[C05] Chặn C05: Số tiền phân bổ ({item.so_tien_phan_bo:,} đ) vượt quá số còn nợ ({con_no:,} đ) của chuyến {t_dict['ma_chuyen']}!"
+            )
+
+        trip_data.append({
+            "t_dict": t_dict,
+            "con_lai_phai_tra": con_lai_phai_tra,
+            "da_tra_truoc": da_tra_truoc,
+            "item": item
+        })
+
+    # Sinh số phiếu tự tăng theo công ty và năm: PT-{cong_ty}-{nam}-{so:04d}
+    nam = data.ngay.split("-")[0] if "-" in data.ngay else str(datetime.now().year)
+    prefix = f"PT-{data.cong_ty}-{nam}-"
+    rows = cur.execute("SELECT so_phieu FROM salan_thanh_toan WHERE so_phieu LIKE ? ORDER BY id DESC", (prefix + "%",)).fetchall()
+    max_num = 0
+    for r in rows:
+        try:
+            p_val = int(r["so_phieu"].replace(prefix, ""))
+            if p_val > max_num:
+                max_num = p_val
+        except Exception:
+            pass
+    so_phieu = f"{prefix}{max_num + 1:04d}"
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Lưu bản ghi phiếu thanh toán
+    cur.execute("""
+    INSERT INTO salan_thanh_toan (
+        so_phieu, ngay, cong_ty, doi_tac_id, phuong_tien_ma, so_tien, nguoi_duyet, ghi_chu, da_huy, tao_boi, tao_luc
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    """, (
+        so_phieu, data.ngay, data.cong_ty, data.doi_tac_id, data.phuong_tien_ma,
+        data.so_tien, data.nguoi_duyet, data.ghi_chu, current_user.username, now_str
+    ))
+    thanh_toan_id = cur.lastrowid
+
+    # Lưu phân bổ chi tiết và cập nhật trạng thái chuyến
+    for td in trip_data:
+        t_dict = td["t_dict"]
+        item = td["item"]
+        con_lai_phai_tra = td["con_lai_phai_tra"]
+        da_tra_truoc = td["da_tra_truoc"]
+        tong_da_tra_moi = da_tra_truoc + item.so_tien_phan_bo
+
+        cur.execute("""
+        INSERT INTO salan_thanh_toan_chuyen (thanh_toan_id, chuyen_id, so_tien_phan_bo)
+        VALUES (?, ?, ?)
+        """, (thanh_toan_id, item.chuyen_id, item.so_tien_phan_bo))
+
+        # Tự suy ra trạng thái Đã trả & khoá sổ khi tổng phân bổ = còn phải trả
+        if tong_da_tra_moi >= con_lai_phai_tra:
+            cur.execute("""
+            UPDATE salan_chuyen 
+            SET da_tra_tien = 1, khoa_so = 1, ngay_thanh_toan = ?
+            WHERE id = ?
+            """, (data.ngay, item.chuyen_id))
+
+        ghi_nhat_ky(
+            cur, "salan_chuyen", str(item.chuyen_id), "thanh_toan",
+            gia_tri_cu={"da_tra_tien": t_dict.get("da_tra_tien"), "da_tra_truoc": da_tra_truoc},
+            gia_tri_moi={"so_phieu": so_phieu, "so_tien_phan_bo": item.so_tien_phan_bo, "tong_da_tra": tong_da_tra_moi, "da_tra_tien": 1 if tong_da_tra_moi >= con_lai_phai_tra else 0},
+            nguoi_dung_id=current_user.username
+        )
+
+    ghi_nhat_ky(
+        cur, "salan_thanh_toan", str(thanh_toan_id), "tao",
+        gia_tri_cu=None,
+        gia_tri_moi={"so_phieu": so_phieu, "so_tien": data.so_tien, "cong_ty": data.cong_ty, "chuyen_count": len(data.phan_bo)},
+        nguoi_dung_id=current_user.username
+    )
+
+    con.commit()
+    con.close()
+
+    return {
+        "message": f"Đã lập phiếu thanh toán {so_phieu} thành công!",
+        "id": thanh_toan_id,
+        "so_phieu": so_phieu,
+        "so_tien": data.so_tien,
+        "so_tien_bang_chu": doc_so_tien_viet_nam(data.so_tien)
+    }
+
+@router.get("/thanh-toan")
+def get_danh_sach_thanh_toan(
+    cong_ty: Optional[str] = None,
+    doi_tac_id: Optional[int] = None,
+    phuong_tien_ma: Optional[str] = None,
+    da_huy: int = 0,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Xem danh sách các phiếu thanh toán sà lan."""
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role not in ("quan_tri", "ban_giam_doc"):
+        if cong_ty and cong_ty not in allowed_companies:
+            raise HTTPException(status_code=403, detail="Bạn không có quyền xem dữ liệu công ty này!")
+
+    con = get_con()
+    cur = con.cursor()
+
+    doi_tac_map = {r['id']: r['ten'] for r in cur.execute("SELECT id, ten FROM salan_doi_tac").fetchall()}
+    cong_ty_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_cong_ty").fetchall()}
+
+    query = "SELECT * FROM salan_thanh_toan WHERE 1=1"
+    params = []
+
+    if da_huy in (0, 1):
+        query += " AND da_huy = ?"
+        params.append(da_huy)
+
+    if cong_ty:
+        query += " AND cong_ty = ?"
+        params.append(cong_ty)
+    elif user_role not in ("quan_tri", "ban_giam_doc"):
+        placeholders = ",".join("?" * len(allowed_companies))
+        query += f" AND cong_ty IN ({placeholders})"
+        params.extend(allowed_companies)
+
+    if doi_tac_id:
+        query += " AND doi_tac_id = ?"
+        params.append(doi_tac_id)
+
+    if phuong_tien_ma:
+        query += " AND phuong_tien_ma = ?"
+        params.append(phuong_tien_ma)
+
+    query += " ORDER BY id DESC"
+    rows = cur.execute(query, params).fetchall()
+
+    result = []
+    for r in rows:
+        d = dict(r)
+        # Lấy danh sách chuyến
+        chuyens = cur.execute("""
+            SELECT tc.chuyen_id, tc.so_tien_phan_bo, c.ma_chuyen
+            FROM salan_thanh_toan_chuyen tc
+            JOIN salan_chuyen c ON tc.chuyen_id = c.id
+            WHERE tc.thanh_toan_id = ?
+        """, (d["id"],)).fetchall()
+
+        d["doi_tac_ten"] = doi_tac_map.get(d["doi_tac_id"], "")
+        d["cong_ty_ten"] = cong_ty_map.get(d["cong_ty"], d["cong_ty"])
+        d["so_tien_bang_chu"] = doc_so_tien_viet_nam(d["so_tien"])
+        d["so_chuyen"] = len(chuyens)
+        d["chuyen_list"] = [dict(c) for c in chuyens]
+        result.append(d)
+
+    con.close()
+    return result
+
+@router.get("/thanh-toan/{thanh_toan_id}")
+def get_chi_tiet_thanh_toan(
+    thanh_toan_id: int,
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """Lấy chi tiết phiếu thanh toán kèm thông tin đầy đủ để in phiếu chuẩn A4."""
+    con = get_con()
+    cur = con.cursor()
+
+    row = cur.execute("SELECT * FROM salan_thanh_toan WHERE id = ?", (thanh_toan_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thanh toán")
+
+    d = dict(row)
+    user_role = current_user.get_salan_role()
+    allowed_companies = current_user.get_allowed_companies()
+    if user_role not in ("quan_tri", "ban_giam_doc") and d["cong_ty"] not in allowed_companies:
+        con.close()
+        raise HTTPException(status_code=403, detail="Bạn không có quyền xem phiếu thanh toán của công ty này!")
+
+    # Thông tin công ty xuất phiếu
+    cong_ty_info = cur.execute("SELECT * FROM salan_cong_ty WHERE ma = ?", (d["cong_ty"],)).fetchone()
+    d["cong_ty_ten"] = cong_ty_info["ten"] if cong_ty_info else d["cong_ty"]
+    d["cong_ty_mst"] = cong_ty_info["mst"] if cong_ty_info else ""
+
+    # Thông tin đối tác nhận tiền
+    dt_info = cur.execute("SELECT * FROM salan_doi_tac WHERE id = ?", (d["doi_tac_id"],)).fetchone() if d["doi_tac_id"] else None
+    if dt_info:
+        d["doi_tac_ten"] = dt_info["ten"]
+        d["so_dien_thoai"] = dt_info["so_dien_thoai"]
+        d["so_tai_khoan"] = dt_info["so_tai_khoan"]
+        d["ngan_hang"] = dt_info["ngan_hang"]
+    else:
+        d["doi_tac_ten"] = ""
+        d["so_dien_thoai"] = ""
+        d["so_tai_khoan"] = ""
+        d["ngan_hang"] = ""
+
+    d["so_tien_bang_chu"] = doc_so_tien_viet_nam(d["so_tien"])
+
+    # Danh sách chuyến phân bổ chi tiết
+    chuyen_items = cur.execute("""
+        SELECT tc.chuyen_id, tc.so_tien_phan_bo, c.*
+        FROM salan_thanh_toan_chuyen tc
+        JOIN salan_chuyen c ON tc.chuyen_id = c.id
+        WHERE tc.thanh_toan_id = ?
+        ORDER BY c.ngay_nhan ASC, c.id ASC
+    """, (thanh_toan_id,)).fetchall()
+
+    dia_diem_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_dia_diem").fetchall()}
+    loai_hang_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_loai_hang").fetchall()}
+
+    danh_sach = []
+    for ci in chuyen_items:
+        c_dict = dict(ci)
+        calc = tinh_toan_chuyen_db(c_dict, cur)
+        danh_sach.append({
+            "chuyen_id": c_dict["id"],
+            "ma_chuyen": c_dict["ma_chuyen"],
+            "ngay_nhan": c_dict["ngay_nhan"],
+            "ngay_giao": c_dict.get("ngay_giao"),
+            "noi_nhan_ten": dia_diem_map.get(c_dict["noi_nhan_ma"], c_dict["noi_nhan_ma"]),
+            "nha_may_giao_ten": dia_diem_map.get(c_dict.get("nha_may_giao_ma"), c_dict.get("nha_may_giao_ma")),
+            "loai_hang_ten": loai_hang_map.get(c_dict.get("loai_hang_ma"), c_dict.get("loai_hang_ma")),
+            "kl_giao_kg": c_dict.get("kl_giao_kg") or 0,
+            "cuoc": calc["cuoc"],
+            "tien_neo": calc["tien_neo"],
+            "ho_tro": c_dict.get("ho_tro") or 0,
+            "tien_phun_trung": calc["tien_phun_trung"],
+            "tien_dau": calc["tien_dau"],
+            "tien_ung": calc["tien_ung"],
+            "boi_thuong": calc["boi_thuong"],
+            "tien_thuong": calc["tien_thuong"],
+            "con_lai_phai_tra": calc["con_lai_phai_tra"],
+            "so_tien_phan_bo": c_dict["so_tien_phan_bo"],
+            "da_tra_tien": c_dict.get("da_tra_tien", 0)
+        })
+
+    d["danh_sach_chuyen"] = danh_sach
+    con.close()
+    return d
+
+@router.delete("/thanh-toan/{thanh_toan_id}")
+def huy_thanh_toan(
+    thanh_toan_id: int,
+    ly_do: str = Query(..., min_length=1, description="Lý do huỷ phiếu thanh toán"),
+    current_user: models.User = Depends(auth.require_salan_role("quan_tri"))
+):
+    """Huỷ phiếu thanh toán (xoá mềm). Các chuyến liên quan tự động chuyển lại Chưa trả (Chỉ Quản trị Alex)."""
+    con = get_con()
+    cur = con.cursor()
+
+    row = cur.execute("SELECT * FROM salan_thanh_toan WHERE id = ?", (thanh_toan_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy phiếu thanh toán")
+
+    if row["da_huy"]:
+        con.close()
+        raise HTTPException(status_code=400, detail="Phiếu thanh toán này đã bị huỷ trước đó rồi!")
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # Xoá mềm phiếu thanh toán
+    cur.execute("""
+    UPDATE salan_thanh_toan
+    SET da_huy = 1, huy_boi = ?, huy_luc = ?, ly_do_huy = ?
+    WHERE id = ?
+    """, (current_user.username, now_str, ly_do, thanh_toan_id))
+
+    # Lấy danh sách các chuyến liên quan để tính toán lại trạng thái thanh toán
+    chuyen_ids = [r["chuyen_id"] for r in cur.execute("SELECT chuyen_id FROM salan_thanh_toan_chuyen WHERE thanh_toan_id = ?", (thanh_toan_id,)).fetchall()]
+
+    for cid in chuyen_ids:
+        c_row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ?", (cid,)).fetchone()
+        if c_row:
+            c_dict = dict(c_row)
+            calc = tinh_toan_chuyen_db(c_dict, cur)
+            con_lai_phai_tra = calc["con_lai_phai_tra"]
+
+            # Tính tổng số tiền đã phân bổ còn hiệu lực
+            active_paid_row = cur.execute("""
+                SELECT COALESCE(SUM(tc.so_tien_phan_bo), 0) as da_tra
+                FROM salan_thanh_toan_chuyen tc
+                JOIN salan_thanh_toan t ON tc.thanh_toan_id = t.id
+                WHERE tc.chuyen_id = ? AND t.da_huy = 0
+            """, (cid,)).fetchone()
+            active_paid = active_paid_row["da_tra"] if active_paid_row else 0
+
+            # Nếu tổng trả còn hiệu lực < còn phải trả -> mở khoá sổ và chuyển về chưa trả
+            if active_paid < con_lai_phai_tra:
+                cur.execute("""
+                UPDATE salan_chuyen
+                SET da_tra_tien = 0, khoa_so = 0, ngay_thanh_toan = NULL
+                WHERE id = ?
+                """, (cid,))
+
+            ghi_nhat_ky(
+                cur, "salan_chuyen", str(cid), "huy_thanh_toan",
+                gia_tri_cu={"so_phieu_huy": row["so_phieu"]},
+                gia_tri_moi={"active_paid": active_paid, "da_tra_tien": 1 if active_paid >= con_lai_phai_tra else 0},
+                nguoi_dung_id=current_user.username
+            )
+
+    ghi_nhat_ky(
+        cur, "salan_thanh_toan", str(thanh_toan_id), "huy",
+        gia_tri_cu={"so_phieu": row["so_phieu"], "so_tien": row["so_tien"]},
+        gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do},
+        nguoi_dung_id=current_user.username
+    )
+
+    con.commit()
+    con.close()
+
+    return {"message": f"Đã huỷ phiếu thanh toán {row['so_phieu']} thành công! Các chuyến liên quan đã được đưa về trạng thái chưa trả."}
+
+@router.post("/chuyen/{chuyen_id}/mo-khoa")
+def mo_khoa_chuyen(
+    chuyen_id: int,
+    data: MoKhoaChuyenRequest,
+    current_user: models.User = Depends(auth.require_salan_role("quan_tri"))
+):
+    """Mở khoá chuyến đã trả tiền để cho phép sửa đổi (Chỉ Quản trị Alex, bắt buộc ghi lý do)."""
+    if not data.ly_do or not data.ly_do.strip():
+        raise HTTPException(status_code=400, detail="Bắt buộc phải nhập lý do mở khoá chuyến!")
+
+    con = get_con()
+    cur = con.cursor()
+
+    row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
+
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    cur.execute("""
+    UPDATE salan_chuyen
+    SET khoa_so = 0, mo_khoa_boi = ?, mo_khoa_luc = ?, ly_do_mo_khoa = ?
+    WHERE id = ?
+    """, (current_user.username, now_str, data.ly_do, chuyen_id))
+
+    ghi_nhat_ky(
+        cur, "salan_chuyen", str(chuyen_id), "mo_khoa",
+        gia_tri_cu={"khoa_so": row["khoa_so"]},
+        gia_tri_moi={"khoa_so": 0, "ly_do_mo_khoa": data.ly_do},
+        nguoi_dung_id=current_user.username
+    )
+
+    con.commit()
+    con.close()
+
+    return {"message": f"Đã mở khoá chuyến {row['ma_chuyen']} thành công! Bây giờ có thể chỉnh sửa."}
+
