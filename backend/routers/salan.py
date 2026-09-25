@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile, Form
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile, Form, Header
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import models, auth
@@ -321,6 +321,20 @@ def init_salan_tables():
     add_col_if_missing("salan_ung_phi", "huy_boi", "TEXT")
     add_col_if_missing("salan_ung_phi", "huy_luc", "TEXT")
 
+    # Lệnh 5: Concurrency control & Idempotency
+    add_col_if_missing("salan_chuyen", "phien_ban", "INTEGER NOT NULL DEFAULT 1")
+    add_col_if_missing("salan_chuyen", "sua_boi", "TEXT")
+    add_col_if_missing("salan_chuyen", "sua_luc", "TEXT")
+
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS salan_idempotency_keys (
+        key TEXT PRIMARY KEY,
+        endpoint TEXT NOT NULL,
+        ban_ghi_id INTEGER,
+        ket_qua TEXT NOT NULL,
+        thoi_diem TEXT NOT NULL
+    )""")
+
     # Đánh dấu dữ liệu mẫu hiện có
     cur.execute("UPDATE salan_chuyen SET la_du_lieu_mau = 1 WHERE id IN (1, 2, 3)")
 
@@ -340,6 +354,23 @@ def ghi_nhat_ky(cur, bang: str, ban_ghi_id: str, hanh_dong: str, gia_tri_cu=None
     INSERT INTO nhat_ky (bang, ban_ghi_id, hanh_dong, gia_tri_cu, gia_tri_moi, nguoi_dung_id, thoi_diem, ip)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (bang, str(ban_ghi_id), hanh_dong, gt_cu_str, gt_moi_str, nguoi_dung_id, thoi_diem, ip))
+
+def kiem_tra_idempotency(cur, key: Optional[str], endpoint: str):
+    if not key:
+        return None
+    row = cur.execute("SELECT ban_ghi_id, ket_qua FROM salan_idempotency_keys WHERE key = ? AND endpoint = ?", (key, endpoint)).fetchone()
+    if row:
+        import json
+        return json.loads(row[1])
+    return None
+
+def luu_idempotency(cur, key: Optional[str], endpoint: str, ban_ghi_id: int, ket_qua: dict):
+    if not key:
+        return
+    import json
+    thoi_diem = datetime.now().isoformat()
+    cur.execute("INSERT OR REPLACE INTO salan_idempotency_keys (key, endpoint, ban_ghi_id, ket_qua, thoi_diem) VALUES (?, ?, ?, ?, ?)",
+                (key, endpoint, ban_ghi_id, json.dumps(ket_qua, ensure_ascii=False), thoi_diem))
 
 def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung, danh_sach_tep=None):
     """Tính toán mọi khoản tiền của chuyến theo đúng công thức Mục 6 Đặc tả."""
@@ -466,10 +497,19 @@ def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung, danh_sach_tep=None):
         canh_bao.append({"ma": "W03", "noi_dung": f"Hụt vượt {hut_vuot_kg:,} kg nhưng chưa có giá bồi thường"})
     if ngay_neo > 0 and not co_tinh_neo:
         canh_bao.append({"ma": "W04", "noi_dung": f"Neo {ngay_neo} ngày nhưng chưa chọn Có tính neo"})
-    if (tien_dau + tien_ung) > cuoc and cuoc > 0:
-        canh_bao.append({"ma": "W09", "noi_dung": "Dầu + Ứng lớn hơn cước: Sà lan đang nợ ngược"})
+    if ngay_giao and don_gia_cuoc == 0:
+        canh_bao.append({"ma": "W05", "noi_dung": "Chuyến đã giao nhưng chưa có đơn giá cước!"})
+    if (tien_dau + tien_ung) > cuoc:
+        canh_bao.append({"ma": "W09", "noi_dung": "Dầu + Ứng lớn hơn cước: Sà lan đang nợ ngược (ứng vượt)"})
+    if ngay_giao and not row.get('so_bang_ke'):
+        canh_bao.append({"ma": "W10", "noi_dung": "Chuyến đã giao nhưng chưa có số bảng kê!"})
+    if ngay_giao and not row.get('so_hoa_don_dau_vao') and str(row.get('phuong_tien_ma', '')).startswith('SG'):
+        canh_bao.append({"ma": "W11", "noi_dung": "Phương tiện chuyên tuyến chưa có số hoá đơn đầu vào!"})
     if lai_gop < 0 and cuoc_thu > 0:
         canh_bao.append({"ma": "W06", "noi_dung": f"Lãi gộp chuyến âm: {lai_gop:,} đ"})
+
+    ung_vuot = abs(con_lai_phai_tra) if con_lai_phai_tra < 0 else 0
+    ung_vuot_text = f"Ứng vượt {ung_vuot:,} đ" if ung_vuot > 0 else ""
 
     return {
         "tan_giao": float(round(T, 3)),
@@ -489,6 +529,8 @@ def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung, danh_sach_tep=None):
         "kg_thuong": kg_thuong,
         "tien_thuong": tien_thuong,
         "con_lai_phai_tra": con_lai_phai_tra,
+        "ung_vuot": ung_vuot,
+        "ung_vuot_text": ung_vuot_text,
         "cuoc_thu": cuoc_thu,
         "vat_thu": vat_thu,
         "ngay_neo_thu": ngay_neo_thu,
@@ -538,6 +580,9 @@ def get_danh_sach_chuyen(
     chu_hang: Optional[str] = None,
     thang: Optional[str] = None,
     trang_thai: Optional[str] = None,
+    q: Optional[str] = None,
+    page: int = 1,
+    limit: int = 100,
     current_user: models.User = Depends(auth.get_current_user)
 ):
     user_role = current_user.get_salan_role()
@@ -549,6 +594,11 @@ def get_danh_sach_chuyen(
 
     con = get_con()
     cur = con.cursor()
+    
+    # Bản đồ danh mục phục vụ hiển thị tên người dùng thân thiện thay vì mã code
+    chu_hang_map = {r['ma']: r['ten_chuan'] for r in cur.execute("SELECT ma, ten_chuan FROM salan_chu_hang").fetchall()}
+    dia_diem_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_dia_diem").fetchall()}
+    loai_hang_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_loai_hang").fetchall()}
     
     sql = "SELECT * FROM salan_chuyen WHERE da_huy = 0"
     params = []
@@ -573,14 +623,29 @@ def get_danh_sach_chuyen(
     if trang_thai:
         sql += " AND trang_thai = ?"
         params.append(trang_thai)
+    if q:
+        sql += " AND (ma_chuyen LIKE ? OR phuong_tien_ma LIKE ? OR chu_hang_ma LIKE ? OR so_bang_ke LIKE ?)"
+        q_wild = f"%{q.strip()}%"
+        params.extend([q_wild, q_wild, q_wild, q_wild])
         
     sql += " ORDER BY ngay_nhan DESC, id DESC"
+    if limit and limit > 0:
+        offset = max(0, (page - 1) * limit)
+        sql += f" LIMIT {int(limit)} OFFSET {int(offset)}"
+        
     rows = cur.execute(sql, params).fetchall()
     
     result = []
     for r in rows:
         row_dict = dict(r)
         c_id = row_dict['id']
+        
+        # Gắn tên danh mục thân thiện
+        row_dict['chu_hang_ten'] = chu_hang_map.get(row_dict.get('chu_hang_ma'), row_dict.get('chu_hang_ma'))
+        row_dict['noi_nhan_ten'] = dia_diem_map.get(row_dict.get('noi_nhan_ma'), row_dict.get('noi_nhan_ma'))
+        row_dict['nha_may_giao_ten'] = dia_diem_map.get(row_dict.get('nha_may_giao_ma'), row_dict.get('nha_may_giao_ma'))
+        row_dict['loai_hang_ten'] = loai_hang_map.get(row_dict.get('loai_hang_ma'), row_dict.get('loai_hang_ma'))
+        row_dict['phuong_tien_ten'] = row_dict.get('phuong_tien_ma')
         
         # Lấy danh sách dầu, ứng & tệp đính kèm (chỉ lấy dòng chưa huỷ)
         dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
@@ -623,6 +688,15 @@ def get_chi_tiet_chuyen(
         con.close()
         raise HTTPException(status_code=403, detail="Bạn không có quyền truy cập chuyến của công ty này!")
 
+    chu_hang_map = {r['ma']: r['ten_chuan'] for r in cur.execute("SELECT ma, ten_chuan FROM salan_chu_hang").fetchall()}
+    dia_diem_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_dia_diem").fetchall()}
+    loai_hang_map = {r['ma']: r['ten'] for r in cur.execute("SELECT ma, ten FROM salan_loai_hang").fetchall()}
+    row_dict['chu_hang_ten'] = chu_hang_map.get(row_dict.get('chu_hang_ma'), row_dict.get('chu_hang_ma'))
+    row_dict['noi_nhan_ten'] = dia_diem_map.get(row_dict.get('noi_nhan_ma'), row_dict.get('noi_nhan_ma'))
+    row_dict['nha_may_giao_ten'] = dia_diem_map.get(row_dict.get('nha_may_giao_ma'), row_dict.get('nha_may_giao_ma'))
+    row_dict['loai_hang_ten'] = loai_hang_map.get(row_dict.get('loai_hang_ma'), row_dict.get('loai_hang_ma'))
+    row_dict['phuong_tien_ten'] = row_dict.get('phuong_tien_ma')
+
     dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     tep_rows = [dict(t) for t in cur.execute("SELECT id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai, da_huy FROM salan_tep_dinh_kem WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
@@ -639,6 +713,21 @@ def get_chi_tiet_chuyen(
 
     con.close()
     return row_dict
+
+class DoDauItem(BaseModel):
+    id: Optional[int] = None
+    ngay: str
+    noi_do_ma: Optional[str] = None
+    so_lit: float
+    gia_dau: int
+    tien_dau: Optional[int] = 0
+    ghi_chu: Optional[str] = None
+
+class UngPhiItem(BaseModel):
+    id: Optional[int] = None
+    ngay: str
+    so_tien: int
+    noi_dung: Optional[str] = None
 
 class ChuyenCreateUpdate(BaseModel):
     cong_ty: str = "TP"
@@ -668,7 +757,14 @@ class ChuyenCreateUpdate(BaseModel):
     don_gia_thuong: Optional[int] = 0
     so_bang_ke: Optional[str] = None
     so_hoa_don_dau_vao: Optional[str] = None
-    # Phía thu
+    
+    # Concurrency control & Idempotency
+    phien_ban: Optional[int] = None
+    idempotency_key: Optional[str] = None
+    do_dau: Optional[List[DoDauItem]] = None
+    ung_phi: Optional[List[UngPhiItem]] = None
+
+    # Phía thu (nếu có)
     hinh_thuc_thu: Optional[str] = "theo_tan"
     don_gia_thu: Optional[int] = 0
     tien_tron_lo: Optional[int] = 0
@@ -682,43 +778,43 @@ class ChuyenCreateUpdate(BaseModel):
     don_gia_neo_thu: Optional[int] = 4000
     nguoi_nhap: Optional[str] = "Alex"
 
-class DoDauItem(BaseModel):
-    ngay: str
-    noi_do_ma: Optional[str] = None
-    so_lit: float
-    gia_dau: int
-    ghi_chu: Optional[str] = None
-
-class UngPhiItem(BaseModel):
-    ngay: str
-    so_tien: int
-    noi_dung: Optional[str] = None
-
 @router.post("/chuyen")
 def tao_chuyen_moi(
     data: ChuyenCreateUpdate,
+    idempotency_key_header: Optional[str] = Header(None, alias="X-Idempotency-Key"),
     current_user: models.User = Depends(auth.require_salan_write_permission)
 ):
+    idem_key = data.idempotency_key or idempotency_key_header
+    con = get_con()
+    cur = con.cursor()
+    
+    if idem_key:
+        cached = kiem_tra_idempotency(cur, idem_key, "POST /api/salan/chuyen")
+        if cached:
+            con.close()
+            return cached
+
     user_role = current_user.get_salan_role()
     allowed_companies = current_user.get_allowed_companies()
     if user_role != "quan_tri" and data.cong_ty not in allowed_companies:
+        con.close()
         raise HTTPException(status_code=403, detail=f"Bạn không có quyền tạo chuyến cho công ty {data.cong_ty}!")
 
     # Kiểm tra C01
     if not data.cong_ty or not data.phuong_tien_ma or not data.chu_hang_ma or not data.ngay_nhan or not data.noi_nhan_ma or data.kl_nhan_kg <= 0:
+        con.close()
         raise HTTPException(status_code=400, detail="[C01] Thiếu thông tin bắt buộc: công ty, sà lan, chủ hàng, ngày nhận, nơi nhận hoặc khối lượng nhận!")
         
     # Kiểm tra C02
     if data.ngay_giao and data.ngay_giao < data.ngay_nhan:
+        con.close()
         raise HTTPException(status_code=400, detail="[C02] Ngày giao không được trước ngày nhận!")
         
     # Kiểm tra C03
-    if data.kl_nhan_kg < 0 or (data.kl_giao_kg and data.kl_giao_kg < 0) or data.don_gia_cuoc < 0:
+    if data.kl_nhan_kg < 0 or (data.kl_giao_kg and data.kl_giao_kg < 0) or (data.don_gia_cuoc and data.don_gia_cuoc < 0):
+        con.close()
         raise HTTPException(status_code=400, detail="[C03] Khối lượng hoặc đơn giá không được mang giá trị âm!")
         
-    con = get_con()
-    cur = con.cursor()
-    
     # Tự sinh mã chuyến: ví dụ ĐT 26284-C01, ĐT 26284-C02...
     pt = cur.execute("SELECT so_chuyen_truoc_so FROM salan_phuong_tien WHERE ma = ?", (data.phuong_tien_ma,)).fetchone()
     so_truoc = pt['so_chuyen_truoc_so'] if pt and pt['so_chuyen_truoc_so'] else 0
@@ -746,7 +842,8 @@ def tao_chuyen_moi(
         so_bang_ke, so_hoa_don_dau_vao,
         hinh_thuc_thu, don_gia_thu, tien_tron_lo, vat_pct_thu,
         xong_trung_thu, chu_hang_ho_tro, giam_tru, ly_do_giam_tru,
-        boi_thuong_chu_hang, so_ngay_neo_cho_phep_thu, don_gia_neo_thu
+        boi_thuong_chu_hang, so_ngay_neo_cho_phep_thu, don_gia_neo_thu,
+        phien_ban, sua_boi, sua_luc
     ) VALUES (
         ?, 'sa_lan', ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
@@ -759,7 +856,8 @@ def tao_chuyen_moi(
         ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?
+        ?, ?, ?,
+        1, ?, ?
     )""", (
         data.cong_ty, ma_chuyen, stt, data.phuong_tien_ma, data.chu_hang_ma,
         data.loai_hang_ma, data.so_lo_tau, data.ghi_chu, nguoi_nhap, thoi_diem, trang_thai,
@@ -772,25 +870,60 @@ def tao_chuyen_moi(
         data.so_bang_ke, data.so_hoa_don_dau_vao,
         data.hinh_thuc_thu, data.don_gia_thu, data.tien_tron_lo, data.vat_pct_thu,
         data.xong_trung_thu, data.chu_hang_ho_tro, data.giam_tru, data.ly_do_giam_tru,
-        data.boi_thuong_chu_hang, data.so_ngay_neo_cho_phep_thu, data.don_gia_neo_thu
+        data.boi_thuong_chu_hang, data.so_ngay_neo_cho_phep_thu, data.don_gia_neo_thu,
+        nguoi_nhap, thoi_diem
     ))
     
     new_id = cur.lastrowid
+
+    # Lưu dầu đồng thời trong cùng transaction nếu có
+    if data.do_dau:
+        for d in data.do_dau:
+            tien_dau = d.tien_dau or int(d.so_lit * d.gia_dau)
+            cur.execute("""
+            INSERT INTO salan_do_dau (chuyen_id, ngay, noi_do_ma, so_lit, gia_dau, tien_dau, ghi_chu, da_huy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """, (new_id, d.ngay, d.noi_do_ma, d.so_lit, d.gia_dau, tien_dau, d.ghi_chu))
+            dau_id = cur.lastrowid
+            ghi_nhat_ky(cur, "salan_do_dau", str(dau_id), "tao", None, {"chuyen_id": new_id, "tien_dau": tien_dau}, nguoi_nhap)
+
+    # Lưu ứng đồng thời trong cùng transaction nếu có
+    if data.ung_phi:
+        for u in data.ung_phi:
+            cur.execute("""
+            INSERT INTO salan_ung_phi (chuyen_id, ngay, so_tien, noi_dung, da_huy)
+            VALUES (?, ?, ?, ?, 0)
+            """, (new_id, u.ngay, u.so_tien, u.noi_dung))
+            ung_id = cur.lastrowid
+            ghi_nhat_ky(cur, "salan_ung_phi", str(ung_id), "tao", None, {"chuyen_id": new_id, "so_tien": u.so_tien}, nguoi_nhap)
+
     ghi_nhat_ky(cur, "salan_chuyen", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"ma_chuyen": ma_chuyen, "cong_ty": data.cong_ty}, nguoi_dung_id=nguoi_nhap)
     
+    res = {"message": "Đã tạo chuyến thành công", "id": new_id, "ma_chuyen": ma_chuyen, "phien_ban": 1}
+    if idem_key:
+        luu_idempotency(cur, idem_key, "POST /api/salan/chuyen", new_id, res)
+        
     con.commit()
     con.close()
-    return {"message": "Đã tạo chuyến thành công", "id": new_id, "ma_chuyen": ma_chuyen}
+    return res
 
 @router.put("/chuyen/{chuyen_id}")
 def cap_nhat_chuyen(
     chuyen_id: int,
     data: ChuyenCreateUpdate,
+    idempotency_key_header: Optional[str] = Header(None, alias="X-Idempotency-Key"),
     current_user: models.User = Depends(auth.require_salan_write_permission)
 ):
+    idem_key = data.idempotency_key or idempotency_key_header
     con = get_con()
     cur = con.cursor()
     
+    if idem_key:
+        cached = kiem_tra_idempotency(cur, idem_key, f"PUT /api/salan/chuyen/{chuyen_id}")
+        if cached:
+            con.close()
+            return cached
+
     existing = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
     if not existing:
         con.close()
@@ -805,10 +938,32 @@ def cap_nhat_chuyen(
     if existing['khoa_so'] and user_role != "quan_tri":
         con.close()
         raise HTTPException(status_code=400, detail="[C07] Chuyến này đã thanh toán và bị khóa, chỉ Alex mới có quyền mở khóa!")
+
+    # Concurrency control (phien_ban)
+    existing_dict = dict(existing)
+    curr_phien_ban = existing_dict.get('phien_ban') or 1
+    if data.phien_ban is not None and data.phien_ban != curr_phien_ban:
+        sua_boi = existing_dict.get('sua_boi') or existing_dict.get('nguoi_nhap') or "người dùng khác"
+        sua_luc = existing_dict.get('sua_luc') or existing_dict.get('thoi_diem_nhap') or ""
+        con.close()
+        raise HTTPException(
+            status_code=409,
+            detail=f"Chuyến vừa được {sua_boi} sửa lúc {sua_luc}. Tải lại để xem."
+        )
+
+    # Validations
+    if data.ngay_giao and data.ngay_giao < data.ngay_nhan:
+        con.close()
+        raise HTTPException(status_code=400, detail="[C02] Ngày giao không được trước ngày nhận!")
         
+    if data.kl_nhan_kg < 0 or (data.kl_giao_kg and data.kl_giao_kg < 0) or (data.don_gia_cuoc and data.don_gia_cuoc < 0):
+        con.close()
+        raise HTTPException(status_code=400, detail="[C03] Khối lượng hoặc đơn giá không được mang giá trị âm!")
+
     trang_thai = "da_giao" if data.ngay_giao else "dang_chay"
     thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     nguoi_nhap = current_user.username
+    new_phien_ban = curr_phien_ban + 1
     
     cur.execute("""
     UPDATE salan_chuyen SET
@@ -822,7 +977,8 @@ def cap_nhat_chuyen(
         so_bang_ke = ?, so_hoa_don_dau_vao = ?, trang_thai = ?,
         hinh_thuc_thu = ?, don_gia_thu = ?, tien_tron_lo = ?, vat_pct_thu = ?,
         xong_trung_thu = ?, chu_hang_ho_tro = ?, giam_tru = ?, ly_do_giam_tru = ?,
-        boi_thuong_chu_hang = ?, so_ngay_neo_cho_phep_thu = ?, don_gia_neo_thu = ?
+        boi_thuong_chu_hang = ?, so_ngay_neo_cho_phep_thu = ?, don_gia_neo_thu = ?,
+        phien_ban = ?, sua_boi = ?, sua_luc = ?
     WHERE id = ?
     """, (
         data.cong_ty, data.phuong_tien_ma, data.chu_hang_ma, data.loai_hang_ma, data.so_lo_tau, data.ghi_chu,
@@ -836,9 +992,31 @@ def cap_nhat_chuyen(
         data.hinh_thuc_thu, data.don_gia_thu, data.tien_tron_lo, data.vat_pct_thu,
         data.xong_trung_thu, data.chu_hang_ho_tro, data.giam_tru, data.ly_do_giam_tru,
         data.boi_thuong_chu_hang, data.so_ngay_neo_cho_phep_thu, data.don_gia_neo_thu,
+        new_phien_ban, nguoi_nhap, thoi_diem,
         chuyen_id
     ))
     
+    # Cập nhật danh sách dầu nếu được gửi kèm
+    if data.do_dau is not None:
+        cur.execute("UPDATE salan_do_dau SET da_huy = 1, ly_do_huy = 'Cập nhật lại qua form chuyến', huy_boi = ?, huy_luc = ? WHERE chuyen_id = ? AND da_huy = 0",
+                    (nguoi_nhap, thoi_diem, chuyen_id))
+        for d in data.do_dau:
+            tien_dau = d.tien_dau or int(d.so_lit * d.gia_dau)
+            cur.execute("""
+            INSERT INTO salan_do_dau (chuyen_id, ngay, noi_do_ma, so_lit, gia_dau, tien_dau, ghi_chu, da_huy)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """, (chuyen_id, d.ngay, d.noi_do_ma, d.so_lit, d.gia_dau, tien_dau, d.ghi_chu))
+
+    # Cập nhật danh sách ứng nếu được gửi kèm
+    if data.ung_phi is not None:
+        cur.execute("UPDATE salan_ung_phi SET da_huy = 1, ly_do_huy = 'Cập nhật lại qua form chuyến', huy_boi = ?, huy_luc = ? WHERE chuyen_id = ? AND da_huy = 0",
+                    (nguoi_nhap, thoi_diem, chuyen_id))
+        for u in data.ung_phi:
+            cur.execute("""
+            INSERT INTO salan_ung_phi (chuyen_id, ngay, so_tien, noi_dung, da_huy)
+            VALUES (?, ?, ?, ?, 0)
+            """, (chuyen_id, u.ngay, u.so_tien, u.noi_dung))
+
     gia_tri_cu = {
         "don_gia_cuoc": existing["don_gia_cuoc"],
         "kl_nhan_kg": existing["kl_nhan_kg"],
@@ -846,7 +1024,8 @@ def cap_nhat_chuyen(
         "co_tinh_neo": existing["co_tinh_neo"],
         "don_gia_neo": existing["don_gia_neo"],
         "trang_thai": existing["trang_thai"],
-        "so_bang_ke": existing["so_bang_ke"]
+        "so_bang_ke": existing["so_bang_ke"],
+        "phien_ban": curr_phien_ban
     }
     gia_tri_moi = {
         "don_gia_cuoc": data.don_gia_cuoc,
@@ -855,13 +1034,18 @@ def cap_nhat_chuyen(
         "co_tinh_neo": 1 if data.co_tinh_neo else 0,
         "don_gia_neo": data.don_gia_neo,
         "trang_thai": trang_thai,
-        "so_bang_ke": data.so_bang_ke
+        "so_bang_ke": data.so_bang_ke,
+        "phien_ban": new_phien_ban
     }
     ghi_nhat_ky(cur, "salan_chuyen", str(chuyen_id), "sua", gia_tri_cu=gia_tri_cu, gia_tri_moi=gia_tri_moi, nguoi_dung_id=nguoi_nhap)
     
+    res = {"message": "Đã cập nhật chuyến thành công", "id": chuyen_id, "phien_ban": new_phien_ban}
+    if idem_key:
+        luu_idempotency(cur, idem_key, f"PUT /api/salan/chuyen/{chuyen_id}", chuyen_id, res)
+        
     con.commit()
     con.close()
-    return {"message": "Đã cập nhật chuyến thành công"}
+    return res
 
 @router.delete("/chuyen/{chuyen_id}")
 def xoa_chuyen(

@@ -80,8 +80,10 @@ def test_2_audit_log_sua_chuyen():
     assert str(don_gia_moi) in log[2], f"Đơn giá mới {don_gia_moi} không có trong gia_tri_moi"
 
     # Trả lại đơn giá cũ
+    t1["phien_ban"] = put_res.json().get("phien_ban")
     t1["don_gia_cuoc"] = don_gia_cu
-    client.put("/api/salan/chuyen/1", json=t1, headers=auth_headers)
+    res_restore = client.put("/api/salan/chuyen/1", json=t1, headers=auth_headers)
+    assert res_restore.status_code == 200
     con.close()
     print("✅ TEST 2 ĐẠT: Sửa chuyến ghi đầy đủ giá trị cũ và giá trị mới vào nhật ký kiểm toán.")
 

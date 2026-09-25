@@ -171,6 +171,12 @@
             <option value="da_giao">Đã giao</option>
             <option value="da_tra_sa_lan">Đã trả xong</option>
           </select>
+
+          <!-- Tìm kiếm nhanh -->
+          <div class="relative">
+            <input type="text" id="filterSearch" placeholder="🔍 Tìm mã chuyến, sà lan, chủ hàng, bảng kê..." oninput="debounceLoadTrips()" class="border border-slate-300 rounded-lg pl-3 pr-8 py-1.5 font-medium bg-slate-50 w-64 focus:ring-1 focus:ring-blue-500 focus:outline-none">
+            <button onclick="document.getElementById('filterSearch').value=''; loadTrips();" class="absolute right-2 top-1.5 text-slate-400 hover:text-slate-600 font-bold" title="Xoá tìm kiếm">✕</button>
+          </div>
         </div>
 
         <div class="flex items-center space-x-2">
@@ -913,17 +919,34 @@
       }
     }
 
+    let searchDebounceTimer = null;
+    function debounceLoadTrips() {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(loadTrips, 250);
+    }
+
+    function formatDateVN(dateStr) {
+      if (!dateStr) return '—';
+      const parts = String(dateStr).split('-');
+      if (parts.length === 3) {
+        return `${parts[2]}/${parts[1]}/${parts[0]}`;
+      }
+      return dateStr;
+    }
+
     async function loadTrips() {
       const congTy = document.getElementById('filterCongTy').value;
       const saLan = document.getElementById('filterSaLan').value;
       const chuHang = document.getElementById('filterChuHang').value;
       const trangThai = document.getElementById('filterTrangThai').value;
+      const q = document.getElementById('filterSearch') ? document.getElementById('filterSearch').value.trim() : '';
 
       let url = '/api/salan/chuyen?';
       if (congTy) url += `cong_ty=${encodeURIComponent(congTy)}&`;
       if (saLan) url += `sa_lan=${encodeURIComponent(saLan)}&`;
       if (chuHang) url += `chu_hang=${encodeURIComponent(chuHang)}&`;
       if (trangThai) url += `trang_thai=${encodeURIComponent(trangThai)}&`;
+      if (q) url += `q=${encodeURIComponent(q)}&`;
 
       try {
         const res = await apiFetch(url);
@@ -952,21 +975,24 @@
         if (t.trang_thai === 'da_giao') statusBadge = `<span class="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Đã giao</span>`;
         if (t.da_tra_tien) statusBadge = `<span class="bg-purple-100 text-purple-800 text-[10px] font-bold px-2 py-0.5 rounded-full">Đã thanh toán</span>`;
 
+        const fileCount = t.tep_dinh_kem ? t.tep_dinh_kem.length : 0;
+        const fileBadge = fileCount > 0 ? `<span class="inline-block text-[10px] text-slate-500 font-semibold bg-slate-100 px-1 rounded ml-1" title="Đã có ${fileCount} tệp đính kèm">📷 ${fileCount}</span>` : '';
+
         return `
           <tr class="hover:bg-slate-50 transition border-b border-slate-100">
             <td class="p-3">
-              <span class="font-extrabold text-blue-900 mono">${t.ma_chuyen}</span>
+              <span class="font-extrabold text-blue-900 mono">${t.ma_chuyen}</span> ${fileBadge}
               <div class="text-[10px] text-slate-400">${t.cong_ty} • #${t.so_thu_tu}</div>
               ${warnBadges}
             </td>
-            <td class="p-3 mono">${t.ngay_nhan || '—'}</td>
-            <td class="p-3 font-bold text-slate-800">${t.phuong_tien_ma}</td>
+            <td class="p-3 mono">${formatDateVN(t.ngay_nhan)}</td>
+            <td class="p-3 font-bold text-slate-800">${t.phuong_tien_ten || t.phuong_tien_ma}</td>
             <td class="p-3">
-              <div class="font-semibold text-slate-800">${t.chu_hang_ma}</div>
-              <div class="text-[10px] text-slate-400">${t.loai_hang_ma || ''} ${t.so_lo_tau ? `(${t.so_lo_tau})` : ''}</div>
+              <div class="font-semibold text-slate-800">${t.chu_hang_ten || t.chu_hang_ma}</div>
+              <div class="text-[10px] text-slate-400">${t.loai_hang_ten || t.loai_hang_ma || ''} ${t.so_lo_tau ? `(${t.so_lo_tau})` : ''}</div>
             </td>
             <td class="p-3">
-              <span class="text-slate-600">${t.noi_nhan_ma}</span> ➔ <span class="text-slate-800 font-semibold">${t.nha_may_giao_ma || 'Chưa giao'}</span>
+              <span class="text-slate-600">${t.noi_nhan_ten || t.noi_nhan_ma}</span> ➔ <span class="text-slate-800 font-semibold">${t.nha_may_giao_ten || t.nha_may_giao_ma || 'Chưa giao'}</span>
             </td>
             <td class="p-3 text-right mono font-bold">${t.kl_giao_kg ? fmtNum(t.kl_giao_kg) : '—'}</td>
             <td class="p-3 text-right mono">${fmtVND(t.cuoc)}</td>
@@ -979,8 +1005,10 @@
               ${t.boi_thuong > 0 ? `<div class="text-red-600 font-bold">Phạt: -${fmtVND(t.boi_thuong)}</div>` : ''}
               ${t.tien_thuong > 0 ? `<div class="text-emerald-600 font-bold">Thưởng: +${fmtVND(t.tien_thuong)}</div>` : ''}
             </td>
-            <td class="p-3 text-right mono font-extrabold text-amber-900 bg-amber-50/50">
-              ${fmtVND(t.con_lai_phai_tra)}
+            <td class="p-3 text-right mono font-extrabold bg-amber-50/50">
+              ${(t.con_lai_phai_tra < 0 || t.ung_vuot > 0)
+                ? `<span class="inline-block bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded font-bold text-xs" title="Dầu + Ứng lớn hơn cước">Ứng vượt ${fmtNum(t.ung_vuot || Math.abs(t.con_lai_phai_tra))} đ</span>`
+                : `<span class="font-extrabold text-amber-900">${fmtVND(t.con_lai_phai_tra)}</span>`}
             </td>
             <td class="p-3 text-center">${statusBadge}</td>
             <td class="p-3 text-center space-x-1">
@@ -1018,9 +1046,85 @@
     let currentFuelList = [];
     let currentAdvanceList = [];
     let currentAttachments = [];
+    let currentTripVersion = 1;
+    let isFormDirty = false;
+
+    // Tự động lưu bản nháp mỗi 10 giây nếu form đang mở và có sửa đổi
+    function autoSaveDraft() {
+      const modal = document.getElementById('tripModal');
+      if (!modal || modal.classList.contains('hidden') || !isFormDirty) return;
+      const draft = {
+        editTripId: document.getElementById('editTripId').value,
+        cong_ty: document.getElementById('formCongTy').value,
+        phuong_tien_ma: document.getElementById('formSaLan').value,
+        chu_hang_ma: document.getElementById('formChuHang').value,
+        loai_hang_ma: document.getElementById('formLoaiHang').value,
+        so_lo_tau: document.getElementById('formSoLoTau').value,
+        ghi_chu: document.getElementById('formGhiChu').value,
+        ngay_nhan: document.getElementById('formNgayNhan').value,
+        noi_nhan_ma: document.getElementById('formNoiNhan').value,
+        kl_nhan_kg: document.getElementById('formKlNhan').value,
+        ngay_giao: document.getElementById('formNgayGiao').value,
+        nha_may_giao_ma: document.getElementById('formNhaMayGiao').value,
+        kl_giao_kg: document.getElementById('formKlGiao').value,
+        don_gia_cuoc: document.getElementById('formDonGiaCuoc').value,
+        vat_pct: document.getElementById('formVatPct').value,
+        co_tinh_neo: document.getElementById('formCoTinhNeo').checked,
+        don_gia_neo: document.getElementById('formDonGiaNeo').value,
+        ngay_cho_phep: document.getElementById('formNgayChoPhep').value,
+        ho_tro: document.getElementById('formHoTro').value,
+        ghi_chu_ho_tro: document.getElementById('formGhiChuHoTro').value,
+        co_phun_trung: document.getElementById('formCoPhunTrung').checked,
+        hh_cho_phep_pct: document.getElementById('formHhChoPhep').value,
+        gia_boi_thuong: document.getElementById('formGiaBoiThuong').value,
+        so_bang_ke: document.getElementById('formSoBangKe').value,
+        so_hoa_don_dau_vao: document.getElementById('formSoHoaDonVao').value,
+        currentFuelList: currentFuelList,
+        currentAdvanceList: currentAdvanceList,
+        savedAt: new Date().toISOString()
+      };
+      localStorage.setItem('salan_trip_draft', JSON.stringify(draft));
+    }
+    setInterval(autoSaveDraft, 10000);
+
+    function restoreDraftData(d) {
+      if (!d) return;
+      if (d.cong_ty) document.getElementById('formCongTy').value = d.cong_ty;
+      if (d.phuong_tien_ma) document.getElementById('formSaLan').value = d.phuong_tien_ma;
+      if (d.chu_hang_ma) document.getElementById('formChuHang').value = d.chu_hang_ma;
+      if (d.loai_hang_ma) document.getElementById('formLoaiHang').value = d.loai_hang_ma;
+      if (d.so_lo_tau) document.getElementById('formSoLoTau').value = d.so_lo_tau;
+      if (d.ghi_chu) document.getElementById('formGhiChu').value = d.ghi_chu;
+      if (d.ngay_nhan) document.getElementById('formNgayNhan').value = d.ngay_nhan;
+      if (d.noi_nhan_ma) document.getElementById('formNoiNhan').value = d.noi_nhan_ma;
+      if (d.kl_nhan_kg) document.getElementById('formKlNhan').value = d.kl_nhan_kg;
+      if (d.ngay_giao) document.getElementById('formNgayGiao').value = d.ngay_giao;
+      if (d.nha_may_giao_ma) document.getElementById('formNhaMayGiao').value = d.nha_may_giao_ma;
+      if (d.kl_giao_kg) document.getElementById('formKlGiao').value = d.kl_giao_kg;
+      if (d.don_gia_cuoc) document.getElementById('formDonGiaCuoc').value = d.don_gia_cuoc;
+      if (d.vat_pct) document.getElementById('formVatPct').value = d.vat_pct;
+      if (d.co_tinh_neo !== undefined) document.getElementById('formCoTinhNeo').checked = d.co_tinh_neo;
+      if (d.don_gia_neo) document.getElementById('formDonGiaNeo').value = d.don_gia_neo;
+      if (d.ngay_cho_phep) document.getElementById('formNgayChoPhep').value = d.ngay_cho_phep;
+      if (d.ho_tro) document.getElementById('formHoTro').value = d.ho_tro;
+      if (d.ghi_chu_ho_tro) document.getElementById('formGhiChuHoTro').value = d.ghi_chu_ho_tro;
+      if (d.co_phun_trung !== undefined) document.getElementById('formCoPhunTrung').checked = d.co_phun_trung;
+      if (d.hh_cho_phep_pct) document.getElementById('formHhChoPhep').value = d.hh_cho_phep_pct;
+      if (d.gia_boi_thuong) document.getElementById('formGiaBoiThuong').value = d.gia_boi_thuong;
+      if (d.so_bang_ke) document.getElementById('formSoBangKe').value = d.so_bang_ke;
+      if (d.so_hoa_don_dau_vao) document.getElementById('formSoHoaDonVao').value = d.so_hoa_don_dau_vao;
+      currentFuelList = d.currentFuelList || [];
+      currentAdvanceList = d.currentAdvanceList || [];
+      renderFuelRows();
+      renderAdvanceRows();
+      calculateFormLive();
+      isFormDirty = true;
+    }
 
     function openModalAddTrip() {
       document.getElementById('editTripId').value = '';
+      currentTripVersion = 1;
+      isFormDirty = false;
       document.getElementById('modalTitle').innerText = 'THÊM MỚI CHUYẾN SÀ LAN';
       document.getElementById('tripForm').reset();
       currentFuelList = [];
@@ -1030,6 +1134,19 @@
       renderAdvanceRows();
       renderAttachmentUI();
       calculateFormLive();
+
+      const rawDraft = localStorage.getItem('salan_trip_draft');
+      if (rawDraft) {
+        try {
+          const draftObj = JSON.parse(rawDraft);
+          if (!draftObj.editTripId && confirm('Khôi phục bản nháp chưa lưu?')) {
+            restoreDraftData(draftObj);
+          }
+        } catch (e) {}
+      }
+
+      // Lắng nghe thay đổi form để đánh dấu dirty
+      document.getElementById('tripForm').oninput = () => { isFormDirty = true; };
       document.getElementById('tripModal').classList.remove('hidden');
     }
 
@@ -1039,6 +1156,8 @@
         const t = await res.json();
         
         document.getElementById('editTripId').value = t.id;
+        currentTripVersion = t.phien_ban || 1;
+        isFormDirty = false;
         document.getElementById('modalTitle').innerText = (currentRole === 'ban_giam_doc' ? 'XEM CHI TIẾT CHUYẾN: ' : 'SỬA THẺ CHUYẾN: ') + t.ma_chuyen;
         
         const isReadOnly = (currentRole === 'ban_giam_doc');
@@ -1089,6 +1208,7 @@
         await loadAttachmentsForTrip(id);
 
         calculateFormLive();
+        document.getElementById('tripForm').oninput = () => { isFormDirty = true; };
         document.getElementById('tripModal').classList.remove('hidden');
       } catch (err) {
         alert("Lỗi tải chi tiết chuyến!");
@@ -1096,6 +1216,10 @@
     }
 
     function closeModalTrip() {
+      if (isFormDirty && !confirm("Bạn có thay đổi chưa lưu. Bạn có chắc muốn đóng?")) {
+        return;
+      }
+      isFormDirty = false;
       document.getElementById('tripModal').classList.add('hidden');
     }
 
@@ -1382,12 +1506,17 @@
       } else {
         conLai = hoTro - tongDau - tongUng;
       }
-      document.getElementById('calcConLaiPhaiTra').innerText = fmtVND(conLai);
+      if (conLai < 0) {
+        document.getElementById('calcConLaiPhaiTra').innerHTML = `<span class="text-amber-600 font-bold">Ứng vượt ${fmtNum(Math.abs(conLai))} đ</span>`;
+      } else {
+        document.getElementById('calcConLaiPhaiTra').innerText = fmtVND(conLai);
+      }
     }
 
     async function saveTrip(e) {
       e.preventDefault();
       const id = document.getElementById('editTripId').value;
+      const btnSave = document.getElementById('btnModalSaveTrip');
       
       const payload = {
         cong_ty: document.getElementById('formCongTy').value,
@@ -1421,8 +1550,19 @@
         
         so_bang_ke: document.getElementById('formSoBangKe').value,
         so_hoa_don_dau_vao: document.getElementById('formSoHoaDonVao').value,
-        nguoi_nhap: (currentUser ? (currentUser.full_name || currentUser.username) : 'Alex')
+        nguoi_nhap: (currentUser ? (currentUser.full_name || currentUser.username) : 'Alex'),
+
+        // Lệnh 5: Concurrency, Idempotency & Giao dịch đơn nguyên tử (Single Transaction)
+        phien_ban: currentTripVersion,
+        idempotency_key: (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : 'idem-' + Date.now(),
+        do_dau: currentFuelList,
+        ung_phi: currentAdvanceList
       };
+
+      if (btnSave) {
+        btnSave.disabled = true;
+        btnSave.innerText = '⏳ Đang lưu...';
+      }
 
       try {
         let tripId = id;
@@ -1433,6 +1573,10 @@
             body: JSON.stringify(payload)
           });
           const resData = await res.json();
+          if (res.status === 409) {
+            alert('⚠️ ' + (resData.detail || 'Chuyến vừa được người khác sửa! Tải lại để xem.'));
+            return;
+          }
           if (!res.ok) throw new Error(resData.detail || 'Lỗi lưu chuyến');
         } else {
           const res = await apiFetch('/api/salan/chuyen', {
@@ -1445,32 +1589,20 @@
           tripId = resData.id;
         }
 
-        // Lưu danh sách dầu & ứng
-        for (const f of currentFuelList) {
-          if (!f.id) {
-            await apiFetch(`/api/salan/chuyen/${tripId}/dau`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ngay: f.ngay, so_lit: Number(f.so_lit), gia_dau: Number(f.gia_dau), ghi_chu: f.ghi_chu })
-            });
-          }
-        }
-        for (const a of currentAdvanceList) {
-          if (!a.id) {
-            await apiFetch(`/api/salan/chuyen/${tripId}/ung`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ngay: a.ngay, so_tien: Number(a.so_tien), noi_dung: a.noi_dung })
-            });
-          }
-        }
-
-        alert('✅ Đã lưu chuyến sà lan thành công!');
+        localStorage.removeItem('salan_trip_draft');
+        isFormDirty = false;
+        alert('✅ Đã lưu chuyến sà lan thành công trong 1 giao dịch an toàn!');
         closeModalTrip();
         loadTrips();
       } catch (err) {
         alert('❌ ' + err.message);
+      } finally {
+        if (btnSave) {
+          btnSave.disabled = false;
+          btnSave.innerText = '💾 Lưu Chuyến Sà Lan';
+        }
       }
+    }
     }
 
     async function reSeedSampleData() {
