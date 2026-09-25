@@ -252,8 +252,14 @@
 
         <button onclick="switchTab('barges')" id="nav-barges" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-slate-300 hover:bg-slate-800/80 hover:text-white transition group">
           <i data-lucide="ship" class="w-4 h-4 text-cyan-400 group-hover:scale-110 transition-transform"></i>
-          <span>Đội Sà Lan (10)</span>
+          <span>Danh Sách Sà Lan (10)</span>
         </button>
+
+        <a href="/salan" target="_blank" class="nav-btn w-full flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-cyan-300 bg-cyan-950/50 hover:bg-cyan-900/70 border border-cyan-700/50 transition group shadow-sm">
+          <i data-lucide="compass" class="w-4 h-4 text-cyan-400 group-hover:rotate-45 transition-transform"></i>
+          <span class="flex-1 text-left font-bold">Sổ Chuyến Sà Lan</span>
+          <span class="text-[9px] bg-cyan-500/20 text-cyan-300 px-2 py-0.5 rounded-full font-black border border-cyan-400/30">MỚI</span>
+        </a>
 
         <!-- HỆ THỐNG & BẢO MẬT (TÁCH BIỆT PHÍA DƯỚI) -->
         <div class="pt-3 mt-2 border-t border-slate-800/80">
@@ -399,6 +405,12 @@
             <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
             <span>Tải App ĐT</span>
           </button>
+
+          <!-- Nút Truy Cập Nhanh Sổ Chuyến Sà Lan -->
+          <a href="/salan" target="_blank" class="flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 px-4 py-2.5 rounded-2xl shadow-md shadow-cyan-500/25 transition active:scale-95" title="Mở module Sổ Quản Lý Chuyến & Thanh Toán Sà Lan">
+            <i data-lucide="ship" class="w-3.5 h-3.5"></i>
+            <span>Sổ Sà Lan</span>
+          </a>
         </div>
       </header>
 
@@ -1285,6 +1297,22 @@
 
         <!-- TAB: BARGES -->
         <section id="tab-barges" class="tab-content hidden space-y-6">
+          <!-- BANNER CHUYỂN NHANH ĐẾN SỔ QUẢN LÝ CHUYẾN SÀ LAN -->
+          <div class="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-6 rounded-[2rem] text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-5 border border-blue-700/50 shadow-xl relative overflow-hidden">
+            <div class="relative z-10">
+              <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 text-blue-300 text-xs font-bold mb-2 border border-blue-400/30">
+                <span>🚢 Phân Hệ Điều Hành & Kế Toán Sà Lan</span>
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+              </div>
+              <h4 class="text-lg font-black tracking-tight">SỔ QUẢN LÝ CHUYẾN & THANH TOÁN SÀ LAN</h4>
+              <p class="text-xs text-blue-200/90 mt-1 max-w-xl">Theo dõi cước vận chuyển, hao hụt, thưởng phạt, định mức nhiên liệu DO, tạm ứng và lập phiếu thanh toán tự động cho từng sà lan.</p>
+            </div>
+            <a href="/salan" target="_blank" class="relative z-10 px-5 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold rounded-2xl text-xs shadow-lg transition flex items-center gap-2 whitespace-nowrap active:scale-95 border border-white/20">
+              <span>Mở Sổ Chuyến Sà Lan</span>
+              <i data-lucide="external-link" class="w-4 h-4"></i>
+            </a>
+          </div>
+
           <div class="glass-card p-6 md:p-7 rounded-[2rem] shadow-sm space-y-5">
             <h3 class="font-black text-slate-900 text-sm uppercase">Đội Sà Lan Vận Tải (4 Sà Lan Nhà • 6 Sà Lan Thuê Ngoài)</h3>
             <div class="overflow-x-auto rounded-2xl border border-slate-200/90 shadow-2xs">

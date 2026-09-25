@@ -267,6 +267,15 @@ async function handleLogin(e) {
       alertBox.classList.add('hidden');
       alertBox.style.display = 'none';
     }
+    
+    // Nếu có tham số redirect (ví dụ: ?redirect=/salan), tự động chuyển hướng
+    const urlParams = new URLSearchParams(window.location.search);
+    const redirectUrl = urlParams.get('redirect');
+    if (redirectUrl && redirectUrl.startsWith('/')) {
+      window.location.href = redirectUrl;
+      return false;
+    }
+
     showApp();
   } catch (err) {
     showError(err.message || 'Lỗi kết nối máy chủ!');
