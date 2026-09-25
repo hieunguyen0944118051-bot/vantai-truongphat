@@ -177,7 +177,8 @@ class SecurityFirewallManager:
                 return False, "Yêu cầu bị chặn: Phát hiện mã độc trong đường dẫn."
 
         # LỚP 3: DEEP WAF INSPECTION (Body Content)
-        if body_bytes and len(body_bytes) < 50000 and request.url.path != "/api/assistant/execute":
+        is_multipart = request.headers.get("content-type", "").lower().startswith("multipart/form-data")
+        if body_bytes and len(body_bytes) < 50000 and request.url.path != "/api/assistant/execute" and not is_multipart:
             try:
                 body_str = body_bytes.decode("utf-8", errors="ignore")
                 for pattern in MALICIOUS_PATTERNS:

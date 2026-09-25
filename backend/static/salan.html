@@ -668,6 +668,43 @@
           </div>
         </div>
 
+        <!-- KHỐI 6B: HỒ SƠ & TỆP ĐÍNH KÈM CHỨNG TỪ (PHIẾU CÂN, DẦU, ỨNG, HOÁ ĐƠN) -->
+        <div class="bg-indigo-50/50 p-4 rounded-xl border border-indigo-200">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h4 class="font-bold text-indigo-900 uppercase text-[11px] tracking-wider flex items-center space-x-1.5">
+                <span>📎</span>
+                <span>Hồ Sơ & Ảnh Chứng Từ (Phiếu Cân Nhận/Giao, Dầu, Ứng)</span>
+              </h4>
+              <p class="text-[10px] text-indigo-700 mt-0.5">Tự động nén ảnh tối ưu 1600px trước khi tải lên. Cần tối thiểu 1 phiếu cân nhận/giao để huỷ cảnh báo W01.</p>
+            </div>
+            <span id="badgeFileCount" class="text-xs bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded">0 tệp</span>
+          </div>
+
+          <!-- Khu vực tải file -->
+          <div id="uploadAttachmentArea" class="flex flex-wrap items-center gap-2 p-2.5 bg-white rounded-lg border border-indigo-200 mb-3 text-xs">
+            <select id="uploadDocType" class="field-input p-1.5 rounded font-semibold text-slate-700">
+              <option value="can_giao">⚖️ Phiếu cân nhà máy giao</option>
+              <option value="can_nhan">⚖️ Phiếu cân nơi nhận</option>
+              <option value="phieu_dau">⛽ Phiếu đổ dầu</option>
+              <option value="phieu_ung">💵 Giấy / Uỷ nhiệm chi ứng</option>
+              <option value="hoa_don">🧾 Hoá đơn sà lan xuất</option>
+              <option value="khac">📁 Chứng từ khác</option>
+            </select>
+            <input type="file" id="fileAttachmentInput" accept="image/*,.pdf" class="text-xs text-slate-600 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100">
+            <button type="button" onclick="uploadAttachmentFile()" id="btnUploadAttachment" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded shadow transition flex items-center space-x-1">
+              <span>⬆️</span>
+              <span>Tải Lên</span>
+            </button>
+            <span id="uploadSpinner" class="hidden text-indigo-600 font-bold text-xs animate-pulse">Đang nén & tải lên...</span>
+          </div>
+
+          <!-- Danh sách file đã đính kèm -->
+          <div id="attachmentListContainer" class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <!-- Render động -->
+          </div>
+        </div>
+
         <!-- KHỐI 7: TỔNG KẾT & CÒN LẠI PHẢI TRẢ SÀ LAN -->
         <div class="bg-gradient-to-r from-amber-500/10 via-amber-500/20 to-amber-500/10 p-5 rounded-2xl border-2 border-amber-500/40 flex flex-wrap items-center justify-between gap-4">
           <div>
@@ -980,6 +1017,7 @@
     // FORM THẺ CHUYẾN & TÍNH TOÁN REAL-TIME
     let currentFuelList = [];
     let currentAdvanceList = [];
+    let currentAttachments = [];
 
     function openModalAddTrip() {
       document.getElementById('editTripId').value = '';
@@ -987,8 +1025,10 @@
       document.getElementById('tripForm').reset();
       currentFuelList = [];
       currentAdvanceList = [];
+      currentAttachments = [];
       renderFuelRows();
       renderAdvanceRows();
+      renderAttachmentUI();
       calculateFormLive();
       document.getElementById('tripModal').classList.remove('hidden');
     }
@@ -1045,6 +1085,8 @@
         currentAdvanceList = t.ung_phi || [];
         renderFuelRows();
         renderAdvanceRows();
+
+        await loadAttachmentsForTrip(id);
 
         calculateFormLive();
         document.getElementById('tripModal').classList.remove('hidden');
@@ -1116,6 +1158,163 @@
           <button type="button" onclick="removeAdvanceRowUI(${i})" class="text-red-500 font-bold px-1.5">✕</button>
         </div>
       `).join('');
+    }
+
+    // QUẢN LÝ TỆP ĐÍNH KÈM & NÉN ẢNH CLIENT-SIDE
+    function compressImageFile(file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) {
+      return new Promise((resolve) => {
+        if (!file.type.startsWith('image/')) {
+          return resolve(file);
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = new Image();
+          img.onload = () => {
+            let width = img.width;
+            let height = img.height;
+            if (width > maxWidth || height > maxHeight) {
+              if (width > height) {
+                height = Math.round((height * maxWidth) / width);
+                width = maxWidth;
+              } else {
+                width = Math.round((width * maxHeight) / height);
+                height = maxHeight;
+              }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+              if (!blob) return resolve(file);
+              const compressedFile = new File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+                type: 'image/jpeg',
+                lastModified: Date.now()
+              });
+              resolve(compressedFile);
+            }, 'image/jpeg', quality);
+          };
+          img.onerror = () => resolve(file);
+          img.src = e.target.result;
+        };
+        reader.onerror = () => resolve(file);
+        reader.readAsDataURL(file);
+      });
+    }
+
+    async function uploadAttachmentFile() {
+      const tripId = document.getElementById('editTripId').value;
+      if (!tripId) {
+        alert('Vui lòng lưu chuyến trước khi tải ảnh chứng từ!');
+        return;
+      }
+      const fileInput = document.getElementById('fileAttachmentInput');
+      if (!fileInput.files || fileInput.files.length === 0) {
+        alert('Vui lòng chọn 1 tệp ảnh hoặc PDF!');
+        return;
+      }
+      const rawFile = fileInput.files[0];
+      const docType = document.getElementById('uploadDocType').value;
+      const spinner = document.getElementById('uploadSpinner');
+      const btn = document.getElementById('btnUploadAttachment');
+
+      spinner.classList.remove('hidden');
+      btn.disabled = true;
+
+      try {
+        const compressed = await compressImageFile(rawFile);
+        const formData = new FormData();
+        formData.append('loai_tep', docType);
+        formData.append('file', compressed);
+
+        const res = await apiFetch(`/api/salan/chuyen/${tripId}/tep-dinh-kem`, {
+          method: 'POST',
+          body: formData
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Lỗi tải tệp');
+
+        fileInput.value = '';
+        await loadAttachmentsForTrip(tripId);
+        await loadTrips();
+      } catch (err) {
+        alert('❌ ' + err.message);
+      } finally {
+        spinner.classList.add('hidden');
+        btn.disabled = false;
+      }
+    }
+
+    async function loadAttachmentsForTrip(tripId) {
+      if (!tripId) {
+        currentAttachments = [];
+        renderAttachmentUI();
+        return;
+      }
+      try {
+        const res = await apiFetch(`/api/salan/chuyen/${tripId}/tep-dinh-kem`);
+        currentAttachments = await res.json();
+        renderAttachmentUI();
+      } catch (e) {
+        console.error("Lỗi tải tệp đính kèm:", e);
+      }
+    }
+
+    function renderAttachmentUI() {
+      const c = document.getElementById('attachmentListContainer');
+      const badge = document.getElementById('badgeFileCount');
+      if (badge) badge.innerText = `${currentAttachments.length} tệp`;
+
+      if (!c) return;
+      if (currentAttachments.length === 0) {
+        c.innerHTML = '<p class="col-span-4 text-slate-400 italic text-[11px] p-2">Chưa có chứng từ nào được đính kèm cho chuyến này.</p>';
+        return;
+      }
+
+      const docLabels = {
+        can_giao: '⚖️ Cân Giao',
+        can_nhan: '⚖️ Cân Nhận',
+        phieu_dau: '⛽ Phiếu Dầu',
+        phieu_ung: '💵 Phiếu Ứng',
+        hoa_don: '🧾 Hoá Đơn',
+        khac: '📁 Khác'
+      };
+
+      c.innerHTML = currentAttachments.map(a => {
+        const isImg = a.mime_type && a.mime_type.startsWith('image/');
+        const previewUrl = a.url;
+        return `
+          <div class="bg-white p-2 rounded-lg border border-slate-200 shadow-sm relative flex flex-col justify-between text-xs">
+            <div>
+              <div class="h-20 bg-slate-100 rounded overflow-hidden flex items-center justify-center mb-1.5 border border-slate-100">
+                ${isImg ? `<img src="${previewUrl}" class="h-full w-full object-cover cursor-pointer hover:scale-105 transition" onclick="window.open('${previewUrl}', '_blank')">` : `<span class="text-2xl">📄</span>`}
+              </div>
+              <span class="inline-block px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 mb-1">
+                ${docLabels[a.loai_tep] || a.loai_tep}
+              </span>
+              <p class="truncate text-[11px] font-medium text-slate-700" title="${a.ten_goc}">${a.ten_goc}</p>
+              <p class="text-[9px] text-slate-400">${Math.round(a.kich_thuoc_bytes / 1024)} KB • ${a.nguoi_tai}</p>
+            </div>
+            <div class="mt-2 flex items-center justify-between border-t border-slate-100 pt-1">
+              <a href="${previewUrl}" target="_blank" class="text-blue-600 hover:underline font-semibold text-[10px]">👁️ Xem</a>
+              <button type="button" onclick="deleteAttachment(${a.id})" class="text-red-500 hover:text-red-700 font-bold text-[10px]">🗑️ Huỷ</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    async function deleteAttachment(tepId) {
+      if (!confirm('Bạn có chắc muốn huỷ tệp đính kèm này?')) return;
+      try {
+        const res = await apiFetch(`/api/salan/tep-dinh-kem/${tepId}`, { method: 'DELETE' });
+        const tripId = document.getElementById('editTripId').value;
+        await loadAttachmentsForTrip(tripId);
+        await loadTrips();
+      } catch (err) {
+        alert('❌ ' + err.message);
+      }
     }
 
     // TÍNH TOÁN CÔNG THỨC TRỰC TIẾP TRÊN FORM

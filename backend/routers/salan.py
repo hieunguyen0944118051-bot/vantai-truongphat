@@ -3,13 +3,16 @@ import sqlite3
 from datetime import datetime, date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException, Depends, Query, Request
+from fastapi import APIRouter, HTTPException, Depends, Query, Request, File, UploadFile, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import models, auth
 
 router = APIRouter(prefix="/api/salan", tags=["Salan Management"])
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "transport.db")
+UPLOAD_BASE_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "uploads", "phieu")
+os.makedirs(UPLOAD_BASE_DIR, exist_ok=True)
 
 # Cờ tính năng Phần B (Bảng kê chủ hàng) - Mặc định TẮT cho tới khi Alex kích hoạt (Lệnh 8)
 PHAN_B_BAT = os.environ.get("PHAN_B_BAT", "false").lower() in ("true", "1", "yes")
@@ -247,6 +250,25 @@ def init_salan_tables():
         FOREIGN KEY (chuyen_id) REFERENCES salan_chuyen(id)
     )""")
     
+    # 5c. Bảng Tệp đính kèm chứng từ (Phiếu cân, Dầu, Ứng, Hoá đơn)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS salan_tep_dinh_kem (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chuyen_id INTEGER NOT NULL,
+        loai_tep TEXT NOT NULL,
+        ten_goc TEXT NOT NULL,
+        duong_dan TEXT NOT NULL,
+        kich_thuoc_bytes INTEGER NOT NULL DEFAULT 0,
+        mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+        nguoi_tai TEXT NOT NULL DEFAULT 'Alex',
+        thoi_diem_tai TEXT NOT NULL,
+        da_huy INTEGER NOT NULL DEFAULT 0,
+        ly_do_huy TEXT,
+        huy_boi TEXT,
+        huy_luc TEXT,
+        FOREIGN KEY (chuyen_id) REFERENCES salan_chuyen(id)
+    )""")
+    
     # 6. Bảng Nhật ký kiểm toán bất biến (nhat_ky)
     cur.execute("""
     CREATE TABLE IF NOT EXISTS nhat_ky (
@@ -319,8 +341,10 @@ def ghi_nhat_ky(cur, bang: str, ban_ghi_id: str, hanh_dong: str, gia_tri_cu=None
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     """, (bang, str(ban_ghi_id), hanh_dong, gt_cu_str, gt_moi_str, nguoi_dung_id, thoi_diem, ip))
 
-def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung):
+def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung, danh_sach_tep=None):
     """Tính toán mọi khoản tiền của chuyến theo đúng công thức Mục 6 Đặc tả."""
+    if danh_sach_tep is None:
+        danh_sach_tep = []
     kl_nhan = row['kl_nhan_kg'] or 0
     kl_giao = row['kl_giao_kg'] or 0
     don_gia_cuoc = row['don_gia_cuoc'] or 0
@@ -430,8 +454,12 @@ def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung):
     
     # 9. Danh sách cảnh báo (C01-C07, W01-W11)
     canh_bao = []
+    # W01: Chuyến đã giao nhưng thiếu ảnh phiếu cân nhận hoặc giao
+    has_scale_ticket = any(t.get('loai_tep') in ('can_giao', 'can_nhan') for t in danh_sach_tep if not t.get('da_huy'))
+    if ngay_giao and kl_giao > 0 and not has_scale_ticket:
+        canh_bao.append({"ma": "W01", "noi_dung": "Chuyến đã giao nhưng chưa tải ảnh phiếu cân nhận / giao!"})
     if ngay_giao and kl_giao == 0:
-        canh_bao.append({"ma": "W01", "noi_dung": "Có ngày giao nhưng thiếu khối lượng giao"})
+        canh_bao.append({"ma": "W00", "noi_dung": "Có ngày giao nhưng thiếu khối lượng giao"})
     if kl_giao > kl_nhan and kl_nhan > 0:
         canh_bao.append({"ma": "W02", "noi_dung": f"Dôi hàng: Giao nhiều hơn nhận {kl_giao - kl_nhan:,} kg"})
     if hut_vuot_kg > 0 and gia_boi_thuong == 0:
@@ -554,14 +582,16 @@ def get_danh_sach_chuyen(
         row_dict = dict(r)
         c_id = row_dict['id']
         
-        # Lấy danh sách dầu & ứng (chỉ lấy dòng chưa huỷ)
+        # Lấy danh sách dầu, ứng & tệp đính kèm (chỉ lấy dòng chưa huỷ)
         dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
         ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+        tep_rows = [dict(t) for t in cur.execute("SELECT id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai, da_huy FROM salan_tep_dinh_kem WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
         
-        calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows)
+        calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows, tep_rows)
         row_dict.update(calc)
         row_dict['do_dau'] = dau_rows
         row_dict['ung_phi'] = ung_rows
+        row_dict['tep_dinh_kem'] = tep_rows
 
         # Lọc danh sách trắng (Server-side filtering): Không bao giờ trả trường thu và lãi gộp cho nhap_van_hanh
         if user_role == "nhap_van_hanh":
@@ -595,11 +625,13 @@ def get_chi_tiet_chuyen(
 
     dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
+    tep_rows = [dict(t) for t in cur.execute("SELECT id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai, da_huy FROM salan_tep_dinh_kem WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     
-    calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows)
+    calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows, tep_rows)
     row_dict.update(calc)
     row_dict['do_dau'] = dau_rows
     row_dict['ung_phi'] = ung_rows
+    row_dict['tep_dinh_kem'] = tep_rows
 
     if user_role == "nhap_van_hanh":
         for f in FORBIDDEN_FIELDS_NHAP_VAN_HANH:
@@ -970,6 +1002,159 @@ def xoa_ung_phi(
     con.close()
     return {"message": "Đã huỷ dòng ứng (xoá mềm, lưu nhật ký)"}
 
+import re
+import unicodedata
+
+def slugify(text: str) -> str:
+    text = str(text).strip().replace('Đ', 'D').replace('đ', 'd')
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode('utf-8')
+    text = re.sub(r'[^a-zA-Z0-9_\-]', '_', text)
+    return re.sub(r'_+', '_', text).strip('_')
+
+@router.post("/chuyen/{chuyen_id}/tep-dinh-kem")
+async def tai_tep_dinh_kem(
+    chuyen_id: int,
+    loai_tep: str = Form(..., description="Loai chung tu: can_nhan, can_giao, phieu_dau, phieu_ung, hoa_don, khac"),
+    file: UploadFile = File(...),
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
+    """Tải lên tệp đính kèm chứng từ cho chuyến sà lan theo cấu trúc chuẩn:
+    phieu/<nam>/<thang>/<ma-chuyen>/<loai>/<thoi-gian>-<ten>.jpg"""
+    con = get_con()
+    cur = con.cursor()
+    trip = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
+    if not trip:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
+        
+    trip_dict = dict(trip)
+    allowed_companies = current_user.get_allowed_companies()
+    if allowed_companies is not None and trip_dict["cong_ty"] not in allowed_companies:
+        con.close()
+        raise HTTPException(status_code=403, detail="Không có quyền thao tác trên chuyến của công ty này")
+        
+    now = datetime.now()
+    nam_str = now.strftime("%Y")
+    thang_str = now.strftime("%m")
+    ma_chuyen_clean = slugify(trip_dict["ma_chuyen"])
+    loai_clean = slugify(loai_tep)
+    
+    folder_path = os.path.join(UPLOAD_BASE_DIR, nam_str, thang_str, ma_chuyen_clean, loai_clean)
+    os.makedirs(folder_path, exist_ok=True)
+    
+    timestamp_prefix = now.strftime("%Y%m%d-%H%M%S")
+    raw_name = file.filename or 'file'
+    base_name, ext = os.path.splitext(raw_name)
+    ext = ext.lower()
+    clean_base = slugify(base_name) or 'tep'
+    safe_filename = f"{timestamp_prefix}-{clean_base}{ext}"
+        
+    full_path = os.path.join(folder_path, safe_filename)
+    contents = await file.read()
+    with open(full_path, "wb") as f_out:
+        f_out.write(contents)
+        
+    rel_path = os.path.relpath(full_path, os.path.dirname(UPLOAD_BASE_DIR))
+    file_size = len(contents)
+    mime_type = file.content_type or "image/jpeg"
+    now_iso = now.isoformat()
+    
+    cur.execute("""
+    INSERT INTO salan_tep_dinh_kem (chuyen_id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (chuyen_id, loai_tep, file.filename or 'unnamed', rel_path, file_size, mime_type, current_user.username, now_iso))
+    new_id = cur.lastrowid
+    
+    ghi_nhat_ky(cur, "salan_tep_dinh_kem", str(new_id), "tao", 
+                gia_tri_cu=None, 
+                gia_tri_moi={"chuyen_id": chuyen_id, "loai_tep": loai_tep, "ten_goc": file.filename, "duong_dan": rel_path},
+                nguoi_dung_id=current_user.username)
+    con.commit()
+    con.close()
+    return {
+        "id": new_id,
+        "chuyen_id": chuyen_id,
+        "loai_tep": loai_tep,
+        "ten_goc": file.filename,
+        "duong_dan": rel_path,
+        "kich_thuoc_bytes": file_size,
+        "url": f"/api/salan/tep-dinh-kem/{new_id}/xem",
+        "message": "Đã lưu tệp đính kèm thành công"
+    }
+
+@router.get("/chuyen/{chuyen_id}/tep-dinh-kem")
+def get_danh_sach_tep(chuyen_id: int, current_user: models.User = Depends(auth.get_current_user)):
+    """Lấy danh sách tệp đính kèm của chuyến."""
+    con = get_con()
+    cur = con.cursor()
+    rows = cur.execute("""
+    SELECT id, chuyen_id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai
+    FROM salan_tep_dinh_kem
+    WHERE chuyen_id = ? AND da_huy = 0
+    ORDER BY id ASC
+    """, (chuyen_id,)).fetchall()
+    result = []
+    for r in rows:
+        d = dict(r)
+        d["url"] = f"/api/salan/tep-dinh-kem/{d['id']}/xem"
+        result.append(d)
+    con.close()
+    return result
+
+@router.get("/tep-dinh-kem/{tep_id}/xem")
+def xem_tep_dinh_kem(
+    tep_id: int, 
+    token: Optional[str] = None
+):
+    """Xem hoặc tải ảnh chứng từ."""
+    con = get_con()
+    cur = con.cursor()
+    row = cur.execute("SELECT * FROM salan_tep_dinh_kem WHERE id = ? AND da_huy = 0", (tep_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy tệp đính kèm hoặc tệp đã bị huỷ")
+        
+    tep = dict(row)
+    con.close()
+    
+    abs_path = os.path.join(os.path.dirname(UPLOAD_BASE_DIR), tep["duong_dan"])
+    if not os.path.exists(abs_path):
+        raise HTTPException(status_code=404, detail="File vật lý không tồn tại trên hệ thống lưu trữ")
+        
+    return FileResponse(abs_path, media_type=tep.get("mime_type", "image/jpeg"), filename=tep["ten_goc"])
+
+@router.delete("/tep-dinh-kem/{tep_id}")
+def xoa_tep_dinh_kem(
+    tep_id: int,
+    ly_do: str = Query("Huỷ tệp đính kèm", description="Lý do huỷ"),
+    current_user: models.User = Depends(auth.require_salan_write_permission)
+):
+    """Xoá mềm tệp đính kèm (da_huy = 1) và lưu nhật ký kiểm toán."""
+    con = get_con()
+    cur = con.cursor()
+    row = cur.execute("SELECT * FROM salan_tep_dinh_kem WHERE id = ? AND da_huy = 0", (tep_id,)).fetchone()
+    if not row:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy tệp đính kèm")
+        
+    tep = dict(row)
+    now_iso = datetime.now().isoformat()
+    cur.execute("""
+    UPDATE salan_tep_dinh_kem 
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = ?, huy_luc = ?
+    WHERE id = ?
+    """, (ly_do, current_user.username, now_iso, tep_id))
+    
+    ghi_nhat_ky(
+        cur, "salan_tep_dinh_kem", str(tep_id), "huy",
+        gia_tri_cu={"da_huy": 0, "duong_dan": tep["duong_dan"], "ten_goc": tep["ten_goc"]},
+        gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do, "huy_boi": current_user.username, "huy_luc": now_iso},
+        nguoi_dung_id=current_user.username
+    )
+    con.commit()
+    con.close()
+    return {"message": "Đã huỷ tệp đính kèm (xoá mềm, lưu nhật ký)"}
+
 @router.get("/tong-quan")
 def get_tong_quan(
     cong_ty: Optional[str] = None, 
@@ -1013,9 +1198,10 @@ def get_tong_quan(
     for r in rows:
         row_dict = dict(r)
         c_id = row_dict['id']
-        dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ?", (c_id,)).fetchall()]
-        ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ?", (c_id,)).fetchall()]
-        calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows)
+        dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+        ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+        tep_rows = [dict(t) for t in cur.execute("SELECT * FROM salan_tep_dinh_kem WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+        calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows, tep_rows)
         
         tong_kl_giao += row_dict['kl_giao_kg'] or 0
         tong_cuoc_sa_lan += calc['cuoc']
