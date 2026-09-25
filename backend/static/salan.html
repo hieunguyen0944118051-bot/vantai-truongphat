@@ -115,24 +115,24 @@
       </div>
 
       <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
+        <p class="text-[11px] font-semibold text-slate-500 uppercase">Dầu & Ứng đã cấp</p>
+        <p id="kpi-dau-ung" class="text-lg font-bold text-indigo-700 mono mt-0.5">0 ₫</p>
+        <p class="text-[10px] text-slate-400 mt-1">Khấu trừ vào cước</p>
+      </div>
+
+      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm">
         <p class="text-[11px] font-semibold text-slate-500 uppercase">Còn phải trả sà lan</p>
         <p id="kpi-phai-tra" class="text-lg font-bold text-amber-700 mono mt-0.5">0 ₫</p>
         <p class="text-[10px] text-slate-400 mt-1">Đã trừ dầu, ứng, phạt</p>
       </div>
 
-      <div class="bg-white p-3 rounded-xl border border-slate-200 shadow-sm role-finance-only">
-        <p class="text-[11px] font-semibold text-slate-500 uppercase">Tổng phải thu C.Hàng</p>
-        <p id="kpi-phai-thu" class="text-lg font-bold text-emerald-700 mono mt-0.5">0 ₫</p>
-        <p class="text-[10px] text-slate-400 mt-1">Cước thu + Neo + VAT</p>
-      </div>
-
-      <div class="bg-white p-3 rounded-xl border border-emerald-200 bg-emerald-50/40 shadow-sm role-admin-only">
-        <p class="text-[11px] font-semibold text-emerald-800 uppercase flex items-center justify-between">
-          <span>Lãi gộp ước tính</span>
-          <span>💰</span>
+      <div class="bg-white p-3 rounded-xl border border-rose-200 bg-rose-50/30 shadow-sm">
+        <p class="text-[11px] font-semibold text-rose-800 uppercase flex items-center justify-between">
+          <span>Cảnh báo cần xử lý</span>
+          <span>⚠️</span>
         </p>
-        <p id="kpi-lai-gop" class="text-lg font-extrabold text-emerald-800 mono mt-0.5">0 ₫</p>
-        <p class="text-[10px] text-emerald-600 mt-1">Trước VAT (Alex & BGĐ)</p>
+        <p id="kpi-canh-bao" class="text-xl font-bold text-rose-700 mono mt-0.5">0</p>
+        <p class="text-[10px] text-rose-600 mt-1">Hao hụt / Hồ sơ / Ngày</p>
       </div>
     </div>
   </section>
@@ -196,7 +196,6 @@
                 <th class="p-3 text-right">Dầu & Ứng</th>
                 <th class="p-3 text-right">Hao Hụt / Thưởng</th>
                 <th class="p-3 text-right font-extrabold text-amber-900 bg-amber-50/60">Còn Phải Trả</th>
-                <th class="p-3 text-right role-finance-only text-emerald-900 bg-emerald-50/60">Phải Thu</th>
                 <th class="p-3 text-center">Trạng Thái</th>
                 <th class="p-3 text-center">Thao Tác</th>
               </tr>
@@ -684,47 +683,6 @@
           </div>
         </div>
 
-        <!-- KHỐI 8: PHÍA THU CHỦ HÀNG & LÃI GỘP (CHỈ QUẢN TRỊ & KẾ TOÁN) -->
-        <div class="bg-emerald-50/60 p-4 rounded-xl border border-emerald-300 role-finance-only">
-          <h4 class="font-bold text-emerald-900 uppercase mb-3 text-[11px] tracking-wider">
-            Phía Thu Chủ Hàng & Lãi Gộp Chuyến
-          </h4>
-          <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div>
-              <label class="block text-slate-600 font-semibold mb-1">Hình thức thu:</label>
-              <select id="formHinhThucThu" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2 font-medium">
-                <option value="theo_tan">Theo tấn thực tế</option>
-                <option value="tron_lo">Trọn lô</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-slate-600 font-semibold mb-1">Đơn giá thu (đ/tấn):</label>
-              <input type="number" id="formDonGiaThu" oninput="calculateFormLive()" placeholder="VD: 75,000" class="field-input w-full rounded-lg p-2 font-bold mono">
-            </div>
-            <div>
-              <label class="block text-slate-600 font-semibold mb-1">VAT thu %:</label>
-              <select id="formVatThuPct" onchange="calculateFormLive()" class="field-input w-full rounded-lg p-2">
-                <option value="0.08">8%</option>
-                <option value="0.10">10%</option>
-                <option value="0">0%</option>
-              </select>
-            </div>
-            <div>
-              <label class="block text-slate-600 font-semibold mb-1">Xông trùng thu (đ):</label>
-              <input type="number" id="formXongTrungThu" value="0" oninput="calculateFormLive()" class="field-input w-full rounded-lg p-2 mono">
-            </div>
-
-            <div>
-              <label class="block text-slate-600 font-semibold mb-1">TỔNG PHẢI THU (đ):</label>
-              <input type="text" id="calcPhaiThu" readonly class="field-calc w-full rounded-lg p-2 mono text-right font-extrabold text-emerald-800 bg-emerald-100/50">
-            </div>
-            <div class="col-span-3 role-admin-only">
-              <label class="block text-emerald-900 font-bold mb-1">LÃI GỘP CHUYẾN (Trước VAT — Alex & BGĐ):</label>
-              <input type="text" id="calcLaiGop" readonly class="w-full rounded-lg p-2 mono text-right font-black text-emerald-950 bg-emerald-200/60 border border-emerald-400 text-sm">
-            </div>
-          </div>
-        </div>
-
         <!-- MODAL FOOTER BUTTONS -->
         <div class="flex justify-end space-x-3 pt-3 border-t border-slate-200">
           <button type="button" onclick="closeModalTrip()" class="px-4 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold rounded-lg transition">
@@ -784,8 +742,15 @@
         setupUserInterface(currentUser);
       } catch (err) {
         console.error("Lỗi xác thực:", err);
-        return;
-      }
+      try {
+        const pbRes = await apiFetch('/api/salan/phan-b/trang-thai');
+        const pbData = await pbRes.json();
+        const tabCust = document.getElementById('tab-btn-customers');
+        if (tabCust) {
+          tabCust.style.display = pbData.phan_b_bat ? '' : 'none';
+        }
+      } catch (e) {}
+
       await loadCatalogs();
       await loadTrips();
     }
@@ -980,9 +945,6 @@
             <td class="p-3 text-right mono font-extrabold text-amber-900 bg-amber-50/50">
               ${fmtVND(t.con_lai_phai_tra)}
             </td>
-            <td class="p-3 text-right mono font-bold text-emerald-900 bg-emerald-50/50 role-finance-only">
-              ${fmtVND(t.phai_thu)}
-            </td>
             <td class="p-3 text-center">${statusBadge}</td>
             <td class="p-3 text-center space-x-1">
               <button onclick="openModalEditTrip(${t.id})" class="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white rounded border border-slate-300 font-semibold transition" title="Sửa chuyến">
@@ -996,23 +958,23 @@
     }
 
     function updateKpis() {
-      let klGiao = 0, cuoc = 0, phaiTra = 0, phaiThu = 0, laiGop = 0, chuaTra = 0;
+      let klGiao = 0, cuoc = 0, phaiTra = 0, chuaTra = 0, dauUng = 0, canhBao = 0;
       allTrips.forEach(t => {
         klGiao += (t.kl_giao_kg || 0);
         cuoc += (t.cuoc || 0);
         phaiTra += (t.con_lai_phai_tra || 0);
-        phaiThu += (t.phai_thu || 0);
-        laiGop += (t.lai_gop || 0);
+        dauUng += (t.tien_dau || 0) + (t.tien_ung || 0);
+        if (t.canh_bao && t.canh_bao.length > 0) canhBao += t.canh_bao.length;
         if (!t.da_tra_tien) chuaTra++;
       });
 
-      document.getElementById('kpi-chuyen').innerText = allTrips.length;
-      document.getElementById('kpi-chua-tra').innerText = chuaTra;
-      document.getElementById('kpi-san-luong').innerHTML = `${fmtNum(Math.round(klGiao / 1000))} <span class="text-xs font-normal">tấn</span>`;
-      document.getElementById('kpi-cuoc-salan').innerText = fmtVND(cuoc);
-      document.getElementById('kpi-phai-tra').innerText = fmtVND(phaiTra);
-      document.getElementById('kpi-phai-thu').innerText = fmtVND(phaiThu);
-      document.getElementById('kpi-lai-gop').innerText = fmtVND(laiGop);
+      if (document.getElementById('kpi-chuyen')) document.getElementById('kpi-chuyen').innerText = allTrips.length;
+      if (document.getElementById('kpi-chua-tra')) document.getElementById('kpi-chua-tra').innerText = chuaTra;
+      if (document.getElementById('kpi-san-luong')) document.getElementById('kpi-san-luong').innerHTML = `${fmtNum(Math.round(klGiao / 1000))} <span class="text-xs font-normal">tấn</span>`;
+      if (document.getElementById('kpi-cuoc-salan')) document.getElementById('kpi-cuoc-salan').innerText = fmtVND(cuoc);
+      if (document.getElementById('kpi-dau-ung')) document.getElementById('kpi-dau-ung').innerText = fmtVND(dauUng);
+      if (document.getElementById('kpi-phai-tra')) document.getElementById('kpi-phai-tra').innerText = fmtVND(phaiTra);
+      if (document.getElementById('kpi-canh-bao')) document.getElementById('kpi-canh-bao').innerText = canhBao;
     }
 
     // FORM THẺ CHUYẾN & TÍNH TOÁN REAL-TIME
@@ -1078,11 +1040,6 @@
 
         document.getElementById('formSoBangKe').value = t.so_bang_ke || '';
         document.getElementById('formSoHoaDonVao').value = t.so_hoa_don_dau_vao || '';
-
-        document.getElementById('formHinhThucThu').value = t.hinh_thuc_thu || 'theo_tan';
-        document.getElementById('formDonGiaThu').value = t.don_gia_thu || 0;
-        document.getElementById('formVatThuPct').value = t.vat_pct_thu || 0.08;
-        document.getElementById('formXongTrungThu').value = t.xong_trung_thu || 0;
 
         currentFuelList = t.do_dau || [];
         currentAdvanceList = t.ung_phi || [];
@@ -1227,24 +1184,6 @@
         conLai = hoTro - tongDau - tongUng;
       }
       document.getElementById('calcConLaiPhaiTra').innerText = fmtVND(conLai);
-
-      // Phía thu
-      const hinhThucThu = document.getElementById('formHinhThucThu').value;
-      const donGiaThu = Number(document.getElementById('formDonGiaThu').value) || 0;
-      const vatThuPct = Number(document.getElementById('formVatThuPct').value) || 0.08;
-      const xongTrungThu = Number(document.getElementById('formXongTrungThu').value) || 0;
-
-      const cuocThu = Math.round(T * donGiaThu);
-      const vatThu = Math.round(cuocThu * vatThuPct);
-      const neoThu = Math.round(T * 4000 * Math.max(0, ngayThucTe - 2));
-      const phaiThu = cuocThu + vatThu + neoThu + xongTrungThu;
-      document.getElementById('calcPhaiThu').value = fmtNum(phaiThu) + ' ₫';
-
-      // Lãi gộp
-      const thuTruocVat = cuocThu + neoThu + xongTrungThu;
-      const chiTruocVat = cuoc + tienNeo + hoTro + tienPhunTrung - boiThuong;
-      const laiGop = (ngayGiao && klGiao > 0) ? (thuTruocVat - chiTruocVat) : 0;
-      document.getElementById('calcLaiGop').value = fmtNum(laiGop) + ' ₫';
     }
 
     async function saveTrip(e) {
@@ -1283,12 +1222,7 @@
         
         so_bang_ke: document.getElementById('formSoBangKe').value,
         so_hoa_don_dau_vao: document.getElementById('formSoHoaDonVao').value,
-        
-        hinh_thuc_thu: document.getElementById('formHinhThucThu').value,
-        don_gia_thu: Number(document.getElementById('formDonGiaThu').value) || 0,
-        vat_pct_thu: Number(document.getElementById('formVatThuPct').value) || 0.08,
-        xong_trung_thu: Number(document.getElementById('formXongTrungThu').value) || 0,
-        nguoi_nhap: 'Alex'
+        nguoi_nhap: (currentUser ? (currentUser.full_name || currentUser.username) : 'Alex')
       };
 
       try {

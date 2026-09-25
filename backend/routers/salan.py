@@ -11,6 +11,9 @@ router = APIRouter(prefix="/api/salan", tags=["Salan Management"])
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "transport.db")
 
+# Cờ tính năng Phần B (Bảng kê chủ hàng) - Mặc định TẮT cho tới khi Alex kích hoạt (Lệnh 8)
+PHAN_B_BAT = os.environ.get("PHAN_B_BAT", "false").lower() in ("true", "1", "yes")
+
 def get_con():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
@@ -208,6 +211,39 @@ def init_salan_tables():
         chuyen_id INTEGER NOT NULL,
         so_tien_phan_bo INTEGER NOT NULL,
         FOREIGN KEY (thanh_toan_id) REFERENCES salan_thanh_toan(id) ON DELETE CASCADE,
+        FOREIGN KEY (chuyen_id) REFERENCES salan_chuyen(id)
+    )""")
+    
+    # 5b. Bảng Cước thu chủ hàng (Phần B tách biệt)
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS salan_cuoc_thu (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        chuyen_id INTEGER NOT NULL UNIQUE,
+        chu_hang_ma TEXT NOT NULL,
+        hinh_thuc_thu TEXT DEFAULT 'theo_tan',
+        don_gia_thu INTEGER DEFAULT 0,
+        tien_tron_lo INTEGER DEFAULT 0,
+        vat_pct_thu REAL DEFAULT 0.08,
+        cuoc_thu INTEGER DEFAULT 0,
+        vat_thu INTEGER DEFAULT 0,
+        xong_trung_thu INTEGER DEFAULT 0,
+        neo_thu INTEGER DEFAULT 0,
+        chu_hang_ho_tro INTEGER DEFAULT 0,
+        giam_tru INTEGER DEFAULT 0,
+        ly_do_giam_tru TEXT,
+        boi_thuong_chu_hang INTEGER DEFAULT 0,
+        tong_phai_thu INTEGER DEFAULT 0,
+        da_xuat_hoa_don INTEGER DEFAULT 0,
+        so_hoa_don TEXT,
+        ngay_hoa_don TEXT,
+        da_thu_tien INTEGER DEFAULT 0,
+        so_tien_da_thu INTEGER DEFAULT 0,
+        ngay_thu_tien TEXT,
+        ngay_tao TEXT,
+        ngay_cap_nhat TEXT,
+        nguoi_cap_nhat TEXT,
+        da_huy INTEGER DEFAULT 0,
+        ly_do_huy TEXT,
         FOREIGN KEY (chuyen_id) REFERENCES salan_chuyen(id)
     )""")
     
@@ -1152,3 +1188,22 @@ def seed_du_lieu_chuan(current_user: models.User = Depends(auth.require_salan_ro
     con.commit()
     con.close()
     return {"message": "Đã nạp thành công bộ dữ liệu danh mục & 3 chuyến mẫu thực tế"}
+
+@router.get("/phan-b/trang-thai")
+def get_phan_b_status():
+    """Kiểm tra trạng thái kích hoạt của Phần B (Bảng kê chủ hàng & công nợ)."""
+    return {
+        "phan_b_bat": PHAN_B_BAT,
+        "detail": "Phần B (Bảng kê chủ hàng) đã được kích hoạt" if PHAN_B_BAT else "Phần B (Bảng kê chủ hàng) hiện đang tắt theo Lệnh Antigravity"
+    }
+
+@router.get("/chu-hang/cong-no")
+def get_cong_no_chu_hang(current_user: models.User = Depends(auth.get_current_user)):
+    """API công nợ chủ hàng Phần B.
+    Bị chặn 403 tuyệt đối khi PHAN_B_BAT = False."""
+    if not PHAN_B_BAT:
+        raise HTTPException(
+            status_code=403, 
+            detail="Phần B (Bảng kê chủ hàng) hiện đang tắt theo Lệnh Antigravity. Chỉ mở khi Alex quyết định thực hiện Lệnh 8."
+        )
+    return {"message": "Dữ liệu công nợ chủ hàng (Phần B)"}
