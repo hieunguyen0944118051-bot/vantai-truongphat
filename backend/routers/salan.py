@@ -200,26 +200,77 @@ def init_salan_tables():
         FOREIGN KEY (chuyen_id) REFERENCES salan_chuyen(id)
     )""")
     
-    # 6. Bảng Nhật ký sửa (Audit Log bất biến)
+    # 6. Bảng Nhật ký kiểm toán bất biến (nhat_ky)
     cur.execute("""
-    CREATE TABLE IF NOT EXISTS salan_nhat_ky_sua (
+    CREATE TABLE IF NOT EXISTS nhat_ky (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         bang TEXT NOT NULL,
         ban_ghi_id TEXT NOT NULL,
         hanh_dong TEXT NOT NULL,
-        cot TEXT,
         gia_tri_cu TEXT,
         gia_tri_moi TEXT,
-        tai_khoan TEXT,
-        ly_do TEXT,
-        thoi_diem TEXT NOT NULL
+        nguoi_dung_id TEXT,
+        thoi_diem TEXT NOT NULL,
+        ip TEXT
     )""")
+
+    # Trigger ngăn chặn tuyệt đối xoá/sửa nhật ký
+    cur.execute("""
+    CREATE TRIGGER IF NOT EXISTS trg_ngan_xoa_nhat_ky
+    BEFORE DELETE ON nhat_ky
+    BEGIN
+        SELECT RAISE(ABORT, 'Bảng nhật ký kiểm toán là bất biến: Nghiêm cấm mọi hành vi xoá!');
+    END;
+    """)
+    cur.execute("""
+    CREATE TRIGGER IF NOT EXISTS trg_ngan_sua_nhat_ky
+    BEFORE UPDATE ON nhat_ky
+    BEGIN
+        SELECT RAISE(ABORT, 'Bảng nhật ký kiểm toán là bất biến: Nghiêm cấm mọi hành vi sửa!');
+    END;
+    """)
+
+    # Kiểm tra và bổ sung cột chống xoá cứng (soft delete) cho các bảng nếu chưa có
+    def add_col_if_missing(table, col, col_def):
+        cols = [c[1] for c in cur.execute(f"PRAGMA table_info({table})").fetchall()]
+        if col not in cols:
+            cur.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
+
+    add_col_if_missing("salan_chuyen", "da_huy", "INTEGER NOT NULL DEFAULT 0")
+    add_col_if_missing("salan_chuyen", "ly_do_huy", "TEXT")
+    add_col_if_missing("salan_chuyen", "huy_boi", "TEXT")
+    add_col_if_missing("salan_chuyen", "huy_luc", "TEXT")
+    add_col_if_missing("salan_chuyen", "la_du_lieu_mau", "INTEGER NOT NULL DEFAULT 0")
+
+    add_col_if_missing("salan_do_dau", "da_huy", "INTEGER NOT NULL DEFAULT 0")
+    add_col_if_missing("salan_do_dau", "ly_do_huy", "TEXT")
+    add_col_if_missing("salan_do_dau", "huy_boi", "TEXT")
+    add_col_if_missing("salan_do_dau", "huy_luc", "TEXT")
+
+    add_col_if_missing("salan_ung_phi", "da_huy", "INTEGER NOT NULL DEFAULT 0")
+    add_col_if_missing("salan_ung_phi", "ly_do_huy", "TEXT")
+    add_col_if_missing("salan_ung_phi", "huy_boi", "TEXT")
+    add_col_if_missing("salan_ung_phi", "huy_luc", "TEXT")
+
+    # Đánh dấu dữ liệu mẫu hiện có
+    cur.execute("UPDATE salan_chuyen SET la_du_lieu_mau = 1 WHERE id IN (1, 2, 3)")
 
     con.commit()
     con.close()
 
 # Khởi tạo bảng ngay khi import
 init_salan_tables()
+
+def ghi_nhat_ky(cur, bang: str, ban_ghi_id: str, hanh_dong: str, gia_tri_cu=None, gia_tri_moi=None, nguoi_dung_id="Alex", ip=None):
+    """Ghi nhật ký kiểm toán trong cùng transaction."""
+    import json
+    gt_cu_str = json.dumps(gia_tri_cu, ensure_ascii=False) if isinstance(gia_tri_cu, (dict, list)) else (str(gia_tri_cu) if gia_tri_cu else None)
+    gt_moi_str = json.dumps(gia_tri_moi, ensure_ascii=False) if isinstance(gia_tri_moi, (dict, list)) else (str(gia_tri_moi) if gia_tri_moi else None)
+    thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("""
+    INSERT INTO nhat_ky (bang, ban_ghi_id, hanh_dong, gia_tri_cu, gia_tri_moi, nguoi_dung_id, thoi_diem, ip)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (bang, str(ban_ghi_id), hanh_dong, gt_cu_str, gt_moi_str, nguoi_dung_id, thoi_diem, ip))
 
 def tinh_toan_chuyen(row, danh_sach_dau, danh_sach_ung):
     """Tính toán mọi khoản tiền của chuyến theo đúng công thức Mục 6 Đặc tả."""
@@ -436,9 +487,9 @@ def get_danh_sach_chuyen(
         row_dict = dict(r)
         c_id = row_dict['id']
         
-        # Lấy danh sách dầu & ứng
-        dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ?", (c_id,)).fetchall()]
-        ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ?", (c_id,)).fetchall()]
+        # Lấy danh sách dầu & ứng (chỉ lấy dòng chưa huỷ)
+        dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
+        ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (c_id,)).fetchall()]
         
         calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows)
         row_dict.update(calc)
@@ -453,14 +504,14 @@ def get_danh_sach_chuyen(
 def get_chi_tiet_chuyen(chuyen_id: int):
     con = get_con()
     cur = con.cursor()
-    row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ?", (chuyen_id,)).fetchone()
+    row = cur.execute("SELECT * FROM salan_chuyen WHERE id = ? AND da_huy = 0", (chuyen_id,)).fetchone()
     if not row:
         con.close()
         raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
         
     row_dict = dict(row)
-    dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ?", (chuyen_id,)).fetchall()]
-    ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ?", (chuyen_id,)).fetchall()]
+    dau_rows = [dict(d) for d in cur.execute("SELECT * FROM salan_do_dau WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
+    ung_rows = [dict(u) for u in cur.execute("SELECT * FROM salan_ung_phi WHERE chuyen_id = ? AND da_huy = 0", (chuyen_id,)).fetchall()]
     
     calc = tinh_toan_chuyen(row_dict, dau_rows, ung_rows)
     row_dict.update(calc)
@@ -643,15 +694,60 @@ def cap_nhat_chuyen(chuyen_id: int, data: ChuyenCreateUpdate):
         chuyen_id
     ))
     
-    # Ghi nhật ký sửa
-    cur.execute("""
-    INSERT INTO salan_nhat_ky_sua (bang, ban_ghi_id, hanh_dong, tai_khoan, thoi_diem)
-    VALUES ('salan_chuyen', ?, 'CAP_NHAT', ?, ?)
-    """, (str(chuyen_id), data.nguoi_nhap, thoi_diem))
+    # Ghi nhật ký sửa chi tiết vào bảng nhat_ky
+    gia_tri_cu = {
+        "don_gia_cuoc": existing["don_gia_cuoc"],
+        "kl_nhan_kg": existing["kl_nhan_kg"],
+        "kl_giao_kg": existing["kl_giao_kg"],
+        "co_tinh_neo": existing["co_tinh_neo"],
+        "don_gia_neo": existing["don_gia_neo"],
+        "trang_thai": existing["trang_thai"],
+        "so_bang_ke": existing["so_bang_ke"]
+    }
+    gia_tri_moi = {
+        "don_gia_cuoc": data.don_gia_cuoc,
+        "kl_nhan_kg": data.kl_nhan_kg,
+        "kl_giao_kg": data.kl_giao_kg,
+        "co_tinh_neo": 1 if data.co_tinh_neo else 0,
+        "don_gia_neo": data.don_gia_neo,
+        "trang_thai": trang_thai,
+        "so_bang_ke": data.so_bang_ke
+    }
+    ghi_nhat_ky(cur, "salan_chuyen", str(chuyen_id), "sua", gia_tri_cu=gia_tri_cu, gia_tri_moi=gia_tri_moi, nguoi_dung_id=data.nguoi_nhap)
     
     con.commit()
     con.close()
     return {"message": "Đã cập nhật chuyến thành công"}
+
+@router.delete("/chuyen/{chuyen_id}")
+def xoa_chuyen(chuyen_id: int, ly_do: str = Query("Huỷ chuyến", description="Lý do huỷ chuyến")):
+    """Xoá mềm chuyến: Đánh dấu da_huy = 1 và lưu nhật ký kiểm toán."""
+    con = get_con()
+    cur = con.cursor()
+    existing = cur.execute("SELECT * FROM salan_chuyen WHERE id = ?", (chuyen_id,)).fetchone()
+    if not existing:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy chuyến")
+    if existing["da_huy"]:
+        con.close()
+        return {"message": "Chuyến đã được huỷ trước đó"}
+        
+    thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("""
+    UPDATE salan_chuyen 
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    WHERE id = ?
+    """, (ly_do, thoi_diem, chuyen_id))
+    
+    ghi_nhat_ky(
+        cur, "salan_chuyen", str(chuyen_id), "huy",
+        gia_tri_cu={"ma_chuyen": existing["ma_chuyen"], "da_huy": 0},
+        gia_tri_moi={"ma_chuyen": existing["ma_chuyen"], "da_huy": 1, "ly_do_huy": ly_do},
+        nguoi_dung_id="Alex"
+    )
+    con.commit()
+    con.close()
+    return {"message": "Đã đánh dấu huỷ chuyến thành công (xoá mềm, lưu nhật ký)"}
 
 class DoDauItem(BaseModel):
     ngay: str
@@ -669,9 +765,11 @@ def them_do_dau(chuyen_id: int, item: DoDauItem):
     INSERT INTO salan_do_dau (chuyen_id, ngay, noi_do_ma, so_lit, gia_dau, tien_dau, ghi_chu)
     VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (chuyen_id, item.ngay, item.noi_do_ma, item.so_lit, item.gia_dau, tien_dau, item.ghi_chu))
+    new_id = cur.lastrowid
+    ghi_nhat_ky(cur, "salan_do_dau", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_lit": item.so_lit, "tien_dau": tien_dau})
     con.commit()
     con.close()
-    return {"message": "Đã thêm lần đổ dầu", "tien_dau": tien_dau}
+    return {"message": "Đã thêm lần đổ dầu", "tien_dau": tien_dau, "id": new_id}
 
 class UngPhiItem(BaseModel):
     ngay: str
@@ -686,27 +784,65 @@ def them_ung_phi(chuyen_id: int, item: UngPhiItem):
     INSERT INTO salan_ung_phi (chuyen_id, ngay, so_tien, noi_dung)
     VALUES (?, ?, ?, ?)
     """, (chuyen_id, item.ngay, item.so_tien, item.noi_dung))
+    new_id = cur.lastrowid
+    ghi_nhat_ky(cur, "salan_ung_phi", str(new_id), "tao", gia_tri_cu=None, gia_tri_moi={"chuyen_id": chuyen_id, "so_tien": item.so_tien})
     con.commit()
     con.close()
-    return {"message": "Đã thêm lần ứng phí"}
+    return {"message": "Đã thêm lần ứng phí", "id": new_id}
 
 @router.delete("/dau/{dau_id}")
-def xoa_do_dau(dau_id: int):
+def xoa_do_dau(dau_id: int, ly_do: str = Query("Huỷ dòng đổ dầu", description="Lý do huỷ")):
+    """Xoá mềm dòng đổ dầu: Đánh dấu da_huy = 1 và ghi nhật ký."""
     con = get_con()
     cur = con.cursor()
-    cur.execute("DELETE FROM salan_do_dau WHERE id = ?", (dau_id,))
+    existing = cur.execute("SELECT * FROM salan_do_dau WHERE id = ?", (dau_id,)).fetchone()
+    if not existing:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy dòng dầu")
+        
+    thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("""
+    UPDATE salan_do_dau 
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    WHERE id = ?
+    """, (ly_do, thoi_diem, dau_id))
+    
+    ghi_nhat_ky(
+        cur, "salan_do_dau", str(dau_id), "huy",
+        gia_tri_cu={"chuyen_id": existing["chuyen_id"], "so_lit": existing["so_lit"], "tien_dau": existing["tien_dau"], "da_huy": 0},
+        gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do},
+        nguoi_dung_id="Alex"
+    )
     con.commit()
     con.close()
-    return {"message": "Đã xóa dòng dầu"}
+    return {"message": "Đã huỷ dòng dầu (xoá mềm, lưu nhật ký)"}
 
 @router.delete("/ung/{ung_id}")
-def xoa_ung_phi(ung_id: int):
+def xoa_ung_phi(ung_id: int, ly_do: str = Query("Huỷ dòng ứng phí", description="Lý do huỷ")):
+    """Xoá mềm dòng ứng phí: Đánh dấu da_huy = 1 và ghi nhật ký."""
     con = get_con()
     cur = con.cursor()
-    cur.execute("DELETE FROM salan_ung_phi WHERE id = ?", (ung_id,))
+    existing = cur.execute("SELECT * FROM salan_ung_phi WHERE id = ?", (ung_id,)).fetchone()
+    if not existing:
+        con.close()
+        raise HTTPException(status_code=404, detail="Không tìm thấy dòng ứng")
+        
+    thoi_diem = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cur.execute("""
+    UPDATE salan_ung_phi 
+    SET da_huy = 1, ly_do_huy = ?, huy_boi = 'Alex', huy_luc = ?
+    WHERE id = ?
+    """, (ly_do, thoi_diem, ung_id))
+    
+    ghi_nhat_ky(
+        cur, "salan_ung_phi", str(ung_id), "huy",
+        gia_tri_cu={"chuyen_id": existing["chuyen_id"], "so_tien": existing["so_tien"], "da_huy": 0},
+        gia_tri_moi={"da_huy": 1, "ly_do_huy": ly_do},
+        nguoi_dung_id="Alex"
+    )
     con.commit()
     con.close()
-    return {"message": "Đã xóa dòng ứng"}
+    return {"message": "Đã huỷ dòng ứng (xoá mềm, lưu nhật ký)"}
 
 @router.get("/tong-quan")
 def get_tong_quan(cong_ty: Optional[str] = None, thang: Optional[str] = None):
@@ -764,9 +900,19 @@ def get_tong_quan(cong_ty: Optional[str] = None, thang: Optional[str] = None):
 
 @router.post("/seed-du-lieu-chuan")
 def seed_du_lieu_chuan():
-    """Khởi tạo danh mục gốc và 6 chuyến mẫu thực tế (gồm ĐT 26284-C01 khớp sổ)."""
+    """Khởi tạo danh mục gốc và chuyến mẫu thực tế.
+    CHỈ cho phép khi APP_ENV=dev VÀ database hoàn toàn chưa có chuyến nào."""
+    app_env = os.environ.get("APP_ENV", "production").lower()
     con = get_con()
     cur = con.cursor()
+    
+    cnt = cur.execute("SELECT COUNT(*) FROM salan_chuyen").fetchone()[0]
+    if app_env != "dev" or cnt > 0:
+        con.close()
+        raise HTTPException(
+            status_code=403, 
+            detail="[BẢO VỆ DỮ LIỆU] API nạp dữ liệu mẫu bị khoá: Chỉ chạy khi APP_ENV=dev VÀ database chưa có bất kỳ dữ liệu chuyến nào!"
+        )
     
     # 1. Danh mục Công ty
     cur.execute("INSERT OR REPLACE INTO salan_cong_ty VALUES ('TP', 'Công ty TNHH Vận tải Trường Phát', '0312345678')")
@@ -800,11 +946,6 @@ def seed_du_lieu_chuan():
     cur.execute("INSERT OR REPLACE INTO salan_loai_hang VALUES ('BAP', 'Bắp hạt vàng')")
     cur.execute("INSERT OR REPLACE INTO salan_loai_hang VALUES ('BA_NANH', 'Bã đậu nành')")
     cur.execute("INSERT OR REPLACE INTO salan_loai_hang VALUES ('GO_NEN', 'Viên gỗ nén')")
-    
-    # 7. Xóa chuyến cũ và tạo chuyến mẫu chuẩn
-    cur.execute("DELETE FROM salan_do_dau")
-    cur.execute("DELETE FROM salan_ung_phi")
-    cur.execute("DELETE FROM salan_chuyen")
     
     # CHUYẾN 1: Chuẩn sách giáo khoa ĐT 26284-C01 (Khớp sổ từng đồng: Cước 66.982.270 đ)
     cur.execute("""
