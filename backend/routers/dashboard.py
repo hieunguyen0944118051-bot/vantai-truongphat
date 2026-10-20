@@ -54,13 +54,16 @@ def get_dashboard_stats(
         active_sheet_count = sheet_trips_res.get("active_count", 0)
         off_sheet_count = sheet_trips_res.get("off_count", 0)
         customer_breakdown = sheet_trips_res.get("customer_breakdown", [])
-    except Exception:
+        sheet_warning = None
+    except Exception as e:
+        # Không bịa số liệu khi chưa có file / lỗi đọc Sheets
         all_sheet_trips = []
         ben_trips = []
         thung_trips = []
-        active_sheet_count = 13
-        off_sheet_count = 12
+        active_sheet_count = 0
+        off_sheet_count = 0
         customer_breakdown = []
+        sheet_warning = str(e)
 
     total_daily_km = 0.0
     total_consumed_fuel = 0.0
@@ -345,6 +348,7 @@ def get_dashboard_stats(
     } for item in fuel_table if item["daily_km"] > 0][:15]
 
     return {
+        "sheet_warning": sheet_warning,
         "selected_date": target_date.strftime("%Y-%m-%d"),
         "selected_date_display": target_date.strftime("%d/%m/%Y"),
         "is_today": is_today,

@@ -388,8 +388,8 @@
             <span>Đồng Bộ Sheets</span>
           </button>
 
-          <!-- Button Cài Đặt Sheet Tháng 09 -->
-          <button onclick="openSheetConfigModal()" class="flex items-center gap-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 active:scale-95 px-3.5 py-2.5 rounded-2xl border border-indigo-200 transition shadow-2xs" title="Cài đặt liên kết Google Sheets Tháng 09">
+          <!-- Button Cài Đặt File Sheets theo tháng -->
+          <button onclick="openSheetConfigModal()" class="flex items-center gap-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 active:scale-95 px-3.5 py-2.5 rounded-2xl border border-indigo-200 transition shadow-2xs" title="Cài đặt file Google Sheets theo tháng">
             <i data-lucide="settings-2" class="w-3.5 h-3.5 text-indigo-600"></i>
             <span>Sheet T09</span>
           </button>
@@ -1026,12 +1026,19 @@
                   <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
                   <span>Đồng Bộ Sheets</span>
                 </button>
+                <button onclick="openSheetConfigModal()" title="File Sheets theo tháng" class="px-3 py-2.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 rounded-2xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95">
+                  <i data-lucide="settings-2" class="w-3.5 h-3.5"></i>
+                  <span>File Tháng</span>
+                </button>
                 <button onclick="exportTripsExcel()" class="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 shadow-sm">
                   <i data-lucide="download" class="w-3.5 h-3.5"></i>
                   <span>Xuất Excel</span>
                 </button>
               </div>
             </div>
+
+            <!-- Cảnh báo chưa có file tháng -->
+            <div id="sheetMissingBanner" class="hidden p-4 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs font-semibold"></div>
 
             <!-- 3 Summary Badges -->
             <div class="grid grid-cols-2 md:grid-cols-3 gap-3.5 md:gap-4">
@@ -1374,37 +1381,41 @@
 
   <!-- MODAL: CÀI ĐẶT LINK TRANG TÍNH THÁNG 09 -->
   <div id="modalSheetConfig" class="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 hidden flex items-center justify-center p-4">
-    <div class="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100 animate-scale-up">
-      <div class="bg-indigo-900 text-white px-6 py-4 flex items-center justify-between">
+    <div class="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden border border-slate-100 animate-scale-up max-h-[92vh] flex flex-col">
+      <div class="bg-indigo-900 text-white px-6 py-4 flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2.5">
           <i data-lucide="settings-2" class="w-5 h-5 text-indigo-300"></i>
           <div>
-            <h3 class="font-bold text-sm">Cài Đặt Liên Kết Trang Tính Tháng Mới</h3>
-            <p class="text-[10px] text-indigo-200">Hỗ trợ tự động chuyển sang đọc trang tính Tháng 09</p>
+            <h3 class="font-bold text-sm">File Google Sheets Xe Nhận Hàng Theo Tháng</h3>
+            <p class="text-[10px] text-indigo-200">App tự chọn đúng file theo tháng của ngày đang xem</p>
           </div>
         </div>
         <button onclick="closeModal('modalSheetConfig')" class="text-slate-400 hover:text-white p-1 rounded-lg"><i data-lucide="x" class="w-5 h-5"></i></button>
       </div>
-      <div class="p-6 space-y-4 text-xs">
+      <div class="p-5 md:p-6 space-y-4 text-xs overflow-y-auto">
         <div id="sheetConfigAlert" class="hidden p-3 rounded-xl text-xs border"></div>
 
-        <div>
-          <label class="block font-bold text-slate-700 mb-1.5">Trang Tính Tháng 08/2026 (Đang hoạt động):</label>
-          <input type="text" id="cfgSheetUrl08" readonly class="w-full p-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-600 font-mono text-[11px]" />
+        <div class="p-3 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-900 leading-relaxed">
+          <b>Tháng mới:</b> copy file tháng trước, đặt tên đúng chuẩn <code class="font-mono bg-white px-1 rounded">XE_NHẬN_HÀNG_THÁNG_MM-YYYY</code>
+          (vd <code class="font-mono bg-white px-1 rounded">XE_NHẬN_HÀNG_THÁNG_11-2026</code>) và để trong thư mục tự dò bên dưới — app tự nhận, không cần dán link.
+          Chỉ dán link tay khi file đặt tên khác chuẩn.
         </div>
 
-        <div>
-          <label class="block font-bold text-indigo-900 mb-1.5">Link Google Sheets Tháng 09/2026 (Chạy từ 01/09):</label>
-          <input type="text" id="cfgSheetUrl09" placeholder="Dán link Google Sheets xe nhận hàng Tháng 09 tại đây..." class="w-full p-3 bg-white border border-indigo-300 rounded-xl focus:ring-2 focus:ring-indigo-600 focus:outline-none font-mono text-[11px]" />
-          <p class="text-[10px] text-slate-400 mt-1">Hệ thống sẽ tự động nhận diện các tab ngày (ví dụ: 01, 02... hoặc 01 - T3) mà không cần cấu hình thêm.</p>
+        <div id="sheetMonthList" class="space-y-2"><p class="text-slate-400">Đang tải...</p></div>
+
+        <div class="pt-3 border-t border-slate-100 space-y-1.5">
+          <label class="block font-bold text-slate-700">Thư mục Drive tự dò file (link hoặc ID, nhiều thư mục cách nhau dấu phẩy):</label>
+          <div class="flex gap-2">
+            <input type="text" id="cfgSheetFolder" placeholder="https://drive.google.com/drive/folders/..." class="flex-1 p-2.5 bg-white border border-slate-300 rounded-xl font-mono text-[11px] focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
+            <button type="button" onclick="saveSheetFolder()" class="px-3 py-2 bg-slate-900 text-white rounded-xl font-bold">Lưu</button>
+          </div>
+          <p class="text-[10px] text-slate-400">Thư mục phải bật chia sẻ "Bất kỳ ai có đường liên kết – Người xem". Chỉ để file xe nhận hàng trong thư mục này.</p>
+          <p id="sheetDiscoveryErr" class="text-[10px] text-red-600 hidden"></p>
         </div>
 
         <div class="flex justify-end gap-2.5 pt-3 border-t border-slate-100">
+          <button type="button" onclick="refreshSheetDiscovery()" class="px-4 py-2.5 text-indigo-700 hover:bg-indigo-50 rounded-xl font-bold flex items-center gap-1.5"><i data-lucide="refresh-cw" class="w-4 h-4"></i>Dò lại file</button>
           <button type="button" onclick="closeModal('modalSheetConfig')" class="px-4 py-2.5 text-slate-600 hover:bg-slate-100 rounded-xl font-medium">Đóng</button>
-          <button type="button" onclick="saveSheetConfig()" class="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-xl font-bold shadow-md transition flex items-center gap-1.5">
-            <i data-lucide="save" class="w-4 h-4"></i>
-            <span>Lưu & Kết Nối</span>
-          </button>
         </div>
       </div>
     </div>
@@ -1595,6 +1606,6 @@
     </div>
   </div>
 
-  <script src="/static/app.js?v=20260905_2025"></script>
+  <script src="/static/app.js?v=20261020_sheets"></script>
 </body>
 </html>
