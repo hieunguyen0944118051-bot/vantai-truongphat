@@ -70,6 +70,171 @@ def parse_embedded_folder_html(html: str):
     return out
 
 
+# ===== BỘ ĐỌC TAB NGÀY (theo tiêu đề cột, không cố định vị trí) =====
+_PLATE_RE = re.compile(r"^(6[0-9])[A-Z]{1,2}\d{4,6}$")
+
+def _norm_header(v: str) -> str:
+    return re.sub(r"\s+", " ", _strip_accents(v or "")).strip()
+
+def _clean_plate(v: str) -> str:
+    return re.sub(r"[\s\-\.]", "", (v or "")).upper()
+
+def _detect_header(row):
+    """Nhận diện dòng tiêu đề. Trả về dict cột hoặc None."""
+    hs = [_norm_header(c) for c in row]
+    if not any(h in ("BIEN SO", "SO XE", "BIEN SO XE") for h in hs):
+        return None
+    cols = {"plate": next(i for i, h in enumerate(hs) if h in ("BIEN SO", "SO XE", "BIEN SO XE")), "legs": []}
+    for i, h in enumerate(hs):
+        if h.startswith("TUYEN"):
+            cols["route"] = i
+    for k in (1, 2, 3):
+        leg = {}
+        for i, h in enumerate(hs):
+            if h == f"NOI NHAN {k}": leg["origin"] = i
+            elif h == f"NOI GIAO {k}": leg["dest"] = i
+            elif h == f"LOAI HANG {k}": leg["cargo"] = i
+            elif h == f"CHU HANG {k}": leg["customer"] = i
+        if leg:
+            cols["legs"].append(leg)
+    return cols
+
+def _cell(row, idx):
+    if idx is None or idx >= len(row):
+        return ""
+    return (row[idx] or "").strip()
+
+def _split_route(route: str):
+    for sep in ("=>", "->", "➔", "→"):
+        if sep in route:
+            o, d = route.split(sep, 1)
+            return o.strip(), d.strip()
+    return "", route.strip()
+
+_OFF_WORDS = ("TÀI XẾ NGHỈ", "TX NGHỈ", "NGHỈ")
+_REPAIR_WORDS = ("SỬA XE", "BẢO DƯỠNG", "SỬA")
+
+def parse_dispatch_rows(rows, display_date=""):
+    """Đọc các dòng của 1 tab ngày -> (ben_trips, thung_trips).
+    Mẫu mới: Biển số | Nơi nhận k | Nơi giao k | Loại hàng k | Chủ hàng k (k=1..3).
+    Mẫu cũ : Biển số | Tuyến / Ghi chú | Loại hàng k | Chủ hàng k."""
+    ben_trips, thung_trips = [], []
+    section = "ben"
+    cols = None
+    seen = set()
+    for row in rows:
+        if not row:
+            continue
+        first = _norm_header(row[0])
+        # Mốc phân đoạn (chỉ xét ô đầu dòng)
+        if "XE BEN" in first:
+            section = "ben"; continue
+        if "XE CONG DAI" in first or "XE THUNG" in first:
+            section = "thung"; continue
+        if "TONG XE NM" in first or first.startswith("TANG BO") or "CHAY TANG BO" == first:
+            if cols is not None or ben_trips or thung_trips:
+                break
+        hdr = _detect_header(row)
+        if hdr:
+            cols = hdr
+            continue
+        if cols is None:
+            continue
+        clean_p = _clean_plate(_cell(row, cols["plate"]))
+        if not _PLATE_RE.match(clean_p) or clean_p in seen:
+            continue
+        seen.add(clean_p)
+
+        legs = []
+        for leg in cols["legs"]:
+            o = _cell(row, leg.get("origin")); d = _cell(row, leg.get("dest"))
+            cg = _cell(row, leg.get("cargo")); cu = _cell(row, leg.get("customer"))
+            legs.append({"origin": o, "dest": d, "cargo": cg, "customer": cu})
+        route_raw = _cell(row, cols.get("route"))
+        if route_raw and legs:
+            o, d = _split_route(route_raw)
+            if not legs[0]["origin"] and not legs[0]["dest"]:
+                legs[0]["origin"], legs[0]["dest"] = o, d
+
+        first_leg = legs[0] if legs else {"origin": "", "dest": "", "cargo": "", "customer": ""}
+        notes = " ".join([route_raw] + [" ".join(l.values()) for l in legs]).upper()
+
+        def is_real(l):
+            txt = " ".join(l.values()).upper()
+            if not (l["dest"] or l["customer"] or l["origin"]):
+                return False
+            return not any(w in txt for w in _OFF_WORDS + _REPAIR_WORDS + ("TRỐNG LỊCH",))
+        real_legs = [l for l in legs if is_real(l)]
+
+        if any(w in notes for w in _OFF_WORDS):
+            status_code, status_str = "driver_off", "Tài xế nghỉ cả ngày"
+        elif any(w in notes for w in _REPAIR_WORDS):
+            status_code, status_str = "off", "Bảo dưỡng / Sửa xe"
+        elif "TRỐNG LỊCH" in notes or "ĐỢI GIAO" in notes:
+            status_code = "idle"
+            status_str = "Đợi giao hàng / Trống lịch" if "ĐỢI GIAO" in notes else "Trống lịch"
+        elif not real_legs and not route_raw:
+            status_code, status_str = "idle", "Nghỉ bãi / Trống lịch"
+        else:
+            status_code, status_str = "active", "Đang hoạt động"
+        if status_code == "active" and real_legs:
+            first_leg = real_legs[0]
+
+        origin, dest = first_leg["origin"], first_leg["dest"]
+        if origin and dest:
+            route = f"{origin} => {dest}"
+        else:
+            route = route_raw or dest or origin
+        if len(real_legs) > 1:
+            route += f" (+{len(real_legs) - 1} chuyến)"
+
+        formatted = f"{clean_p[:3]}-{clean_p[3:6]}.{clean_p[6:]}" if len(clean_p) == 8 else clean_p
+        item = {
+            "raw_plate": formatted,
+            "plate_number": formatted,
+            "clean_plate": clean_p,
+            "vehicle_type": "Xe Ben" if section == "ben" else "Xe Thùng",
+            "route": route or ("Nghỉ bãi" if status_code != "active" else "Đang chạy"),
+            "origin": origin,
+            "destination": dest,
+            "cargo_type": first_leg["cargo"] or "—",
+            "customer_name": first_leg["customer"] or "—",
+            "status_code": status_code,
+            "status_text": status_str,
+            "driver_name": OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p, "Tài xế công ty"),
+            "num_trips": max(1, len(real_legs)) if status_code == "active" else 0,
+            "legs": real_legs,
+            "date": display_date,
+        }
+        (ben_trips if section == "ben" else thung_trips).append(item)
+    return ben_trips, thung_trips
+
+
+def find_day_sheet(sheetnames, day: int):
+    """Tìm tab theo ngày: '20', '20 - T3', '20-10', '20 T3'. Không nhầm với 'TỔNG THÁNG 10'."""
+    pat = re.compile(rf"^0?{day}(\D|$)")
+    for n in sheetnames:
+        if pat.match(n.strip()):
+            return n
+    return None
+
+
+def estimate_leg_km(dest: str) -> float:
+    """Ước tính km khứ hồi 1 chuyến theo nơi giao (giữ quy ước cũ)."""
+    d = (dest or "").lower()
+    if any(k in d for k in ("đức hòa", "bến lức", "long an")):
+        return 180.0
+    if any(k in d for k in ("thăng long", "đan phượng", "bình dương")):
+        return 150.0
+    if any(k in d for k in ("cát lái", "hiệp phước", "hcm")):
+        return 130.0
+    if any(k in d for k in ("cảng", "ptsc", "mỹ xuân")):
+        return 80.0
+    if "vũng tàu" in d:
+        return 90.0
+    return 140.0
+
+
 class SheetNotFoundError(Exception):
     """Chưa có file Google Sheets cho tháng được chọn."""
 
@@ -353,119 +518,19 @@ class GoogleSheetsSyncService:
             try:
                 data = self._get_xlsx_bytes(sheet_id)
                 wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True)
-                matching_sheet = None
-
-                for s_name in wb.sheetnames:
-                    clean_s = s_name.strip()
-                    if clean_s.startswith(day_str) or clean_s.startswith(f"{d_obj.day} "):
-                        matching_sheet = s_name
-                        break
-
-                if not matching_sheet:
-                    for s_name in wb.sheetnames:
-                        if day_str in s_name:
-                            matching_sheet = s_name
-                            break
-
-                if matching_sheet and matching_sheet in wb.sheetnames:
-                    ws = wb[matching_sheet]
-                    for r in ws.iter_rows(values_only=True):
-                        row_vals = [str(c).strip() if c is not None else "" for c in r]
-                        if any(row_vals):
-                            rows.append(row_vals)
             except Exception as e:
-                print(f"Error fetching dynamic XLSX: {e}")
+                raise RuntimeError(f"Không tải được file Google Sheets tháng {month_str} "
+                                   f"(kiểm tra file đã bật chia sẻ link chưa): {e}")
+            matching_sheet = find_day_sheet(wb.sheetnames, d_obj.day)
+            if not matching_sheet:
+                raise SheetNotFoundError(f"File tháng {month_str} chưa có tab ngày {day_str}")
+            for r in wb[matching_sheet].iter_rows(values_only=True):
+                row_vals = [str(c).strip() if c is not None else "" for c in r]
+                if any(row_vals):
+                    rows.append(row_vals)
 
-        # Phân tích dòng bảng kê
-        ben_trips = []
-        thung_trips = []
-        current_section = "ben"
-
-        for row in rows:
-            if not row or len(row) < 2:
-                continue
-            row_joined = " ".join(row).upper()
-            if "XE CÔNG DÀI" in row_joined or "XE THÙNG" in row_joined:
-                current_section = "thung"
-                continue
-            elif "XE BEN" in row_joined and "TĂNG BO" not in row_joined:
-                current_section = "ben"
-                continue
-            elif "TĂNG BO" in row_joined:
-                break
-
-            first_col = row[0].strip() if len(row) > 0 else ""
-            raw_plate = row[1].strip() if len(row) > 1 else ""
-            if not raw_plate or "BIỂN SỐ" in raw_plate.upper() or "SỐ XE" in raw_plate.upper() or "STT" in first_col.upper():
-                continue
-
-            # Chuẩn hóa biển số
-            clean_p = raw_plate.replace(" ", "").replace("-", "").replace(".", "").upper()
-            if not (clean_p.startswith("63") or clean_p.startswith("66")):
-                continue
-
-            if len(clean_p) == 8:
-                formatted_plate = f"{clean_p[:3]}-{clean_p[3:6]}.{clean_p[6:]}"
-            else:
-                formatted_plate = raw_plate
-
-            route = row[2].strip() if len(row) > 2 else ""
-            cargo = row[3].strip() if len(row) > 3 else ""
-            customer = row[4].strip() if len(row) > 4 else ""
-
-            origin = ""
-            dest = ""
-            if "=>" in route:
-                parts = route.split("=>")
-                origin = parts[0].strip()
-                dest = parts[1].strip()
-            elif "->" in route:
-                parts = route.split("->")
-                origin = parts[0].strip()
-                dest = parts[1].strip()
-            else:
-                dest = route
-
-            combined_notes = (route + " " + customer + " " + cargo).upper()
-            if "TÀI XẾ NGHỈ" in combined_notes or "TX NGHỈ" in combined_notes or "NGHỈ" in combined_notes:
-                status_code = "driver_off"
-                status_str = "Tài xế nghỉ cả ngày"
-            elif "SỬA XE" in combined_notes or "BẢO DƯỠNG" in combined_notes or "SỬA" in combined_notes:
-                status_code = "off"
-                status_str = "Bảo dưỡng / Sửa xe"
-            elif "TRỐNG LỊCH" in combined_notes or "ĐỢI GIAO" in combined_notes:
-                status_code = "idle"
-                status_str = "Đợi giao hàng / Trống lịch" if "ĐỢI GIAO" in combined_notes else "Trống lịch"
-            elif not customer and not route:
-                status_code = "idle"
-                status_str = "Nghỉ bãi / Trống lịch"
-            else:
-                status_code = "active"
-                status_str = "Đang hoạt động"
-
-            driver_name = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p, "Tài xế công ty")
-
-            trip_item = {
-                "raw_plate": formatted_plate,
-                "plate_number": formatted_plate,
-                "clean_plate": clean_p,
-                "vehicle_type": "Xe Ben" if current_section == "ben" else "Xe Thùng",
-                "route": route or ("Nghỉ bãi" if status_code != "active" else "Đang chạy"),
-                "origin": origin,
-                "destination": dest,
-                "cargo_type": cargo or "—",
-                "customer_name": customer or "—",
-                "status_code": status_code,
-                "status_text": status_str,
-                "driver_name": driver_name,
-                "num_trips": 1 if status_code == "active" else 0,
-                "date": display_date
-            }
-
-            if current_section == "ben":
-                ben_trips.append(trip_item)
-            else:
-                thung_trips.append(trip_item)
+        # Phân tích dòng bảng kê (hỗ trợ cả mẫu cũ T08 và mẫu mới T09+)
+        ben_trips, thung_trips = parse_dispatch_rows(rows, display_date)
 
         all_trips = []
         for idx, t in enumerate(ben_trips + thung_trips, 1):
@@ -554,81 +619,35 @@ class GoogleSheetsSyncService:
             except SheetNotFoundError as e:
                 print(f"[weekly] {e}")
                 continue
-            day_prefixes = [f"{d.day:02d}" for d in month_days] + [str(d.day) for d in month_days]
             data = self._get_xlsx_bytes(sheet_id)
             wb = openpyxl.load_workbook(io.BytesIO(data), data_only=True, read_only=True)
-
-            sheet_to_date = {}
-            for s in wb.sheetnames:
-                cs = s.strip()
-                for dp in day_prefixes:
-                    if cs.startswith(dp + " ") or cs.startswith(dp + "-") or cs == dp:
-                        sheet_to_date[s] = dp
-                        break
-
-            for s_name in sheet_to_date.keys():
-                ws = wb[s_name]
-                for row in ws.iter_rows(values_only=True):
-                    if not row or len(row) < 2:
+            for d in month_days:
+                s_name = find_day_sheet(wb.sheetnames, d.day)
+                if not s_name:
+                    continue
+                rows = [[str(c).strip() if c is not None else "" for c in r]
+                        for r in wb[s_name].iter_rows(values_only=True)]
+                ben, thung = parse_dispatch_rows(rows, d.strftime("%d/%m/%Y"))
+                for t in ben + thung:
+                    clean_p = t["clean_plate"]
+                    st = truck_stats.setdefault(clean_p, {
+                        "plate_number": t["plate_number"],
+                        "trailer_number": "",
+                        "driver_name": t["driver_name"],
+                        "active_days": 0,
+                        "total_trips": 0,
+                        "routes": set(),
+                        "estimated_km": 0.0,
+                    })
+                    if t["status_code"] != "active":
                         continue
-                    first_col = str(row[0]).strip() if row[0] is not None else ""
-                    if "XE BEN" in first_col.upper() or "XE CÔNG" in first_col.upper() or "STT" in first_col.upper():
-                        continue
-
-                    raw_plate = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
-                    if not raw_plate or "BIỂN" in raw_plate.upper() or "SỐ XE" in raw_plate.upper():
-                        continue
-
-                    clean_p = raw_plate.replace("-", "").replace(".", "").replace(" ", "").upper()
-                    if len(clean_p) < 7:
-                        continue
-
-                    trailer = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
-                    driver = str(row[3]).strip() if len(row) > 3 and row[3] is not None else ""
-                    customer = str(row[4]).strip() if len(row) > 4 and row[4] is not None else ""
-                    origin = str(row[5]).strip() if len(row) > 5 and row[5] is not None else ""
-                    dest = str(row[6]).strip() if len(row) > 6 and row[6] is not None else ""
-                    cargo = str(row[7]).strip() if len(row) > 7 and row[7] is not None else ""
-                    num_trips_raw = str(row[8]).strip() if len(row) > 8 and row[8] is not None else "1"
-
-                    try:
-                        num_trips = int(float(num_trips_raw))
-                    except Exception:
-                        num_trips = 1
-
-                    if clean_p not in truck_stats:
-                        truck_stats[clean_p] = {
-                            "plate_number": raw_plate,
-                            "trailer_number": trailer,
-                            "driver_name": driver,
-                            "active_days": 0,
-                            "total_trips": 0,
-                            "routes": set(),
-                            "estimated_km": 0.0
-                        }
-
-                    lower_dest = dest.lower() + " " + customer.lower() + " " + cargo.lower()
-                    is_active = not ("nghỉ" in lower_dest or "bảo dưỡng" in lower_dest or "sửa" in lower_dest or (not customer and not dest))
-
-                    if is_active:
-                        leg_km = 140.0
-                        if "đức hòa" in dest.lower() or "bến lức" in dest.lower() or "long an" in dest.lower():
-                            leg_km = 180.0
-                        elif "thăng long" in dest.lower() or "đan phượng" in dest.lower() or "bình dương" in dest.lower():
-                            leg_km = 150.0
-                        elif "cát lái" in dest.lower() or "hiệp phước" in dest.lower() or "hcm" in dest.lower():
-                            leg_km = 130.0
-                        elif "cảng" in dest.lower() or "ptsc" in dest.lower() or "mỹ xuân" in dest.lower():
-                            leg_km = 80.0
-                        elif "vũng tàu" in dest.lower():
-                            leg_km = 90.0
-
-                        trip_km = leg_km * num_trips
-                        truck_stats[clean_p]["total_trips"] += num_trips
-                        truck_stats[clean_p]["active_days"] += 1
-                        truck_stats[clean_p]["estimated_km"] += trip_km
-                        if origin and dest:
-                            truck_stats[clean_p]["routes"].add(f"{origin} ➔ {dest}")
+                    st["active_days"] += 1
+                    legs = t.get("legs") or [{"origin": t["origin"], "dest": t["destination"]}]
+                    for leg in legs:
+                        st["total_trips"] += 1
+                        st["estimated_km"] += estimate_leg_km(leg.get("dest", ""))
+                        if leg.get("origin") and leg.get("dest"):
+                            st["routes"].add(f"{leg['origin']} ➔ {leg['dest']}")
 
           self.cached_weekly_stats[cache_key] = (now, truck_stats)
         except Exception as e:
