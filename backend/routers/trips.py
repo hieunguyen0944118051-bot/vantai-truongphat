@@ -8,7 +8,7 @@ import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import models, schemas, auth
 from database import get_db
-from sheets_service import sheets_client
+from sheets_service import sheets_client, SheetNotFoundError
 from gps_service import gps_client
 
 router = APIRouter(prefix="/api/trips", tags=["Trips"])
@@ -23,6 +23,8 @@ def get_sheets_live_trips(
     """
     try:
         res = sheets_client.fetch_daily_trips(target_date=view_date)
+    except SheetNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc Google Sheets: {str(e)}")
 
@@ -128,6 +130,9 @@ def sync_trips_from_sheets(
             "off_count": data.get("off_count", 0),
             "synced_count": synced_count
         }
+    except SheetNotFoundError as e:
+        db.rollback()
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi khi đồng bộ Google Sheets: {str(e)}")
@@ -226,24 +231,46 @@ def export_trips_excel(
 
 @router.get("/sheets-config")
 def get_sheets_config(
-    db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    setting_08 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_08").first()
-    setting_09 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_09").first()
-    return {
-        "sheet_url_month_08": setting_08.value if setting_08 else "https://docs.google.com/spreadsheets/d/1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI/edit",
-        "sheet_url_month_09": setting_09.value if setting_09 else f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_SEPTEMBER_ID}/edit"
-    }
+    """Danh sách file XE NHẬN HÀNG theo từng tháng + trạng thái (đã có / chưa có)."""
+    return sheets_client.list_month_config()
 
 @router.post("/sheets-config")
 def save_sheets_config(
     payload: dict,
-    db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.require_role(["admin", "manager"]))
 ):
-    month = str(payload.get("month", "09")).zfill(2)
-    url = payload.get("url", "").strip()
-    if url:
-        sheets_client.set_sheet_url_for_month(month, url)
-    return {"success": True, "message": f"Đã lưu thành công link Trang tính Tháng {month}!"}
+    """
+    payload:
+      {"month": "2026-11", "url": "<link Google Sheets>"}  -> dán tay link cho 1 tháng
+      {"month": "2026-11", "url": ""}                      -> xóa link tay, quay về tự dò
+      {"folder_ids": "<link/ID thư mục Drive>"}            -> đổi thư mục tự dò
+      {"refresh": true}                                     -> dò lại thư mục ngay
+    Tương thích cũ: {"month": "09", "url": ...} hiểu là tháng 09 năm hiện tại.
+    """
+    if "folder_ids" in payload:
+        sheets_client._set_setting("sheets_folder_ids", str(payload.get("folder_ids") or "").strip())
+        sheets_client.clear_caches()
+    if payload.get("refresh"):
+        sheets_client.clear_caches()
+        sheets_client.discover_month_sheets(force=True)
+
+    month_raw = str(payload.get("month", "")).strip()
+    if month_raw:
+        url = str(payload.get("url", "") or "").strip()
+        if "-" in month_raw:
+            yyyy, mm = month_raw.split("-", 1)
+            year, month = int(yyyy), int(mm)
+        else:
+            year, month = date.today().year, int(month_raw)
+        if not 1 <= month <= 12:
+            raise HTTPException(status_code=400, detail="Tháng không hợp lệ")
+        if url and "/spreadsheets/d/" not in url and len(url) < 30:
+            raise HTTPException(status_code=400, detail="Link Google Sheets không hợp lệ")
+        sheets_client.set_sheet_url_for_month(f"{month:02d}", url, year=year)
+        msg = (f"Đã lưu link Trang tính Tháng {month:02d}/{year}!" if url
+               else f"Đã xóa link tay Tháng {month:02d}/{year}, app sẽ tự tìm file theo tên.")
+    else:
+        msg = "Đã cập nhật cấu hình."
+    return {"success": True, "message": msg, **sheets_client.list_month_config()}

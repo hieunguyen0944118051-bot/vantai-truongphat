@@ -971,6 +971,70 @@ function renderTopDriversLeaderboard(drivers) {
 }
 
 // CÀI ĐẶT TRANG TÍNH THÁNG 09
+// ===== FILE SHEETS THEO THÁNG =====
+const SHEET_SRC_LABEL = { manual: 'Link dán tay', known: 'Đã cấu hình', auto: 'Tự tìm thấy' };
+
+function escHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+function showSheetConfigAlert(msg, ok) {
+  const el = document.getElementById('sheetConfigAlert');
+  if (!el) return;
+  el.innerText = msg;
+  el.className = ok
+    ? 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block'
+    : 'p-3 rounded-xl text-xs border bg-red-50 text-red-800 border-red-200 block';
+}
+
+function renderSheetMonthConfig(cfg) {
+  const list = document.getElementById('sheetMonthList');
+  if (list) {
+    list.innerHTML = (cfg.months || []).map(m => {
+      const ok = !!m.sheet_id;
+      const badge = ok
+        ? `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">✅ ${SHEET_SRC_LABEL[m.source] || 'Có file'}</span>`
+        : `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">⚠️ Chưa có file</span>`;
+      const link = ok ? `<a href="${escHtml(m.url)}" target="_blank" rel="noopener" class="text-blue-700 underline font-mono text-[10px] break-all">Mở file</a>` : '';
+      return `<div class="p-3 rounded-xl border ${m.is_current ? 'border-indigo-400 bg-indigo-50/50' : 'border-slate-200'} space-y-2">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div><b class="text-slate-900">${escHtml(m.label)}</b>${m.is_current ? ' <span class="text-[10px] text-indigo-700 font-bold">(tháng hiện tại)</span>' : ''}
+            <div class="text-[10px] text-slate-500 font-mono">${escHtml(m.file_name)}</div></div>
+          <div class="flex items-center gap-2">${badge}${link}</div>
+        </div>
+        <div class="flex gap-2">
+          <input type="text" data-month="${escHtml(m.month)}" placeholder="Dán link tay (chỉ khi tên file khác chuẩn)" value="${m.source === 'manual' ? escHtml(m.url) : ''}" class="sheet-month-input flex-1 p-2 bg-white border border-slate-300 rounded-lg font-mono text-[10px] focus:ring-2 focus:ring-indigo-600 focus:outline-none" />
+          <button type="button" onclick="saveSheetMonth('${escHtml(m.month)}')" class="px-3 py-1.5 bg-indigo-600 text-white rounded-lg font-bold text-[11px]">Lưu</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  const folderInp = document.getElementById('cfgSheetFolder');
+  if (folderInp) folderInp.value = (cfg.folder_ids || []).join(', ');
+  const errEl = document.getElementById('sheetDiscoveryErr');
+  if (errEl) {
+    const errs = cfg.discovery_errors || [];
+    errEl.innerText = errs.length ? '❌ Không đọc được thư mục (kiểm tra đã bật chia sẻ link chưa): ' + errs.join(' | ') : '';
+    errEl.classList.toggle('hidden', !errs.length);
+  }
+}
+
+async function postSheetConfig(body) {
+  const res = await fetch(API_BASE + '/trips/sheets-config', {
+    method: 'POST', headers: getHeaders(), body: JSON.stringify(body)
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.detail || 'Lỗi lưu cấu hình');
+  return json;
+}
+
+async function afterSheetConfigChange(json) {
+  showSheetConfigAlert(`✅ ${json.message}`, true);
+  renderSheetMonthConfig(json);
+  for (const k in dailyTripsClientCache) delete dailyTripsClientCache[k];
+  handleDateSelect(selectedDate);
+}
+
 async function openSheetConfigModal() {
   openModal('modalSheetConfig');
   const alertEl = document.getElementById('sheetConfigAlert');
@@ -978,41 +1042,35 @@ async function openSheetConfigModal() {
   try {
     const res = await fetch(API_BASE + '/trips/sheets-config', { headers: getHeaders() });
     const json = await res.json();
-    const f08 = document.getElementById('cfgSheetUrl08');
-    const f09 = document.getElementById('cfgSheetUrl09');
-    if (f08) f08.value = json.sheet_url_month_08 || '';
-    if (f09) f09.value = json.sheet_url_month_09 || '';
+    if (!res.ok) throw new Error(json.detail || 'Lỗi tải cấu hình');
+    renderSheetMonthConfig(json);
   } catch (err) {
-    console.error('Error loading sheets config', err);
+    showSheetConfigAlert(`❌ Lỗi: ${err.message}`, false);
   }
 }
 
-async function saveSheetConfig() {
-  const url09 = document.getElementById('cfgSheetUrl09').value.trim();
-  const alertEl = document.getElementById('sheetConfigAlert');
+async function saveSheetMonth(month) {
+  const inp = document.querySelector(`.sheet-month-input[data-month="${month}"]`);
   try {
-    const res = await fetch(API_BASE + '/trips/sheets-config', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ month: '09', url: url09 })
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi lưu cấu hình');
-    if (alertEl) {
-      alertEl.innerText = `✅ ${json.message}`;
-      alertEl.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block';
-    }
-    setTimeout(() => {
-      closeModal('modalSheetConfig');
-      handleDateSelect(selectedDate);
-    }, 1200);
-  } catch (err) {
-    if (alertEl) {
-      alertEl.innerText = `❌ Lỗi: ${err.message}`;
-      alertEl.className = 'p-3 rounded-xl text-xs border bg-red-50 text-red-800 border-red-200 block';
-    }
-  }
+    await afterSheetConfigChange(await postSheetConfig({ month, url: inp ? inp.value.trim() : '' }));
+  } catch (err) { showSheetConfigAlert(`❌ Lỗi: ${err.message}`, false); }
 }
+
+async function saveSheetFolder() {
+  const v = document.getElementById('cfgSheetFolder').value.trim();
+  try {
+    await afterSheetConfigChange(await postSheetConfig({ folder_ids: v, refresh: true }));
+  } catch (err) { showSheetConfigAlert(`❌ Lỗi: ${err.message}`, false); }
+}
+
+async function refreshSheetDiscovery() {
+  try {
+    await afterSheetConfigChange(await postSheetConfig({ refresh: true }));
+  } catch (err) { showSheetConfigAlert(`❌ Lỗi: ${err.message}`, false); }
+}
+
+// Giữ tên hàm cũ để không lỗi nếu còn nơi gọi
+async function saveSheetConfig() { return refreshSheetDiscovery(); }
 
 // 2. TAB TRA CỨU PHẠT NGUỘI TOÀN ĐOÀN XE (CỤC CSGT)
 function renderTrafficFinesUI(json) {
@@ -1225,10 +1283,24 @@ async function loadDailyTripsFromSheets(dateStr) {
 
     const data = json.data;
     dailyTripsClientCache[d] = data;
+    setSheetMissingBanner(null);
     renderDailyTripsTable(data);
   } catch (err) {
     console.error('Error loading daily trips:', err);
+    // Chưa có file tháng / lỗi đọc: xóa bảng, KHÔNG để lại số liệu ngày khác
+    delete dailyTripsClientCache[d];
+    setSheetMissingBanner(err.message);
+    renderDailyTripsTable({ active_count: 0, off_count: 0, active_percent: 0, sync_time: '—', all_trips: [] });
   }
+}
+
+function setSheetMissingBanner(msg) {
+  const el = document.getElementById('sheetMissingBanner');
+  if (!el) return;
+  if (!msg) { el.classList.add('hidden'); el.innerHTML = ''; return; }
+  el.innerHTML = `⚠️ ${escHtml(msg)}. Tạo file đúng tên chuẩn trong thư mục Drive tự dò, hoặc bấm
+    <button onclick="openSheetConfigModal()" class="underline font-black">File Tháng</button> để dán link.`;
+  el.classList.remove('hidden');
 }
 
 async function syncGoogleSheetsTrips() {
@@ -1726,6 +1798,13 @@ async function loadBarges() {
   } catch (err) {
     console.error('Error loading barges', err);
   }
+}
+
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
 }
 
 function closeModal(id) {
