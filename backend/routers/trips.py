@@ -274,3 +274,38 @@ def save_sheets_config(
     else:
         msg = "Đã cập nhật cấu hình."
     return {"success": True, "message": msg, **sheets_client.list_month_config()}
+
+
+@router.get("/sheets-debug")
+def sheets_debug(
+    view_date: Optional[str] = Query(None, alias="date"),
+    current_user: models.User = Depends(auth.require_role(["admin"]))
+):
+    """Chẩn đoán đọc file tháng: tên các tab + 20 dòng đầu của tab ngày được chọn (chỉ admin)."""
+    import io as _io, traceback
+    d = datetime.strptime(view_date, "%Y-%m-%d").date() if view_date else date.today()
+    out = {"date": d.isoformat()}
+    try:
+        sid = sheets_client.get_sheet_id_for(d)
+        out["sheet_id"] = sid
+        data = sheets_client._get_xlsx_bytes(sid)
+        out["bytes"] = len(data)
+        out["head"] = data[:8].hex()
+        wb = openpyxl.load_workbook(_io.BytesIO(data), data_only=True, read_only=True)
+        out["sheets"] = wb.sheetnames
+        day_str = f"{d.day:02d}"
+        name = next((n for n in wb.sheetnames if n.strip().startswith(day_str)), None)
+        out["matched"] = name
+        if name:
+            rows = []
+            for r in wb[name].iter_rows(values_only=True):
+                vals = [str(c).strip() if c is not None else "" for c in r]
+                if any(vals):
+                    rows.append(vals[:14])
+                if len(rows) >= 25:
+                    break
+            out["rows"] = rows
+    except Exception as e:
+        out["error"] = repr(e)
+        out["trace"] = traceback.format_exc()[-1500:]
+    return out
