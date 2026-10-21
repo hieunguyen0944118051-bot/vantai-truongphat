@@ -10,7 +10,7 @@ import openpyxl
 from datetime import datetime, date, timedelta
 from database import SessionLocal
 import models
-from gps_service import OFFICIAL_DRIVERS_BY_CLEAN_PLATE
+from fleet import DRIVER_BY_CLEAN_PLATE
 
 DEFAULT_SHEET_AUGUST_ID = "1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI"
 DEFAULT_SHEET_SEPTEMBER_ID = "1NSNhOIO--PEx9W3u5O2I-w1bvl4kN3TTh9qXfiXb2U0"
@@ -201,7 +201,7 @@ def parse_dispatch_rows(rows, display_date=""):
             "customer_name": first_leg["customer"] or "—",
             "status_code": status_code,
             "status_text": status_str,
-            "driver_name": OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p, "Tài xế công ty"),
+            "driver_name": DRIVER_BY_CLEAN_PLATE.get(clean_p, "Chưa phân công"),
             "num_trips": max(1, len(real_legs)) if status_code == "active" else 0,
             "legs": real_legs,
             "date": display_date,
@@ -253,7 +253,6 @@ AUGUST_DAY_GIDS = {
     "31": "1753303657"
 }
 
-SHEET2_VEHICLES_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv"
 SHEET2_MAINTENANCE_URL = "https://docs.google.com/spreadsheets/d/1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es/export?format=csv&gid=1041617404"
 
 class GoogleSheetsSyncService:
@@ -675,7 +674,9 @@ class GoogleSheetsSyncService:
             for r in rows:
                 if len(r) > 2 and r[1].strip().isdigit():
                     stt = int(r[1].strip())
-                    if stt != count + 1 or count >= 25:
+                    # Chỉ lấy khối ① (STT chạy liên tục 1, 2, 3…); khối sau đánh số lại từ 1 sẽ bị bỏ qua.
+                    # Không giới hạn số xe (trước đây cắt ở 25 nên xe thứ 26 bị mất).
+                    if stt != count + 1:
                         continue
                     count += 1
 
@@ -733,58 +734,5 @@ class GoogleSheetsSyncService:
             if self.cached_maintenance:
                 return self.cached_maintenance[1]
         return []
-
-    def fetch_vehicles_sheet(self):
-        now = time.time()
-        if self.cached_vehicles:
-            ts, data = self.cached_vehicles
-            if now - ts < 300:
-                return data
-
-        try:
-            req = urllib.request.Request(SHEET2_VEHICLES_URL, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                content = resp.read().decode("utf-8", errors="ignore")
-
-            reader = csv.reader(io.StringIO(content))
-            rows = list(reader)
-
-            ben_vehicles = []
-            thung_vehicles = []
-            is_thung = False
-
-            for r in rows:
-                if not r or len(r) < 2:
-                    continue
-                first = r[0].strip().upper()
-                if "XE CÔNG DÀI" in first or "XE THÙNG" in first:
-                    is_thung = True
-                    continue
-                if "XE BEN" in first:
-                    is_thung = False
-                    continue
-
-                if len(r) > 2 and r[1].strip().isdigit():
-                    v_item = {
-                        "stt": int(r[1].strip()),
-                        "plate_number": r[2].strip() if len(r) > 2 else "",
-                        "trailer_number": r[3].strip() if len(r) > 3 else "",
-                        "driver_name": r[4].strip() if len(r) > 4 else "",
-                        "phone": r[5].strip() if len(r) > 5 else "",
-                        "driver_status": r[6].strip() if len(r) > 6 else "Bình thường"
-                    }
-                    if is_thung:
-                        thung_vehicles.append(v_item)
-                    else:
-                        ben_vehicles.append(v_item)
-
-            res = {"ben": ben_vehicles, "thung": thung_vehicles}
-            self.cached_vehicles = (now, res)
-            return res
-        except Exception as e:
-            print(f"Error fetching vehicles sheet: {e}")
-            if self.cached_vehicles:
-                return self.cached_vehicles[1]
-            return {"ben": [], "thung": []}
 
 sheets_client = GoogleSheetsSyncService()

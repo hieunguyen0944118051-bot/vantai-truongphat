@@ -1,13 +1,18 @@
 import os
+import secrets
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from database import engine, Base, SessionLocal
-import models, auth
-from routers import auth as auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, traffic_fines, security
-from security_firewall import SecurityFirewallMiddleware, firewall_manager
+from fastapi.staticfiles import StaticFiles
+
+import auth
+import models
+from database import Base, SessionLocal, engine
+from login_guard import SecurityHeadersMiddleware
+from routers import assistant, barges, dashboard, drivers, fuel, gps, maintenance, trips, users, vehicles
+from routers import auth as auth_router
 
 try:
     from routers import weighbridge
@@ -18,97 +23,76 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Hệ Thống Quản Lý Vận Tải Xe Đầu Kéo & Sà Lan - Trường Phát",
-    description="API quản lý đội xe 26 đầu kéo, rơ-mooc, 10 sà lan & Tích hợp GPS Bình Anh",
-    version="3.5.0"
+    version="3.6.0",
 )
 
-# 1. GZip Compression Middleware (Nén dữ liệu JSON/HTML/JS giảm 85% dung lượng, load nhanh gấp 5-10 lần)
 app.add_middleware(GZipMiddleware, minimum_size=500)
+app.add_middleware(SecurityHeadersMiddleware)
+# Chỉ trang của chính app gọi API (cùng tên miền) — không mở cho trang khác.
+_allowed = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _allowed:
+    app.add_middleware(CORSMiddleware, allow_origins=_allowed, allow_credentials=True,
+                       allow_methods=["*"], allow_headers=["*"])
 
-# 2. Tường Lửa Bảo Mật Ứng Dụng WAF (Chặn Brute-Force, DDoS, SQLi, XSS, Scanner Bots)
-app.add_middleware(SecurityFirewallMiddleware)
-
-# 3. CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(auth_router.router)
-app.include_router(security.router)
-app.include_router(users.router)
-app.include_router(vehicles.router)
-app.include_router(barges.router)
-app.include_router(drivers.router)
-app.include_router(trips.router)
-app.include_router(fuel.router)
-app.include_router(dashboard.router)
-app.include_router(maintenance.router)
-app.include_router(assistant.router)
-app.include_router(gps.router)
-app.include_router(traffic_fines.router)
+for r in (auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps):
+    app.include_router(r.router)
 if weighbridge:
     app.include_router(weighbridge.router)
 
-# Mount static folder
 static_path = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_path, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-# Mount uploads folder
-upload_path = os.path.join(os.path.dirname(__file__), "uploads")
-os.makedirs(upload_path, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
+NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+
 
 @app.get("/")
 def serve_ui():
     index_file = os.path.join(static_path, "index.html")
     if os.path.exists(index_file):
-        return FileResponse(index_file, headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+        return FileResponse(index_file, headers=NO_CACHE)
     return {"message": "Hệ thống Quản lý Vận tải đang hoạt động!"}
+
 
 @app.get("/sw.js")
 def serve_service_worker():
-    sw_file = os.path.join(static_path, "sw.js")
-    if os.path.exists(sw_file):
-        return FileResponse(sw_file, media_type="application/javascript", headers={"Service-Worker-Allowed": "/", "Cache-Control": "no-cache, no-store, must-revalidate"})
-    return {"error": "sw not found"}
+    return FileResponse(os.path.join(static_path, "sw.js"), media_type="application/javascript",
+                        headers={"Service-Worker-Allowed": "/", **NO_CACHE})
+
 
 @app.get("/manifest.json")
 def serve_manifest():
-    manifest_file = os.path.join(static_path, "manifest.json")
-    if os.path.exists(manifest_file):
-        return FileResponse(manifest_file, media_type="application/manifest+json")
-    return {"error": "manifest not found"}
+    return FileResponse(os.path.join(static_path, "manifest.json"), media_type="application/manifest+json")
 
-@app.get("/weighbridge")
-def serve_weighbridge_ui():
-    wb_file = os.path.join(static_path, "weighbridge.html")
-    if os.path.exists(wb_file):
-        return FileResponse(wb_file)
-    return FileResponse(os.path.join(static_path, "index.html"))
 
 @app.on_event("startup")
-def init_db():
+def init_accounts():
+    """Tài khoản quản trị.
+
+    - ADMIN_PASSWORD (biến môi trường Render): nếu có, đặt lại mật khẩu tài khoản 'admin' mỗi lần khởi động.
+      Đây là cách đổi mật khẩu bền vững khi DB còn nằm trong repo (deploy lại không mất).
+    - DB chưa có tài khoản nào: tạo 'admin' với mật khẩu ngẫu nhiên in ra log Render.
+    Không còn mật khẩu mặc định nào trong code.
+    """
     db = SessionLocal()
-    admin = db.query(models.User).filter(models.User.username == "admin").first()
-    if not admin:
-        admin_user = models.User(
-            username="admin",
-            password_hash=auth.get_password_hash("admin123"),
-            full_name="Ban Giám Đốc (Trường Phát)",
-            role="admin",
-            is_active=True
-        )
-        db.add(admin_user)
-        db.commit()
-        print("Đã tạo tài khoản mặc định: admin / admin123")
-    db.close()
+    try:
+        env_pw = os.environ.get("ADMIN_PASSWORD")
+        admin = db.query(models.User).filter(models.User.username == "admin").first()
+        if admin and env_pw:
+            admin.password_hash = auth.get_password_hash(env_pw)
+            db.commit()
+            print("[auth] Đã đặt mật khẩu admin theo ADMIN_PASSWORD.")
+        elif not admin and db.query(models.User).count() == 0:
+            pw = env_pw or secrets.token_urlsafe(12)
+            db.add(models.User(username="admin", password_hash=auth.get_password_hash(pw),
+                               full_name="Ban Giám Đốc (Trường Phát)", role="admin", is_active=True))
+            db.commit()
+            if not env_pw:
+                print(f"[auth] Đã tạo tài khoản admin, mật khẩu tạm: {pw} — đổi ngay sau khi đăng nhập.")
+    finally:
+        db.close()
+
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
+    uvicorn.run("main:app", host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))

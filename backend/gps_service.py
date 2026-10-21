@@ -1,343 +1,230 @@
-import os
-import urllib.request
-import urllib.parse
+"""Đọc vị trí / km / thẻ lái xe từ GPS Bình Anh.
+
+- Tài khoản lấy từ biến môi trường BA_USERNAME / BA_PASSWORD (không ghi trong code).
+- Không tính "định mức dầu" hay "nghi hút dầu" — GPS không đo dầu; các số đó trước đây là bịa.
+- Mỗi xe mang giờ GPS GỐC (gps_time) và cờ is_stale khi tín hiệu cũ hơn STALE_MINUTES.
+"""
 import http.cookiejar
 import json
+import os
 import re
+import threading
+import urllib.parse
+import urllib.request
 from datetime import datetime
 
-# DANH SÁCH TÀI XẾ CHÍNH THỨC THEO FILE "DANH SÁCH XE (12.8.2026).xlsx"
-OFFICIAL_DRIVERS_BY_CLEAN_PLATE = {
-    "63E01156": "Nguyễn Văn Tuấn",
-    "63E01117": "Phan Hoàng Duy",
-    "63H04273": "Lâm Hoàng Tuấn",
-    "63G00286": "Nguyễn Xuân Về",
-    "63F00512": "Hoàng Quốc Bảo",
-    "63F00538": "Lý Minh Tới",
-    "63E01108": "Lý Minh Hoàng",
-    "63F00528": "Nguyễn Văn Hiếu",
-    "63E01212": "Mạch Đình Phước",
-    "63E01141": "Dương Thanh Sang",
-    "63G00262": "Nguyễn Thanh Tây",
-    "63H04239": "Kim Sô Phép",
-    "63E01132": "Đào Ngọc Kha",
-    "63E01201": "Lê Trọng Nghĩa",
-    "63F00516": "Phùng Phú Kim Toàn",
-    "63E01276": "Nguyễn Thanh Giàu",
-    "63E01103": "Lê Phương Linh",
-    "63E01118": "Lê Ngọc Quí",
-    "63F00511": "Bạch Tấn Trí",
-    "63H04234": "Nguyễn Thành Hiếu",
-    "63G00297": "Trần Trọng Ngân",
-    "63E01235": "Lý Hoàng Thái",
-    "63H04236": "Lê Văn Trọng",
-    "63G00280": "Lê Trung Trực",
-    "66H08348": "Trần Trọng Nghĩa",
-    "63F00544": "Tài Xế Dự Phòng"
-}
+from fleet import DRIVER_BY_CLEAN_PLATE, clean_plate
 
-import threading
+# Giữ tên cũ để code khác không vỡ; nguồn thật là fleet.py
+OFFICIAL_DRIVERS_BY_CLEAN_PLATE = DRIVER_BY_CLEAN_PLATE
+
+BA_URL = "https://gps.binhanh.vn/"
+STALE_MINUTES = 30
+REFRESH_SECONDS = 15
+CACHE_PATH = os.path.join(os.path.dirname(__file__), "live_ba_fleet_cache.json")
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+
+
+def _parse_ba_time(s: str):
+    """'2026-09-02T18:09:14' -> datetime; lỗi -> None."""
+    try:
+        return datetime.fromisoformat((s or "")[:19])
+    except ValueError:
+        return None
+
 
 class GpsClient:
     def __init__(self):
+        self.username = os.environ.get("BA_USERNAME", "").strip()
+        self.password = os.environ.get("BA_PASSWORD", "").strip()
+        self.configured = bool(self.username and self.password)
+        if not self.configured:
+            print("[gps] Chưa đặt BA_USERNAME / BA_PASSWORD — chỉ hiển thị dữ liệu GPS lưu tạm.")
         self.cj = http.cookiejar.CookieJar()
-        cookie_path = os.path.join(os.path.dirname(__file__), 'ba_session_cookies.pkl')
-        if os.path.exists(cookie_path):
-            try:
-                import pickle
-                with open(cookie_path, 'rb') as f:
-                    cookies = pickle.load(f)
-                    for c in cookies:
-                        self.cj.set_cookie(c)
-                self.last_login_time = datetime.now()
-            except Exception:
-                pass
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
-        self.last_fetch_time = datetime.now()
+        self.last_login_time = None
+        self.last_fetch_time = None          # lần lấy GPS thành công gần nhất
+        self.last_error = None
         self._is_updating = False
         self._lock = threading.Lock()
-        self._cached_fleet = self._build_default_fleet()
+        self._raw_vehicles = self._load_cache()
 
-    def _parse_ba_vehicles(self, raw_vehicles):
+    # ---------- dữ liệu ----------
+    def _load_cache(self):
+        try:
+            with open(CACHE_PATH, "r", encoding="utf-8") as f:
+                return (json.load(f) or {}).get("data") or []
+        except (OSError, ValueError):
+            return []
+
+    def _parse_ba_vehicles(self, raw_vehicles, now=None):
+        now = now or datetime.now()
         processed = []
         for v in raw_vehicles:
-            pri_code = v.get('pri_code') or v.get('plate') or ''
-            if len(pri_code) == 8 and '-' not in pri_code:
+            pri_code = v.get("pri_code") or v.get("plate") or ""
+            if len(pri_code) == 8 and "-" not in pri_code:
                 plate = f"{pri_code[:3]}-{pri_code[3:6]}.{pri_code[6:]}"
             else:
-                plate = pri_code.replace('_C', '')
+                plate = pri_code.replace("_C", "")
+            clean_p = clean_plate(plate)
 
-            plate_code = v.get('plate') or pri_code
-            today_str = datetime.now().strftime('%Y-%m-%d')
-            g_time = v.get('g_time') or ''
-            g_date = g_time[:10] if g_time else ''
-            is_today = (g_date == today_str)
+            gps_dt = _parse_ba_time(v.get("g_time"))
+            age_min = int((now - gps_dt).total_seconds() // 60) if gps_dt else None
+            is_today = bool(gps_dt) and gps_dt.date() == now.date()
+            is_stale = age_min is None or age_min > STALE_MINUTES
 
-            # Nếu dữ liệu GPS không thuộc ngày hôm nay (xe đậu bãi nhiều ngày không chạy):
             if not is_today:
-                speed = 0
-                state = 104
-                daily_km = 0.0
-                status_text = "Dừng bãi"
-                status_type = "stopped"
+                speed, daily_km = 0, 0.0
+                status_type, status_text = "stopped", "Dừng bãi (không có tín hiệu hôm nay)"
             else:
-                speed = int(v.get('v_gps', 0) or 0)
-                state = v.get('state', 0)
-                daily_km = round(float(v.get('t_km') or 0.0), 1)
-
+                speed = int(v.get("v_gps", 0) or 0)
+                state = v.get("state", 0)
+                daily_km = round(float(v.get("t_km") or 0.0), 1)
                 if speed > 0:
-                    status_text = f"Đang chạy ({speed} km/h)"
-                    status_type = "running"
-                elif state in [32, 2080]:
-                    status_text = "Dừng nổ máy"
-                    status_type = "idling"
-                elif state in [40, 2088]:
-                    status_text = "Dừng tắt máy"
-                    status_type = "stopped"
+                    status_type, status_text = "running", f"Đang chạy ({speed} km/h)"
+                elif state in (32, 2080):
+                    status_type, status_text = "idling", "Dừng nổ máy"
                 else:
-                    status_text = "Dừng bãi"
-                    status_type = "stopped"
+                    status_type, status_text = "stopped", "Dừng tắt máy"
+            if is_stale and is_today:
+                speed = 0  # tín hiệu cũ: không coi là đang chạy
 
-            address = v.get('adds') or 'Đang cập nhật...'
-            lat = v.get('lat')
-            lng = v.get('lng')
-            time_str = v.get('g_time_str') or datetime.now().strftime('%H:%M:%S %d-%m-%Y')
-
-            clean_p = plate.replace("-", "").replace(".", "").replace(" ", "").upper()
-            bgt = v.get('bgt') or {}
-            bgt_name = (bgt.get('name') or '').strip().upper()
-            bgt_license = (bgt.get('license') or '').strip()
-
-            is_logged_out = (bgt_name in ['LAI XE DANG XUAT', '', 'NONE', 'CHƯA NHẬP'] or 'DANG XUAT' in bgt_name)
+            bgt = v.get("bgt") or {}
+            bgt_name = (bgt.get("name") or "").strip().upper()
+            is_logged_out = bgt_name in ("LAI XE DANG XUAT", "", "NONE", "CHƯA NHẬP") or "DANG XUAT" in bgt_name
             is_card_swiped = (not is_logged_out) and is_today
-            card_driver_name = bgt.get('name') if is_card_swiped else "Chưa quẹt thẻ"
-
-            official_driver = OFFICIAL_DRIVERS_BY_CLEAN_PLATE.get(clean_p) or "Tài xế công ty"
-            driver_name = official_driver
-
             card_violation = None
             if is_today and is_logged_out and speed > 0:
                 card_violation = "running_no_card"
             elif is_today and is_logged_out and daily_km > 0:
                 card_violation = "daily_no_card"
 
-            standard_norm = 40.0
-            consumed_liters = round((daily_km * standard_norm) / 100.0, 1) if daily_km > 0 else 0.0
-
-            drain_alert_type = "normal"
-            drain_alert_text = "🟢 Định mức chuẩn"
-            if daily_km >= 10:
-                plate_num_hash = sum(ord(c) for c in plate) % 7
-                actual_norm = round(standard_norm + (plate_num_hash - 3) * 1.5, 1)
-                consumed_liters = round((daily_km * actual_norm) / 100.0, 1)
-                if actual_norm >= 46.0:
-                    drain_alert_type = "drain"
-                    drain_alert_text = f"🚨 Nghi ngờ sụt dầu ({actual_norm} L/100km)"
-                elif actual_norm > 42.0:
-                    drain_alert_type = "over_norm"
-                    drain_alert_text = f"⚠️ Vượt định mức ({actual_norm} L/100km)"
-            else:
-                actual_norm = 40.0
-
             processed.append({
-                'plate_number': plate,
-                'plate_code': plate_code,
-                'driver_name': driver_name,
-                'speed': speed,
-                'status_text': status_text,
-                'status_type': status_type,
-                'daily_km': daily_km,
-                'consumed_liters': consumed_liters,
-                'standard_norm': standard_norm,
-                'actual_norm': actual_norm,
-                'is_suspicious_drain': (drain_alert_type == "drain"),
-                'drain_alert_type': drain_alert_type,
-                'drain_alert_text': drain_alert_text,
-                'address': address,
-                'latitude': lat,
-                'longitude': lng,
-                'fuel_liters': None,
-                'update_time': time_str,
-                'is_card_swiped': is_card_swiped,
-                'card_driver_name': card_driver_name,
-                'bgt_license': bgt_license,
-                'card_violation': card_violation
+                "plate_number": plate,
+                "plate_code": v.get("plate") or pri_code,
+                "driver_name": DRIVER_BY_CLEAN_PLATE.get(clean_p, "Chưa phân công"),
+                "speed": speed,
+                "status_text": status_text,
+                "status_type": status_type,
+                "daily_km": daily_km,
+                "address": v.get("adds") or "",
+                "latitude": v.get("lat"),
+                "longitude": v.get("lng"),
+                "gps_time": gps_dt.strftime("%H:%M %d/%m/%Y") if gps_dt else None,
+                "gps_age_minutes": age_min,
+                "is_stale": is_stale,
+                # giữ tên cũ cho giao diện
+                "update_time": gps_dt.strftime("%H:%M:%S %d-%m-%Y") if gps_dt else "—",
+                "is_card_swiped": is_card_swiped,
+                "card_driver_name": bgt.get("name") if is_card_swiped else "Chưa quẹt thẻ",
+                "card_violation": card_violation,
             })
         return processed
 
-    def _build_default_fleet(self):
-        cache_path = os.path.join(os.path.dirname(__file__), 'live_ba_fleet_cache.json')
-        if os.path.exists(cache_path):
-            try:
-                with open(cache_path, 'r', encoding='utf-8') as f:
-                    raw_data = json.load(f)
-                    vehicles = raw_data.get('data') or []
-                    if vehicles:
-                        return self._parse_ba_vehicles(vehicles)
-            except Exception:
-                pass
-        return self._build_fallback_seeds()
+    def fetch_live_fleet(self):
+        """Trả danh sách xe ngay (không chờ mạng); làm mới nền nếu dữ liệu cũ hơn REFRESH_SECONDS."""
+        if self.configured and not self._is_updating and (
+                self.last_fetch_time is None
+                or (datetime.now() - self.last_fetch_time).total_seconds() > REFRESH_SECONDS):
+            threading.Thread(target=self._background_refresh, daemon=True).start()
+        return self._parse_ba_vehicles(self._raw_vehicles)
 
-    def _build_fallback_seeds(self):
-        seeds = [
-            ('63E-011.41', 'Dương Thanh Sang', 48, 11.1824, 106.6935, 'Số 9 KCN Sóng Thần 1, P. Dĩ An, TP. Hồ Chí Minh', True, None, 0.0),
-            ('63G-002.97', 'Trần Trọng Ngân', 42, 10.8925, 106.6980, 'X. Bến Lức, Tây Ninh', True, None, 19.8),
-            ('66H-083.48', 'Trần Trọng Nghĩa', 45, 11.3210, 106.6540, 'Q1', True, None, 19.7),
-            ('63F-005.12', 'Hoàng Quốc Bảo', 0, 10.6482, 106.4915, 'Q1', True, None, 6.9),
-            ('63E-012.12', 'Mạch Đình Phước', 0, 10.6020, 106.5201, 'Ngô Quyền, X. Ngãi Giao, TP. Hồ Chí Minh', False, None, 0.0),
-            ('63E-011.32', 'Đào Ngọc Kha', 0, 10.6485, 106.4920, 'X. Bến Lức, Tây Ninh', True, None, 7.3)
-        ]
-        fleet = []
-        for plate, driver, speed, lat, lng, addr, swiped, violation, km in seeds:
-            status_type = "running" if speed > 0 else "stopped"
-            status_text = f"Đang chạy ({speed} km/h)" if speed > 0 else "Dừng"
-            consumed = round((km * 40.0) / 100.0, 1) if km > 0 else 0.0
-            fleet.append({
-                'plate_number': plate,
-                'plate_code': plate.replace("-", "").replace(".", ""),
-                'driver_name': driver,
-                'speed': speed,
-                'status_text': status_text,
-                'status_type': status_type,
-                'daily_km': km,
-                'consumed_liters': consumed,
-                'standard_norm': 40.0,
-                'actual_norm': 40.0,
-                'is_suspicious_drain': False,
-                'drain_alert_type': "normal",
-                'drain_alert_text': "🟢 Định mức chuẩn",
-                'address': addr,
-                'latitude': lat,
-                'longitude': lng,
-                'fuel_liters': None,
-                'update_time': datetime.now().strftime('%H:%M:%S %d-%m-%Y'),
-                'is_card_swiped': swiped,
-                'card_driver_name': driver if swiped else "Chưa quẹt thẻ",
-                'card_violation': violation
-            })
-        return fleet
+    def status(self):
+        fleet = self._parse_ba_vehicles(self._raw_vehicles)
+        times = [_parse_ba_time(v.get("g_time")) for v in self._raw_vehicles]
+        times = [t for t in times if t]
+        return {
+            "configured": self.configured,
+            "last_fetch": self.last_fetch_time.strftime("%H:%M:%S %d/%m/%Y") if self.last_fetch_time else None,
+            "newest_gps_time": max(times).strftime("%H:%M %d/%m/%Y") if times else None,
+            "total": len(fleet),
+            "stale_count": sum(1 for v in fleet if v["is_stale"]),
+            "last_error": self.last_error,
+        }
 
+    # ---------- kết nối Bình Anh ----------
     def _login(self):
-        req_get = urllib.request.Request('https://gps.binhanh.vn/', headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'})
-        resp = self.opener.open(req_get)
-        html_get = resp.read().decode('utf-8', errors='ignore')
+        html_get = self.opener.open(urllib.request.Request(BA_URL, headers={"User-Agent": UA}), timeout=10) \
+            .read().decode("utf-8", errors="ignore")
 
-        vs = re.search(r'id="__VIEWSTATE"\s+value="([^"]+)"', html_get).group(1)
-        vsg = re.search(r'id="__VIEWSTATEGENERATOR"\s+value="([^"]+)"', html_get).group(1)
-        ev = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]+)"', html_get).group(1)
+        def field(name):
+            m = re.search(rf'id="{name}"\s+value="([^"]*)"', html_get)
+            return m.group(1) if m else ""
 
         post_data = {
-            '__LASTFOCUS': '',
-            '__EVENTTARGET': '',
-            '__EVENTARGUMENT': '',
-            '__VIEWSTATE': vs,
-            '__VIEWSTATEGENERATOR': vsg,
-            '__EVENTVALIDATION': ev,
-            'UserLogin1$txtLoginUserName': 'truongphat68',
-            'UserLogin1$txtLoginPassword': '9Tx4Ym7Kp2Wv',
-            'UserLogin1$hdfPassword': '',
-            'UserLogin1$chkRememberMe': 'on',
-            'UserLogin1$btnLogin': 'Đăng nhập'
+            "__LASTFOCUS": "", "__EVENTTARGET": "", "__EVENTARGUMENT": "",
+            "__VIEWSTATE": field("__VIEWSTATE"),
+            "__VIEWSTATEGENERATOR": field("__VIEWSTATEGENERATOR"),
+            "__EVENTVALIDATION": field("__EVENTVALIDATION"),
+            "UserLogin1$txtLoginUserName": self.username,
+            "UserLogin1$txtLoginPassword": self.password,
+            "UserLogin1$hdfPassword": "",
+            "UserLogin1$chkRememberMe": "on",
+            "UserLogin1$btnLogin": "Đăng nhập",
         }
-        req_post = urllib.request.Request(
-            'https://gps.binhanh.vn/',
-            data=urllib.parse.urlencode(post_data).encode('utf-8'),
-            headers={
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'Referer': 'https://gps.binhanh.vn/'
-            }
-        )
-        self.opener.open(req_post)
+        req = urllib.request.Request(
+            BA_URL, data=urllib.parse.urlencode(post_data).encode("utf-8"),
+            headers={"User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded", "Referer": BA_URL})
+        self.opener.open(req, timeout=10)
         self.last_login_time = datetime.now()
 
-    def fetch_live_fleet(self):
-        now = datetime.now()
-        # Non-blocking trigger if cache is older than 15 seconds
-        if (now - self.last_fetch_time).total_seconds() > 15 and not self._is_updating:
-            threading.Thread(target=self._background_refresh, daemon=True).start()
+    def _post(self, handler, data):
+        req = urllib.request.Request(
+            f"{BA_URL}HttpHandlers/{handler}", data=urllib.parse.urlencode(data).encode("utf-8"),
+            headers={"User-Agent": UA, "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"})
+        return json.loads(self.opener.open(req, timeout=8).read().decode("utf-8"))
 
-        # Stamp current time on vehicles
-        time_str = now.strftime('%H:%M:%S %d-%m-%Y')
-        for v in self._cached_fleet:
-            v['update_time'] = time_str
-        return list(self._cached_fleet)
+    def _ensure_login(self):
+        if self.last_login_time is None or (datetime.now() - self.last_login_time).total_seconds() > 1800:
+            self._login()
 
     def _background_refresh(self):
         with self._lock:
             if self._is_updating:
                 return
             self._is_updating = True
-
         try:
-            if not self.opener or not self.last_login_time or (datetime.now() - self.last_login_time).seconds > 1800:
-                self._login()
-
-            req_init = urllib.request.Request(
-                'https://gps.binhanh.vn/HttpHandlers/OnlineHandler.ashx',
-                data=urllib.parse.urlencode({'method': 'initListVehicle'}).encode('utf-8'),
-                headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}
-            )
-            resp_init = self.opener.open(req_init, timeout=6)
-            raw_text = resp_init.read().decode('utf-8')
-            raw = json.loads(raw_text)
-
+            self._ensure_login()
+            raw = self._post("OnlineHandler.ashx", {"method": "initListVehicle"})
             if raw.get("eos") or str(raw.get("success")).lower() == "false":
                 self._login()
-                resp_init = self.opener.open(req_init, timeout=6)
-                raw_text = resp_init.read().decode('utf-8')
-                raw = json.loads(raw_text)
-
-            raw_vehicles = raw.get('data', [])
-            if raw_vehicles:
-                processed = self._parse_ba_vehicles(raw_vehicles)
-                if processed:
-                    self._cached_fleet = processed
-                    self.last_fetch_time = datetime.now()
-                    try:
-                        cache_path = os.path.join(os.path.dirname(__file__), 'live_ba_fleet_cache.json')
-                        with open(cache_path, 'w', encoding='utf-8') as f:
-                            json.dump(raw, f, ensure_ascii=False, indent=2)
-                    except Exception:
-                        pass
-        except Exception as e:
-            pass
+                raw = self._post("OnlineHandler.ashx", {"method": "initListVehicle"})
+            vehicles = raw.get("data") or []
+            if vehicles:
+                self._raw_vehicles = vehicles
+                self.last_fetch_time = datetime.now()
+                self.last_error = None
+                try:
+                    with open(CACHE_PATH, "w", encoding="utf-8") as f:
+                        json.dump(raw, f, ensure_ascii=False)
+                except OSError:
+                    pass
+            else:
+                self.last_error = "Bình Anh trả về danh sách rỗng"
+        except Exception as e:  # mạng / đăng nhập lỗi: ghi lại để hiện trên app, không bịa số
+            self.last_error = f"{type(e).__name__}: {e}"[:200]
+            print(f"[gps] Lỗi lấy dữ liệu Bình Anh: {self.last_error}")
         finally:
             self._is_updating = False
 
     def fetch_vehicle_fuel_detail(self, plate_code: str, lng: float, lat: float):
-        if not self.opener or not self.last_login_time or (datetime.now() - self.last_login_time).seconds > 1800:
-            self._login()
-
-        req_info = urllib.request.Request(
-            'https://gps.binhanh.vn/HttpHandlers/VehicleHandler.ashx',
-            data=urllib.parse.urlencode({
-                'method': 'getInfoVehicle',
-                'plate': plate_code,
-                'lng': str(lng),
-                'lat': str(lat)
-            }).encode('utf-8'),
-            headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)', 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'}
-        )
-        resp_info = self.opener.open(req_info)
-        info_json = json.loads(resp_info.read().decode('utf-8'))
-        raw_html = info_json.get('data', '')
-
-        liters = None
-        percent = None
-        if 'Nhiên liệu:' in raw_html:
+        """Mức nhiên liệu do thiết bị Bình Anh báo (nếu xe có cảm biến dầu)."""
+        if not self.configured:
+            raise RuntimeError("Chưa cấu hình tài khoản Bình Anh (BA_USERNAME / BA_PASSWORD)")
+        self._ensure_login()
+        info = self._post("VehicleHandler.ashx",
+                          {"method": "getInfoVehicle", "plate": plate_code, "lng": str(lng), "lat": str(lat)})
+        raw_html = info.get("data", "")
+        liters = percent = None
+        if "Nhiên liệu:" in raw_html:
             try:
-                fuel_part = raw_html.split('Nhiên liệu:')[1].split('<')[0].strip()
-                if '(' in fuel_part and '%' in fuel_part:
-                    liters = float(fuel_part.split('(')[0].replace('Lít', '').strip())
-                    percent = float(fuel_part.split('(')[1].split('%')[0].strip())
-            except Exception:
+                part = raw_html.split("Nhiên liệu:")[1].split("<")[0].strip()
+                if "(" in part and "%" in part:
+                    liters = float(part.split("(")[0].replace("Lít", "").strip())
+                    percent = float(part.split("(")[1].split("%")[0].strip())
+            except (IndexError, ValueError):
                 pass
+        return {"liters": liters, "percent": percent, "raw_info": raw_html}
 
-        return {
-            'liters': liters,
-            'percent': percent,
-            'raw_info': raw_html
-        }
 
 gps_client = GpsClient()
