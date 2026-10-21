@@ -28,6 +28,8 @@ const dmy = s => s ? s.slice(0, 10).split('-').reverse().join('/') : '—';
 const chip = st => { const s = ST[st] || ST.missing; return `<span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${s.cls}">${s.label}</span>`; };
 const plateBtn = p => `<button type="button" onclick="openVehicleProfile('${escHtml(p)}')" class="font-mono font-black text-blue-700 underline decoration-dotted underline-offset-2 text-sm">${escHtml(p)}</button>`;
 const esc = v => escHtml(v ?? '');
+// Màu L/100km: đỏ = vượt định mức > 10%, xám = thấp bất thường (thường do số liệu), xanh = trong định mức
+const fuelCls = (v, n) => (v === null || v === undefined || !n) ? 'text-slate-500' : ((v - n) / n > 0.1 ? 'text-red-700' : ((v - n) / n < -0.1 ? 'text-slate-500' : 'text-emerald-700'));
 
 // ---------- tải dữ liệu
 async function loadXe(force = false) {
@@ -158,11 +160,11 @@ function xeTodoHtml() {
     ['Mức', r => chip(r.level)], ['Hạng mục', r => esc(r.category)], ['Xe / romoóc', r => `${plateBtn(r.plate)}${r.subject !== r.plate ? ` <span class="text-slate-500 text-xs">(${esc(r.subject)})</span>` : ''}`],
     ['Hạn', r => dmy(r.due)], ['Còn lại', r => `<b>${esc(r.detail)}</b>`],
   ], 'Không có việc quá hạn / sắp hạn')}
-  ${t.fuel_alerts.length ? `<h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Hao dầu lệch &gt; 10% so với 40 L/100km</h3>
-    <p class="text-sm text-slate-500 mb-2">Tính giữa 2 lần đổ đầy bình (≥ 300 km), từ sổ ĐỔ DẦU.</p>
+  ${t.fuel_alerts.length ? `<h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Hao dầu vượt định mức &gt; 10% (mới nhất trước)</h3>
+    <p class="text-sm text-slate-500 mb-2">Tính giữa 2 lần đổ đầy bình (≥ 300 km), từ sổ ĐỔ DẦU. Định mức: xe ben ${num(t.fuel_norms['Xe Ben'], 1)}, xe thùng ${num(t.fuel_norms['Xe Thùng'], 1)} L/100km (mức thực tế bình quân 07–09/2026).</p>
     ${rlist(t.fuel_alerts.slice().reverse(), [
       ['Xe', r => plateBtn(r.plate)], ['Từ – đến', r => `${dmy(r.from)} → ${dmy(r.to)}`], ['Km', r => num(r.km), 'right'],
-      ['Lít', r => num(r.liters, 1), 'right'], ['L/100km', r => `<b class="${r.deviation_pct > 0 ? 'text-red-700' : 'text-blue-700'}">${num(r.l_per_100km, 1)}</b>`, 'right'],
+      ['Lít', r => num(r.liters, 1), 'right'], ['L/100km', r => `<b class="text-red-700">${num(r.l_per_100km, 1)}</b>`, 'right'], ['Định mức', r => num(r.norm, 1), 'right'],
       ['Lệch', r => `${r.deviation_pct > 0 ? '+' : ''}${num(r.deviation_pct, 1)}%`, 'right'],
     ])}` : ''}
   <h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Số liệu còn thiếu</h3>
@@ -215,7 +217,8 @@ function xeFuelHtml() {
     <h3 class="mt-6 mb-2 font-black text-slate-900 text-lg">Tiêu hao theo xe (giữa 2 lần đầy bình)</h3>
     ${rlist(byPlate, [
       ['Xe', r => plateBtn(r[0])], ['Số lượt', r => num(r[1].fills), 'right'],
-      ['L/100km gần nhất', r => { const v = r[1].latest_l_per_100km; return v === null ? '—' : `<b class="${Math.abs(v - 40) / 40 > 0.1 ? 'text-red-700' : 'text-emerald-700'}">${num(v, 1)}</b>`; }, 'right'],
+      ['L/100km gần nhất', r => { const v = r[1].latest_l_per_100km, n = r[1].norm; return v === null ? '—' : `<b class="${fuelCls(v, n)}">${num(v, 1)}</b>`; }, 'right'],
+      ['Định mức', r => num(r[1].norm, 1), 'right'],
       ['L/100km bình quân', r => num(r[1].avg_l_per_100km, 1), 'right'],
       ['ODO mới nhất', r => r[1].odo ? `${num(r[1].odo.odo)} <span class="text-xs text-slate-500">(${dmy(r[1].odo.date)})</span>` : '—', 'right'],
     ])}`;
@@ -388,7 +391,7 @@ async function openVehicleProfile(plate) {
         ${stat('Loại xe', esc(v.vehicle.vehicle_type))}${stat('Romoóc', esc(v.vehicle.trailer_number || '—'))}
         ${stat('Tài xế', esc(v.vehicle.driver_name || 'Chưa phân công'), 'text-slate-900 text-lg')}
         ${stat('ODO mới nhất', fs.odo ? num(fs.odo.odo) : '—', 'text-slate-900', fs.odo ? `sổ dầu ${dmy(fs.odo.date)}` : '')}
-        ${stat('L/100km gần nhất', num(fs.latest_l_per_100km, 1), fs.latest_l_per_100km && Math.abs(fs.latest_l_per_100km - 40) / 40 > 0.1 ? 'text-red-600' : 'text-emerald-600', `bình quân ${num(fs.avg_l_per_100km, 1)}`)}
+        ${stat('L/100km gần nhất', num(fs.latest_l_per_100km, 1), fuelCls(fs.latest_l_per_100km, fs.norm), `bình quân ${num(fs.avg_l_per_100km, 1)} • định mức ${num(fs.norm, 1)}`)}
         ${stat('Việc cần xử lý', v.todo.length, v.todo.length ? 'text-red-600' : 'text-emerald-600')}
       </div>
       <h4 class="mt-5 mb-2 font-black">Giấy tờ</h4>
@@ -404,7 +407,7 @@ async function openVehicleProfile(plate) {
         ['Km', r => num(r.km), 'right'], ['đ/km', r => money(r.cost_per_km), 'right']])}
       <h4 class="mt-5 mb-2 font-black">Tiêu hao (giữa 2 lần đầy bình)</h4>
       ${rlist(v.consumption.slice().reverse(), [['Từ – đến', r => `${dmy(r.from)} → ${dmy(r.to)}`], ['Km', r => num(r.km), 'right'], ['Lít', r => num(r.liters, 1), 'right'],
-        ['L/100km', r => `<b class="${r.alert ? 'text-red-700' : 'text-emerald-700'}">${num(r.l_per_100km, 1)}</b>`, 'right']])}
+        ['L/100km', r => `<b class="${fuelCls(r.l_per_100km, r.norm)}">${num(r.l_per_100km, 1)}</b>${r.alert === 'under' ? ' <span class="text-xs text-slate-500">thấp bất thường — kiểm tra số liệu</span>' : (r.alert === 'data' ? ' <span class="text-xs text-slate-500">vô lý — nghi sai số liệu</span>' : '')}`, 'right']])}
       <h4 class="mt-5 mb-2 font-black">Bảo dưỡng – vỏ – bạt gần đây</h4>
       ${rlist([...v.maint_log.map(r => ({ ...r, t: 'Bảo dưỡng', c: `${r.item} ${r.content || ''}` })), ...v.tires.map(r => ({ ...r, t: 'Vỏ', c: `${num(r.quantity)} vỏ ${r.position || ''} ${r.brand || ''}` })),
                ...v.tarps.map(r => ({ ...r, t: 'Bạt', c: r.content }))].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 20),

@@ -22,8 +22,16 @@ from fleet import FLEET_BY_CLEAN, clean_plate
 
 SHEET_ID = os.environ.get("FLEET_SHEET_ID", "1SzlPdtSjhBeqvFlZq5WiznFOVtF6SEvQ-5xKFF6I8Es")
 CACHE_SECONDS = 180
-FUEL_NORM = 40.0           # định mức L/100km
+# Định mức L/100km theo loại xe. Mặc định = mức thực tế bình quân sổ dầu 07–09/2026
+# (xe ben 44,5; xe thùng 41,9 -> làm tròn 44,5 / 42). Đổi trên Render: FUEL_NORM_BEN, FUEL_NORM_THUNG.
+FUEL_NORMS = {"Xe Ben": float(os.environ.get("FUEL_NORM_BEN", "44.5")),
+              "Xe Thùng": float(os.environ.get("FUEL_NORM_THUNG", "42"))}
 FUEL_DEVIATION = 0.10      # lệch > 10% thì cảnh báo
+
+
+def fuel_norm(plate: str) -> float:
+    vtype = FLEET_BY_CLEAN.get(clean_plate(plate), {}).get("vehicle_type", "Xe Ben")
+    return FUEL_NORMS.get(vtype, FUEL_NORMS["Xe Ben"])
 OIL_SOON_KM, OIL_NEAR_KM = 1000, 3000   # nhớt máy: còn ≤1.000 km = sắp hạn, ≤3.000 km = gần hạn
 
 # ---------------------------------------------------------------- tiện ích
@@ -363,7 +371,8 @@ class FleetSheetService:
         # --- gộp theo (xe, ngày): HĐ tách 2 lần cùng lượt đổ tính là 1 lần
         groups = defaultdict(lambda: {"liters": 0.0, "odo": None, "full": False, "bad_odo": False})
         for x in live:
-            if not x["date"]:
+            # dòng ngày sai (tương lai / sai năm) không đưa vào tính tiêu hao
+            if not x["date"] or any(f.startswith("Ngày") for f in x["flags"]):
                 continue
             g = groups[(x["plate"], x["date"])]
             g["liters"] += x["liters"] or 0
@@ -387,11 +396,16 @@ class FleetSheetService:
                         liters_window = acc - prev_full[2]
                         if 300 <= km <= 6000:  # dưới 300 km sai số đong đầy bình quá lớn
                             l100 = round(liters_window / km * 100, 1)
-                            dev = (l100 - FUEL_NORM) / FUEL_NORM
+                            norm_p = fuel_norm(p)
+                            dev = (l100 - norm_p) / norm_p
                             res["consumption"].append({
                                 "plate": p, "from": prev_full[0], "to": d, "km": km,
                                 "liters": round(liters_window, 1), "l_per_100km": l100,
-                                "deviation_pct": round(dev * 100, 1), "alert": abs(dev) > FUEL_DEVIATION})
+                                "norm": norm_p, "deviation_pct": round(dev * 100, 1),
+                                # over = hao hơn định mức (cần kiểm tra); under = thấp bất thường (thường do số liệu đổ/ODO)
+                                # lệch quá xa (> +60% hoặc < -50%) gần như chắc do số liệu (thiếu lượt đổ, sai ODO, sai cờ đầy bình)
+                                "alert": ("data" if dev > 0.6 or dev < -0.5 else
+                                          "over" if dev > FUEL_DEVIATION else ("under" if dev < -FUEL_DEVIATION else None))})
                     prev_full = (d, g["odo"], acc)
         for p, pts in res["odo_points"].items():
             d, odo = max(pts, key=lambda x: x[1])
@@ -399,9 +413,10 @@ class FleetSheetService:
         res["rows"] = rows
         res["last_entry_date"] = max((x["date"] for x in live if x["date"] and x["date"] <= today.isoformat()), default=None)
         for p in {x["plate"] for x in live}:
-            cons = [c for c in res["consumption"] if c["plate"] == p]
+            cons = [c for c in res["consumption"] if c["plate"] == p and c["alert"] != "data"]
             res["by_plate"][p] = {
                 "fills": sum(1 for x in live if x["plate"] == p),
+                "norm": fuel_norm(p),
                 "latest_l_per_100km": cons[-1]["l_per_100km"] if cons else None,
                 "avg_l_per_100km": round(sum(c["liters"] for c in cons) / sum(c["km"] for c in cons) * 100, 1) if cons else None,
                 "odo": res["odo_by_plate"].get(p),
@@ -605,6 +620,9 @@ class FleetSheetService:
         miss("Sổ dầu: dòng thiếu ODO", [f"dòng {i['sheet_row']} ({i['plate']})" for i in no_odo])
         bad = [i for i in fuel["issues"] if any(f.startswith(("ODO lùi", "Ngày", "Số lít")) for f in i["flags"])]
         miss("Sổ dầu: dòng nghi sai (ODO lùi / ngày / số lít)", [f"dòng {i['sheet_row']} ({i['plate']}): {', '.join(i['flags'])}" for i in bad])
+        data_err = [c for c in fuel["consumption"] if c["alert"] == "data"]
+        miss("Sổ dầu: khoảng tiêu hao vô lý (nghi thiếu lượt đổ / sai ODO / sai cờ đầy bình)",
+             [f"{c['plate']} {c['from']} → {c['to']}: {c['l_per_100km']} L/100km" for c in data_err])
         last = fuel.get("last_entry_date")
         lag = (today - date.fromisoformat(last)).days if last else None
         return {
@@ -614,7 +632,8 @@ class FleetSheetService:
             "missing": missing,
             "fuel_log_last_date": last,
             "fuel_log_lag_days": lag,
-            "fuel_alerts": [c for c in fuel["consumption"] if c["alert"]][-30:],
+            "fuel_alerts": sorted([c for c in fuel["consumption"] if c["alert"] == "over"], key=lambda c: c["to"])[-30:],
+            "fuel_norms": FUEL_NORMS,
         }
 
 

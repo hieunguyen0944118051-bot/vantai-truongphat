@@ -25,3 +25,7 @@ services:
         sync: false
       - key: XE_WRITE_ROLES    # vai trò được nhập/sửa (mặc định admin,manager)
         sync: false
+      - key: FUEL_NORM_BEN     # định mức L/100km xe ben (mặc định 44.5)
+        sync: false
+      - key: FUEL_NORM_THUNG   # định mức L/100km xe thùng (mặc định 42)
+        sync: false
