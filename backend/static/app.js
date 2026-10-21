@@ -59,8 +59,8 @@ function renderQuickDateButtons() {
     desktopContainer.innerHTML = days.map(d => {
       const isSelected = (d.dateStr === selectedDate);
       const btnClass = isSelected
-        ? 'px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/20 font-mono text-xs transition'
-        : 'px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-mono text-xs transition shadow-2xs';
+        ? 'whitespace-nowrap px-3 py-1.5 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-md shadow-blue-500/20 font-mono text-xs transition'
+        : 'whitespace-nowrap px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200/80 font-mono text-xs transition shadow-2xs';
       return `<button onclick="handleDateSelect('${d.dateStr}')" class="${btnClass}">${d.label}</button>`;
     }).join('');
   }
@@ -402,30 +402,32 @@ function switchTab(tabId) {
   if (targetTab) targetTab.classList.remove('hidden');
 
   const titles = {
-    'dashboard': 'Tổng Quan Vận Hành — Lệnh Điều Xe (Google Sheets) & GPS Bình Anh',
-    'trips': 'Lệnh Điều Xe & Bảng Kê Hàng Ngày (Google Sheets)',
-    'vehicles': 'Đội Xe & Rơ-Moóc',
-    'drivers': 'Tài Xế & Hoạt Động Hôm Nay (GPS Bình Anh)',
-    'maintenance': 'Bảo Dưỡng — Thay Nhớt Động Cơ (Google Sheets)',
+    'dashboard': 'Tổng Quan Vận Hành',
+    'fines': 'Tra Cứu Phạt Nguội Đoàn Xe (Cổng CSGT)',
+    'trips': 'Lệnh Điều Xe & Bảng Kê Hàng Ngày',
+    'vehicles': 'Đội Xe & Rơ-Moóc (Ben & Thùng) — Giấy Tờ Xe',
+    'drivers': 'Đội Tài Xế & Cự Ly Km',
+    'maintenance': 'Bảo Dưỡng Định Kỳ — Thay Nhớt (15.000 km)',
     'gps': 'Giám Sát Xe (GPS Bình Anh)',
-    'tires': 'Thay Vỏ & Bạt',
+    'tires': 'Thay Vỏ & Bạt Phùng Lĩnh',
+    'fuel': 'Đổ Dầu & Định Mức Tiêu Hao',
+    'costs': 'Công Nợ & Chi Phí Xe',
     'barges': 'Đội Sà Lan',
-    'xe': 'Xe & Chi Phí — Giấy tờ, Đổ dầu, Bảo dưỡng, Vỏ, Bạt, Công nợ (Google Sheets)',
-    'settings': 'Cài Đặt'
+    'settings': 'Cài Đặt & Bảo Mật'
   };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) titleEl.innerText = titles[tabId] || 'Quản Lý Vận Tải';
 
   if (tabId === 'dashboard') loadDashboard(selectedDate);
   if (tabId === 'trips') loadDailyTripsFromSheets(selectedDate);
-  if (tabId === 'vehicles') loadGroupedVehicles();
   if (tabId === 'drivers') loadDriversActivity();
-  if (tabId === 'maintenance') loadMaintenance();
   if (tabId === 'gps') loadGpsLive();
-  if (tabId === 'tires') loadTires();
   if (tabId === 'barges') loadBarges();
-  if (tabId === 'xe') loadXe();
-  if (tabId === 'settings') renderSettings();
+  if (['vehicles', 'maintenance', 'tires', 'fuel', 'costs'].includes(tabId)) showXePage(tabId);
+  else if (typeof xePage !== 'undefined') xePage = null;
+  if (tabId === 'fines') { renderFinesPage(); loadXe(); }
+  if (tabId === 'settings') { renderSettings(); loadXe().then(renderSettings); }
+  closeMobileMenu();
 
   setTimeout(() => {
     if (window.lucide) lucide.createIcons();
@@ -508,6 +510,7 @@ function renderDashboardStatsUI(stats) {
   }
 
   renderGpsTable(stats.gps_table || []);
+  renderTopDriversLeaderboard(stats.gps_table || []);
   renderDailyKmChart(stats.km_chart_data || []);
   renderTopRoutesChart(stats.top_routes || []);
   renderCustomerBreakdownChart(stats.customer_breakdown || []);
@@ -535,10 +538,7 @@ async function loadDashboard(dateStr) {
     dashboardStatsClientCache[d] = stats;
     renderDashboardStatsUI(stats);
     lastDashStats = stats;
-    if (typeof loadXe === 'function') {
-      if (xeData && !xeData.stale_error) renderDashTodo(xeData);
-      if (!xeData || Date.now() - (window.__xeLoadedAt || 0) > 180000) { window.__xeLoadedAt = Date.now(); loadXe(); }
-    }
+    if (typeof loadXe === 'function') loadXe();
   } catch (err) {
     console.error('Error loading dashboard stats', err);
   }
@@ -548,6 +548,7 @@ async function loadDashboard(dateStr) {
 const XE_BEN_SET = new Set();
 const OFFICIAL_DRIVERS_MAP = {};
 let FLEET_TOTAL = 0;
+let FLEET_LIST = [];
 
 async function loadFleetCatalog() {
   try {
@@ -561,8 +562,15 @@ async function loadFleetCatalog() {
       if (v.driver_name) OFFICIAL_DRIVERS_MAP[clean] = v.driver_name;
     });
     FLEET_TOTAL = json.total || 0;
+    FLEET_LIST = json.vehicles || [];
     const benEl = document.getElementById('fleetCountBen');
     if (benEl) benEl.innerText = `${json.total_ben} Ben • ${json.total_thung} Thùng`;
+    const finesBadge = document.getElementById('badgeFinesCount');
+    if (finesBadge) finesBadge.innerText = `${FLEET_TOTAL} Xe`;
+    const drvBadge = document.getElementById('badgeDriversCount');
+    if (drvBadge) drvBadge.innerText = `${FLEET_LIST.filter(v => v.driver_name).length} TX`;
+    if (document.getElementById('tab-fines') && !document.getElementById('tab-fines').classList.contains('hidden')) renderFinesPage();
+    if (typeof xeData !== 'undefined' && xeData && xePage === 'vehicles') renderXe();
   } catch (err) { console.warn('Không nạp được danh sách xe', err); }
 }
 
@@ -601,7 +609,7 @@ function renderSourceStatus(stats) {
     gpsEl.className = 'text-lg md:text-xl font-black mt-1.5 font-mono tracking-tight ' + ((g.stale_count || 0) > 0 ? 'text-slate-600' : 'text-emerald-700');
   }
   if (gpsSubEl) {
-    let msg = `${g.stale_count || 0}/${g.total || 0} xe tín hiệu cũ > 30 phút`;
+    let msg = `GPS ${g.newest_gps_time || '—'} • ${g.stale_count || 0}/${g.total || 0} xe tín hiệu cũ`;
     if (!g.configured) msg = 'Chưa cấu hình tài khoản Bình Anh trên máy chủ';
     else if (g.last_error) msg = 'Lỗi kết nối Bình Anh: ' + g.last_error;
     gpsSubEl.innerText = msg;
@@ -651,9 +659,42 @@ function renderGpsTable(items) {
           <div class="text-[11px] text-slate-600 truncate max-w-xs" title="${escHtml(v.address)}">${escHtml(v.address || '—')}</div>
         </td>
         <td data-label="Km hôm nay" class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
+        ${fuelCellsForPlate(v.plate_number)}
         <td data-label="Giờ GPS" class="py-3 px-4 text-center">${gpsTimeBadge(v)}</td>
       </tr>`;
   }).join('');
+}
+
+// 3 cột dầu trên bảng Tổng quan (sổ đổ dầu, giữa 2 lần đầy bình)
+function fuelCellsForPlate(plate) {
+  const f = (typeof fuelInfoForPlate === 'function') ? fuelInfoForPlate(plate) : null;
+  if (!f || f.latest_l_per_100km === null || f.latest_l_per_100km === undefined) {
+    const dash = '<span class="text-slate-400">—</span>';
+    return `<td data-label="L/100km gần nhất" class="py-3 px-4 text-center">${dash}</td><td data-label="Định mức" class="py-3 px-4 text-center font-mono text-slate-500">${f && f.norm ? f.norm : '—'}</td><td data-label="Cảnh báo dầu" class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Chưa đủ số liệu</span></td>`;
+  }
+  const v = f.latest_l_per_100km, n = f.norm, p = (v - n) / n * 100;
+  const cls = p > 10 ? 'text-red-700' : (p < -10 ? 'text-slate-500' : 'text-emerald-700');
+  const badge = p > 10 ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-black bg-red-100 text-red-700 border border-red-300">🚨 Vượt ${p.toFixed(1)}%</span>`
+    : (p < -10 ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Thấp bất thường</span>'
+      : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">🟢 Trong định mức</span>');
+  return `<td data-label="L/100km gần nhất" class="py-3 px-4 text-center font-mono font-black ${cls}">${v.toLocaleString('vi-VN')}</td>
+        <td data-label="Định mức" class="py-3 px-4 text-center font-mono text-slate-600">${n.toLocaleString('vi-VN')}</td>
+        <td data-label="Cảnh báo dầu" class="py-3 px-4 text-center">${badge}</td>`;
+}
+
+// Top tài xế chạy nhiều km hôm nay (GPS)
+function renderTopDriversLeaderboard(items) {
+  const box = document.getElementById('topDriversLeaderboard');
+  if (!box) return;
+  const top = (items || []).filter(v => v.daily_km > 0).sort((a, b) => b.daily_km - a.daily_km).slice(0, 5);
+  if (!top.length) { box.innerHTML = '<p class="col-span-full p-5 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-sm">Chưa có xe nào chạy hôm nay (GPS)</p>'; return; }
+  const medal = ['🥇', '🥈', '🥉', '4', '5'];
+  box.innerHTML = top.map((v, i) => `
+    <div class="p-4 rounded-2xl border ${i === 0 ? 'bg-amber-50 border-amber-300' : 'bg-slate-50/90 border-slate-200'} space-y-1.5">
+      <div class="flex items-center justify-between"><span class="text-lg font-black">${medal[i]}</span>${formatPlateBadge(v.plate_number)}</div>
+      <p class="font-bold text-slate-900 text-sm truncate">${escHtml(v.driver_name || getOfficialDriverName(v.plate_number))}</p>
+      <p class="font-mono font-black text-blue-700 text-xl">${v.daily_km} km</p>
+    </div>`).join('');
 }
 
 function renderDailyKmChart(kmData) {
@@ -1050,46 +1091,6 @@ function exportTripsExcel() {
   window.open(API_BASE + '/trips/export/excel', '_blank');
 }
 
-// 4. TAB ĐỘI XE & RƠ-MOÓC (15 XE BEN & 11 XE THÙNG)
-let groupedVehiclesClientCache = null;
-
-async function loadGroupedVehicles() {
-  if (groupedVehiclesClientCache) {
-    renderVehiclesGroup(groupedVehiclesClientCache.ben_vehicles, 'benVehiclesTableBody');
-    renderVehiclesGroup(groupedVehiclesClientCache.thung_vehicles, 'thungVehiclesTableBody');
-    if (window.lucide) lucide.createIcons();
-  }
-
-  try {
-    const res = await fetch(API_BASE + '/vehicles/fleet', { headers: getHeaders() });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi lấy dữ liệu xe');
-
-    json.ben_vehicles = (json.vehicles || []).filter(v => v.vehicle_type === 'Xe Ben');
-    json.thung_vehicles = (json.vehicles || []).filter(v => v.vehicle_type !== 'Xe Ben');
-    groupedVehiclesClientCache = json;
-    renderVehiclesGroup(json.ben_vehicles, 'benVehiclesTableBody');
-    renderVehiclesGroup(json.thung_vehicles, 'thungVehiclesTableBody');
-
-    if (window.lucide) lucide.createIcons();
-  } catch (err) {
-    console.error('Error loading grouped vehicles:', err);
-  }
-}
-
-function renderVehiclesGroup(list, tbodyId) {
-  const tbody = document.getElementById(tbodyId);
-  if (!tbody) return;
-  tbody.innerHTML = (list || []).map((v, idx) => `
-    <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-      <td class="py-3 px-4 text-center font-bold text-slate-400">${idx + 1}</td>
-      <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(v.plate_number)}</td>
-      <td class="py-3 px-4 font-mono font-bold text-slate-800">${escHtml(v.trailer_number || '—')}</td>
-      <td class="py-3 px-4 text-slate-800">${escHtml(v.driver_name || 'Chưa phân công')}</td>
-    </tr>
-  `).join('');
-}
-
 // 5. TAB TÀI XẾ
 function renderDriversActivityUI(json) {
   if (!json) return;
@@ -1138,6 +1139,17 @@ function renderDriversActivityUI(json) {
   }
 
   renderDetailedDriversTable(json.drivers || []);
+  const runners = document.getElementById('topRunnersContainer');
+  if (runners) {
+    const top = (json.drivers || []).filter(d => d.daily_km > 0).sort((a, b) => b.daily_km - a.daily_km).slice(0, 3);
+    runners.innerHTML = top.length ? top.map((d, i) => `
+      <div class="p-4 rounded-2xl ${i === 0 ? 'bg-amber-400/15 border-amber-400/40' : 'bg-white/5 border-white/10'} border space-y-1">
+        <div class="flex items-center justify-between"><span class="text-2xl">${['🥇', '🥈', '🥉'][i]}</span><span class="font-mono font-black text-blue-200 text-sm">${escHtml(d.vehicle_plate)}</span></div>
+        <p class="font-black text-white text-base truncate">${escHtml(d.full_name)}</p>
+        <p class="font-mono font-black text-amber-300 text-2xl">${d.daily_km} km</p>
+        <p class="text-[11px] text-blue-200 truncate">${escHtml(d.movement_state || '')}</p>
+      </div>`).join('') : '<p class="col-span-full text-sm text-blue-200">Chưa có tài xế nào chạy hôm nay (GPS).</p>';
+  }
   if (window.lucide) lucide.createIcons();
 }
 
@@ -1193,67 +1205,6 @@ function renderDetailedDriversTable(list) {
       </tr>`).join('');
 }
 
-// 6. TAB BẢO DƯỠNG THAY NHỚT (KHỚP 100% GOOGLE SHEET)
-let maintenanceClientCache = null;
-
-function renderMaintenanceUI(list) {
-  const tbody = document.getElementById('maintenanceTableBody');
-  if (!tbody || !list) return;
-
-  tbody.innerHTML = list.map(m => {
-    const rem = (m.remaining_km !== undefined ? m.remaining_km : (m.diff_km !== undefined ? m.diff_km : '—')).toString();
-    const statusText = (m.status || m.status_text || 'Thiếu số liệu').toString();
-    const isOver = rem.startsWith('-') || statusText.toLowerCase().includes('quá') || statusText.toLowerCase().includes('sắp');
-
-    let statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">Thiếu số liệu</span>';
-    if (statusText.toLowerCase().includes('còn xa')) {
-      statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">🟢 Còn xa</span>';
-    } else if (isOver) {
-      statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 Sắp / Quá hạn</span>';
-    } else if (statusText.toLowerCase().includes('gần')) {
-      statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">⚠️ Gần tới hạn</span>';
-    }
-
-    return `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 text-center font-bold text-slate-400">${m.stt || '—'}</td>
-        <td class="py-3 px-4">${formatPlateBadge(m.plate_number)}</td>
-        <td class="py-3 px-4 text-right font-bold text-slate-600">${m.norm_km || m.norm || '15.000'}</td>
-        <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km || '—'}</td>
-        <td class="py-3 px-4 text-center text-slate-600">${m.last_date || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono font-black text-slate-900">${m.current_km || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono font-black ${isOver ? 'text-red-600' : 'text-emerald-600'}">
-          ${rem}
-        </td>
-        <td class="py-3 px-4 text-center">${statBadge}</td>
-        <td class="py-3 px-4 text-slate-700 font-bold text-[11px]">${m.notes || ''}</td>
-      </tr>
-    `;
-  }).join('');
-  if (window.lucide) lucide.createIcons();
-}
-
-async function loadMaintenance() {
-  if (maintenanceClientCache) {
-    renderMaintenanceUI(maintenanceClientCache);
-  }
-
-  try {
-    const res = await fetch(API_BASE + '/maintenance/oil', { headers: getHeaders() });
-    const list = await res.json();
-    if (!res.ok) {
-      const tbody = document.getElementById('maintenanceTableBody');
-      if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="py-6 text-center text-rose-700 font-bold">${escHtml(list.detail || 'Không đọc được Google Sheets')}</td></tr>`;
-      return;
-    }
-    maintenanceClientCache = list;
-    renderMaintenanceUI(list);
-  } catch (err) {
-    console.error('Error loading maintenance', err);
-  }
-}
-
 // BẢN ĐỒ GIÁM SÁT HÀNH TRÌNH LEAFLET.JS (REALTIME FLEET MAP)
 function focusVehicleOnMap(plate) {}
 function fitAllFleetBounds() {}
@@ -1261,7 +1212,6 @@ function handleMapSearch(q) {}
 function filterMapMarkers(t) {}
 
 // 7. GPS & TIRES & BARGES
-let tiresClientCache = null;
 let bargesClientCache = null;
 
 async function loadGpsLive() {
@@ -1384,37 +1334,6 @@ async function silentRefreshLiveGps() {
 async function triggerGpsSync() {
   await loadGpsLive();
   loadDashboard(selectedDate);
-}
-
-function renderTiresUI(tireData) {
-  const tireTbody = document.getElementById('tireTableBody');
-  if (!tireTbody || !tireData) return;
-  tireTbody.innerHTML = (tireData.summary || []).map(t => `
-    <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-      <td class="py-3 px-4 font-mono font-bold text-blue-700">${t.plate_number}</td>
-      <td class="py-3 px-4 text-center font-bold ${t.q1 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q1 || '—'}</td>
-      <td class="py-3 px-4 text-center font-bold ${t.q2 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q2 || '—'}</td>
-      <td class="py-3 px-4 text-center font-bold ${t.q3 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q3 || '—'}</td>
-      <td class="py-3 px-4 text-center font-bold ${t.q4 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q4 || '—'}</td>
-      <td class="py-3 px-4 text-right font-black text-blue-700">${t.total_tires} vỏ</td>
-    </tr>
-  `).join('');
-  if (window.lucide) lucide.createIcons();
-}
-
-async function loadTires() {
-  if (tiresClientCache) {
-    renderTiresUI(tiresClientCache);
-  }
-
-  try {
-    const res = await fetch(API_BASE + '/maintenance/tires/summary', { headers: getHeaders() });
-    const tireData = await res.json();
-    tiresClientCache = tireData;
-    renderTiresUI(tireData);
-  } catch (err) {
-    console.error('Error loading tires', err);
-  }
 }
 
 function renderBargesUI(list) {
@@ -1639,3 +1558,90 @@ setTimeout(checkInAppBrowser, 800);
 setTimeout(checkAndShowPwaBanner, 1000);
 
 
+
+
+// =====================================================================
+// TRA CỨU PHẠT NGUỘI — mở cổng CSGT chính thức (cổng có mã xác nhận nên app không tự tra)
+// =====================================================================
+const CSGT_URL = 'https://www.csgt.vn/tra-cuu-phuong-tien-vi-pham.html';
+
+async function openCsgt(plate) {
+  const clean = (plate || '').replace(/[-. ]/g, '').toUpperCase();
+  try { await navigator.clipboard.writeText(clean); showFinesToast(`Đã chép biển số ${clean} — dán vào ô Biển kiểm soát trên trang CSGT`); }
+  catch (e) { showFinesToast(`Biển số cần tra: ${clean}`); }
+  window.open(CSGT_URL, '_blank', 'noopener');
+}
+function showFinesToast(msg) {
+  if (typeof xeToast === 'function') return xeToast(msg, true);
+  alert(msg);
+}
+
+function renderFinesPage() {
+  const box = document.getElementById('finesPage');
+  const sumBox = document.getElementById('finesSummary');
+  if (!box) return;
+  const fleet = FLEET_LIST || [];
+  const docsOf = p => (typeof xeData !== 'undefined' && xeData) ? xeData.docs.filter(d => samePlate(d.plate, p)) : [];
+  const nextInspection = p => {
+    const ds = docsOf(p).filter(d => d.kind.startsWith('Đăng kiểm') && d.days_left !== null).sort((a, b) => a.days_left - b.days_left);
+    return ds[0] || null;
+  };
+  const soonInsp = fleet.filter(v => { const d = nextInspection(v.plate_number); return d && d.days_left <= 30; });
+  if (sumBox) {
+    const tile = (cls, label, value, icon) => `<div class="p-4 rounded-2xl ${cls} border flex items-center justify-between shadow-2xs"><div><p class="text-[10px] uppercase font-extrabold opacity-80">${label}</p><h4 class="text-2xl font-black mt-0.5 font-mono">${value}</h4></div><i data-lucide="${icon}" class="w-7 h-7 opacity-60"></i></div>`;
+    sumBox.innerHTML = tile('bg-slate-100/90 border-slate-200 text-slate-900', 'Xe đầu kéo cần tra', `${fleet.length} Xe`, 'truck')
+      + tile('bg-slate-100/90 border-slate-200 text-slate-900', 'Rơ-moóc cần tra', `${fleet.filter(v => v.trailer_number).length} Mooc`, 'container')
+      + tile(soonInsp.length ? 'bg-amber-50/80 border-amber-200 text-amber-950' : 'bg-emerald-50/80 border-emerald-200 text-emerald-950', 'Đăng kiểm trong 30 ngày', `${soonInsp.length} Xe`, 'file-warning')
+      + tile('bg-rose-50/80 border-rose-200 text-rose-950', 'Kết quả tra', 'Trên CSGT', 'shield-alert');
+  }
+  box.innerHTML = `
+    <div class="p-3.5 mb-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs leading-relaxed">
+      <b>Vì sao không tự tra?</b> Cổng CSGT bắt nhập mã xác nhận (captcha) cho từng lần tra, nên app không tự lấy kết quả được — app không hiện số liệu phạt nguội tự đoán.
+      Xe còn lỗi phạt nguội chưa nộp sẽ bị <b>từ chối đăng kiểm</b>: nên tra trước các xe sắp đến hạn đăng kiểm (cột bên phải, đọc từ Sheets).
+    </div>
+    <div class="rtable-wrap overflow-x-auto rounded-2xl border border-slate-200/90 shadow-2xs">
+      <table class="rtable w-full text-left text-xs whitespace-nowrap">
+        <thead class="bg-slate-100/90 text-slate-700 font-extrabold uppercase tracking-wider border-b border-slate-200"><tr>
+          <th class="py-3.5 px-4 text-center">STT</th><th class="py-3.5 px-4">Biển Số Xe</th><th class="py-3.5 px-4">Rơ-Moóc</th>
+          <th class="py-3.5 px-4">Tài Xế Quản Lý</th><th class="py-3.5 px-4 text-center">Đăng Kiểm Gần Nhất</th><th class="py-3.5 px-4 text-center">Tra Cứu</th>
+        </tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          ${fleet.map((v, i) => {
+            const d = nextInspection(v.plate_number);
+            const insp = d ? `<div class="font-mono font-bold">${formatDateVN(d.expiry)}</div><div class="text-[11px] font-bold ${d.days_left < 0 ? 'text-red-700' : (d.days_left <= 30 ? 'text-amber-700' : 'text-emerald-700')}">${d.days_left < 0 ? `quá ${-d.days_left} ngày` : `còn ${d.days_left} ngày`} • ${escHtml(d.kind.replace('Đăng kiểm – ', ''))}</div>` : '<span class="text-slate-400">—</span>';
+            return `<tr class="hover:bg-slate-50 transition text-xs">
+              <td data-label="STT" class="py-3 px-4 text-center font-bold text-slate-400">${i + 1}</td>
+              <td data-label="Biển số" class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
+              <td data-label="Rơ-moóc" class="py-3 px-4 font-mono font-bold text-slate-700">${escHtml(v.trailer_number || '—')}</td>
+              <td data-label="Tài xế" class="py-3 px-4 font-medium text-slate-800">${escHtml(v.driver_name || 'Chưa phân công')}</td>
+              <td data-label="Đăng kiểm" class="py-3 px-4 text-center">${insp}</td>
+              <td data-label="Tra cứu" class="py-3 px-4 text-center">
+                <div class="inline-flex flex-wrap gap-1.5 justify-end">
+                  <button onclick="openCsgt('${escHtml(v.plate_number)}')" class="px-3 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-[11px] active:scale-95">Tra đầu kéo</button>
+                  ${v.trailer_number ? `<button onclick="openCsgt('${escHtml(v.trailer_number)}')" class="px-3 py-2 rounded-xl bg-white border border-rose-300 text-rose-700 font-bold text-[11px] active:scale-95">Tra rơ-moóc</button>` : ''}
+                </div>
+              </td>
+            </tr>`;
+          }).join('') || '<tr><td colspan="6" class="py-6 text-center text-slate-500">Đang tải danh sách xe…</td></tr>'}
+        </tbody>
+      </table>
+    </div>`;
+  if (window.lucide) lucide.createIcons();
+}
+
+// =====================================================================
+// MENU ĐẦY ĐỦ TRÊN ĐIỆN THOẠI (☰)
+// =====================================================================
+function openMobileMenu() {
+  const drawer = document.getElementById('mobileMenuDrawer');
+  const nav = document.getElementById('mobileMenuNav');
+  const src = document.querySelector('aside nav');
+  if (!drawer || !nav || !src) return;
+  nav.innerHTML = src.innerHTML.replace(/ id="(nav|badge)[^"]*"/g, '');
+  drawer.classList.remove('hidden');
+  if (window.lucide) lucide.createIcons();
+}
+function closeMobileMenu() {
+  const drawer = document.getElementById('mobileMenuDrawer');
+  if (drawer) drawer.classList.add('hidden');
+}
