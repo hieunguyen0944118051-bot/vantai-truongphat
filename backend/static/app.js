@@ -14,8 +14,6 @@ const todayStr = getFormattedDate(clientToday);
 let selectedDate = todayStr; // Tự động lấy ngày thực tế của máy tính hôm nay
 let gpsCache = [];
 let driversActivityCache = null;
-let trafficFinesCache = null;
-let fuelNormChart = null;
 let dailyKmChart = null;
 let topRoutesChart = null;
 let customerBreakdownChart = null;
@@ -164,7 +162,7 @@ async function handleAiCommand(e) {
   const resBox = document.getElementById('aiResponseBox');
   const resText = document.getElementById('aiResponseText');
   resBox.classList.remove('hidden');
-  resText.innerText = '⏳ AI đang đọc dữ liệu GPS & vận hành...';
+  resText.innerText = '⏳ Đang tra cứu...';
 
   try {
     const res = await fetch(API_BASE + '/assistant/execute', {
@@ -242,7 +240,7 @@ async function handleLogin(e) {
   formData.append('password', p);
 
   try {
-    const res = await fetch(API_BASE + '/auth/login?pin=' + encodeURIComponent(pin), {
+    const res = await fetch(API_BASE + '/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
@@ -328,7 +326,7 @@ function showApp() {
     if (urEl) urEl.innerText = currentUser.role || 'Quản trị viên';
   }
 
-  switchTab('dashboard');
+  loadFleetCatalog().then(() => switchTab('dashboard'));
   startAutoSyncLoop();
 }
 
@@ -404,23 +402,21 @@ function switchTab(tabId) {
   if (targetTab) targetTab.classList.remove('hidden');
 
   const titles = {
-    'dashboard': 'Tổng Quan Hoạt Động & Giám Sát Nhiên Liệu (Tiêu Hao & Chống Hút Dầu)',
-    'fines': 'Hệ Thống Tự Động Tra Cứu Phạt Nguội — Cục Cảnh Sát Giao Thông',
-    'security': 'Hệ Thống Tường Lửa Ứng Dụng WAF & Phòng Thủ Xâm Nhập Chuẩn Quốc Tế',
-    'trips': 'Lệnh Điều Xe & Bảng Kê Thực Tế Hàng Ngày (Google Trang Tính)',
-    'vehicles': 'Đội Xe & Rơ-Moóc (15 Xe Ben • 11 Xe Thùng — Theo Dõi GĐĐ & Đăng Kiểm)',
-    'drivers': 'Đội Ngũ Tài Xế & Đánh Giá Chi Tiết Hiệu Suất Vận Hành',
-    'maintenance': 'Bảo Dưỡng Định Kỳ — Thay Nhớt Động Cơ (15.000 Km Theo Trang Tính)',
-    'gps': 'Bản Đồ Giám Sát Xe Trực Tuyến & Cự Ly Vận Hành (GPS Bình Anh 26 Xe)',
-    'tires': 'Quản Lý Thay Vỏ Xe & Công Nợ May Bạt (Phùng Lĩnh)',
-    'barges': 'Đội Sà Lan Vận Tải (4 Nhà • 6 Thuê Ngoài)'
+    'dashboard': 'Tổng Quan Vận Hành — Lệnh Điều Xe (Google Sheets) & GPS Bình Anh',
+    'trips': 'Lệnh Điều Xe & Bảng Kê Hàng Ngày (Google Sheets)',
+    'vehicles': 'Đội Xe & Rơ-Moóc',
+    'drivers': 'Tài Xế & Hoạt Động Hôm Nay (GPS Bình Anh)',
+    'maintenance': 'Bảo Dưỡng — Thay Nhớt Động Cơ (Google Sheets)',
+    'gps': 'Giám Sát Xe (GPS Bình Anh)',
+    'tires': 'Thay Vỏ & Bạt',
+    'barges': 'Đội Sà Lan',
+    'xe': 'Xe & Chi Phí — Giấy tờ, Đổ dầu, Bảo dưỡng, Vỏ, Bạt, Công nợ (Google Sheets)',
+    'settings': 'Cài Đặt'
   };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) titleEl.innerText = titles[tabId] || 'Quản Lý Vận Tải';
 
   if (tabId === 'dashboard') loadDashboard(selectedDate);
-  if (tabId === 'fines') loadTrafficFines();
-  if (tabId === 'security') loadSecurityStatus();
   if (tabId === 'trips') loadDailyTripsFromSheets(selectedDate);
   if (tabId === 'vehicles') loadGroupedVehicles();
   if (tabId === 'drivers') loadDriversActivity();
@@ -428,6 +424,8 @@ function switchTab(tabId) {
   if (tabId === 'gps') loadGpsLive();
   if (tabId === 'tires') loadTires();
   if (tabId === 'barges') loadBarges();
+  if (tabId === 'xe') loadXe();
+  if (tabId === 'settings') renderSettings();
 
   setTimeout(() => {
     if (window.lucide) lucide.createIcons();
@@ -436,6 +434,22 @@ function switchTab(tabId) {
 
 // 1. DASHBOARD
 const dashboardStatsClientCache = {};
+let lastDashStats = null;
+
+function renderSettings() {
+  const u = document.getElementById('settingsUser');
+  if (u && currentUser) u.innerText = `${currentUser.full_name || currentUser.username} (${currentUser.role})`;
+  const box = document.getElementById('settingsSources');
+  if (!box) return;
+  const g = (lastDashStats && lastDashStats.sources && lastDashStats.sources.gps) || {};
+  const line = (ok, label, detail) => `<div class="flex justify-between gap-3 p-3 rounded-xl border ${ok ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}"><span class="font-semibold">${label}</span><span class="text-right">${detail}</span></div>`;
+  box.innerHTML = [
+    line(!!g.configured && !g.last_error, 'GPS Bình Anh', g.configured ? (g.last_error ? 'Lỗi: ' + escHtml(g.last_error) : `tín hiệu mới nhất ${escHtml(g.newest_gps_time || '—')}`) : 'Chưa cấu hình tài khoản trên Render'),
+    line(!!(lastDashStats && !lastDashStats.sheet_warning), 'Sheets lệnh điều xe', lastDashStats ? (lastDashStats.sheet_warning ? escHtml(lastDashStats.sheet_warning) : `đọc lúc ${escHtml(lastDashStats.sources.sheets.sync_time || '—')}`) : 'Mở Tổng quan để kiểm tra'),
+    line(!!(typeof xeData !== 'undefined' && xeData), 'Sheets xe & chi phí', (typeof xeData !== 'undefined' && xeData) ? `đọc lúc ${escHtml(xeData.source.read_at)}` : 'Chưa đọc'),
+    line(!!(typeof xeData !== 'undefined' && xeData && xeData.write_enabled), 'Ghi vào Sheets', (typeof xeData !== 'undefined' && xeData && xeData.write_enabled) ? 'Đang bật' : 'Chưa bật (cần Apps Script — xem HUONG_DAN.md)'),
+  ].join('');
+}
 
 function renderDashboardStatsUI(stats) {
   if (!stats) return;
@@ -456,46 +470,7 @@ function renderDashboardStatsUI(stats) {
   const dailyKmEl = document.getElementById('stat-daily-km');
   if (dailyKmEl) dailyKmEl.innerText = `${stats.total_daily_km} km`;
 
-  const consumedFuelEl = document.getElementById('stat-consumed-fuel');
-  if (consumedFuelEl) consumedFuelEl.innerText = `${stats.total_consumed_fuel} Lít`;
-
-  // Cảnh báo hút dầu
-  const drainCountEl = document.getElementById('stat-drain-count');
-  const drainCardEl = document.getElementById('card-drain-alert');
-  const drainSubEl = document.getElementById('text-drain-sub');
-  if (drainCountEl) {
-    if (stats.suspicious_drain_count > 0) {
-      drainCountEl.innerText = `${stats.suspicious_drain_count} Xe Nghi Ngờ`;
-      drainCountEl.className = 'text-xl md:text-2xl font-black text-red-600 mt-1 animate-pulse';
-      if (drainCardEl) drainCardEl.className = 'bg-red-50 p-4 md:p-5 rounded-2xl border-2 border-red-300 shadow-sm flex flex-col justify-between';
-      if (drainSubEl) drainSubEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span><span class="text-red-700 font-bold">Phát hiện sụt dầu bất thường!</span>';
-    } else {
-      drainCountEl.innerText = `0 Xe`;
-      drainCountEl.className = 'text-xl md:text-2xl font-black text-emerald-600 mt-1';
-      if (drainCardEl) drainCardEl.className = 'bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between';
-      if (drainSubEl) drainSubEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Tất cả xe định mức an toàn</span>';
-    }
-  }
-
-  // Cảnh báo Phạt Nguội trên Dashboard
-  const finesStatEl = document.getElementById('stat-fines-status');
-  const finesSubEl = document.getElementById('stat-fines-sub');
-  if (stats.fines_summary) {
-    const fs = stats.fines_summary;
-    if (fs.violated_vehicles > 0) {
-      if (finesStatEl) {
-        finesStatEl.innerText = `${fs.violated_vehicles} Xe Có Lỗi`;
-        finesStatEl.className = 'text-xl md:text-2xl font-black text-rose-600 animate-pulse';
-      }
-      if (finesSubEl) finesSubEl.innerText = `${fs.clean_vehicles}/${fs.total_vehicles} Xe Sạch Lỗi • Cần nộp phạt!`;
-    } else {
-      if (finesStatEl) {
-        finesStatEl.innerText = `An Toàn`;
-        finesStatEl.className = 'text-xl md:text-2xl font-black text-emerald-600';
-      }
-      if (finesSubEl) finesSubEl.innerText = `26/26 Xe Sạch Lỗi Vi Phạm`;
-    }
-  }
+  renderSourceStatus(stats);
 
   // CẢNH BÁO TRANG CHỦ: XE ĐANG CHẠY NHƯNG KHÔNG QUẸT THẺ LÁI XE
   const noCardRunningBox = document.getElementById('dashboardRunningNoCardAlertBox');
@@ -532,13 +507,10 @@ function renderDashboardStatsUI(stats) {
     if (noCardRunningBox) noCardRunningBox.classList.add('hidden');
   }
 
-  renderFuelAnalysisTable(stats.fuel_table || []);
-  renderFuelNormChart(stats.norm_chart_data || []);
+  renderGpsTable(stats.gps_table || []);
   renderDailyKmChart(stats.km_chart_data || []);
   renderTopRoutesChart(stats.top_routes || []);
   renderCustomerBreakdownChart(stats.customer_breakdown || []);
-  renderWeeklyFuelTable(stats.weekly_fuel_summary || {});
-  renderTopDriversLeaderboard(stats.top_drivers_weekly || []);
 
   const activeTextEl = document.getElementById('activePercentText');
   if (activeTextEl) activeTextEl.innerText = `${stats.active_vehicles_count}/${stats.total_vehicles} Xe (${stats.active_percent}%)`;
@@ -562,49 +534,82 @@ async function loadDashboard(dateStr) {
     const stats = await res.json();
     dashboardStatsClientCache[d] = stats;
     renderDashboardStatsUI(stats);
+    lastDashStats = stats;
+    if (typeof loadXe === 'function') {
+      if (xeData && !xeData.stale_error) renderDashTodo(xeData);
+      if (!xeData || Date.now() - (window.__xeLoadedAt || 0) > 180000) { window.__xeLoadedAt = Date.now(); loadXe(); }
+    }
   } catch (err) {
     console.error('Error loading dashboard stats', err);
   }
 }
 
-const XE_BEN_SET = new Set([
-  '63H04273', '63G00286', '63E01156', '63E01117', '63E01108',
-  '63F00528', '63G00262', '63H04239', '63E01276', '63E01103',
-  '63E01118', '63F00511', '63H04234', '63E01235', '63H04236'
-]);
+// Danh sách xe – tài xế: nạp 1 lần từ /api/vehicles/fleet (nguồn duy nhất: backend/fleet.py)
+const XE_BEN_SET = new Set();
+const OFFICIAL_DRIVERS_MAP = {};
+let FLEET_TOTAL = 0;
 
-const OFFICIAL_DRIVERS_MAP = {
-  '63E01156': 'Nguyễn Văn Tuấn',
-  '63E01117': 'Phan Hoàng Duy',
-  '63H04273': 'Lâm Hoàng Tuấn',
-  '63G00286': 'Nguyễn Xuân Về',
-  '63F00512': 'Hoàng Quốc Bảo',
-  '63F00538': 'Lý Minh Tới',
-  '63E01108': 'Lý Minh Hoàng',
-  '63F00528': 'Nguyễn Văn Hiếu',
-  '63E01212': 'Mạch Đình Phước',
-  '63E01141': 'Dương Thanh Sang',
-  '63G00262': 'Nguyễn Thanh Tây',
-  '63H04239': 'Kim Sô Phép',
-  '63E01132': 'Đào Ngọc Kha',
-  '63E01201': 'Lê Trọng Nghĩa',
-  '63F00516': 'Phùng Phú Kim Toàn',
-  '63E01276': 'Nguyễn Thanh Giàu',
-  '63E01103': 'Lê Phương Linh',
-  '63E01118': 'Lê Ngọc Quí',
-  '63F00511': 'Bạch Tấn Trí',
-  '63H04234': 'Nguyễn Thành Hiếu',
-  '63G00297': 'Trần Trọng Ngân',
-  '63E01235': 'Lý Hoàng Thái',
-  '63H04236': 'Lê Văn Trọng',
-  '63G00280': 'Lê Trung Trực',
-  '66H08348': 'Trần Trọng Nghĩa'
-};
+async function loadFleetCatalog() {
+  try {
+    const res = await fetch(API_BASE + '/vehicles/fleet', { headers: getHeaders() });
+    if (!res.ok) return;
+    const json = await res.json();
+    XE_BEN_SET.clear();
+    (json.vehicles || []).forEach(v => {
+      const clean = v.plate_number.replace(/[-. ]/g, '').toUpperCase();
+      if (v.vehicle_type === 'Xe Ben') XE_BEN_SET.add(clean);
+      if (v.driver_name) OFFICIAL_DRIVERS_MAP[clean] = v.driver_name;
+    });
+    FLEET_TOTAL = json.total || 0;
+    const benEl = document.getElementById('fleetCountBen');
+    if (benEl) benEl.innerText = `${json.total_ben} Ben • ${json.total_thung} Thùng`;
+  } catch (err) { console.warn('Không nạp được danh sách xe', err); }
+}
 
 function getOfficialDriverName(plate, fallback) {
-  if (!plate) return fallback || 'Tài xế công ty';
+  if (!plate) return fallback || 'Chưa phân công';
   const clean = plate.replace(/[-. ]/g, '').toUpperCase();
-  return OFFICIAL_DRIVERS_MAP[clean] || fallback || 'Tài xế công ty';
+  return OFFICIAL_DRIVERS_MAP[clean] || fallback || 'Chưa phân công';
+}
+
+// Nhãn nguồn số liệu + giờ cập nhật (mọi con số phải ghi nguồn)
+function sourceTag(text) {
+  return `<span class="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">${escHtml(text)}</span>`;
+}
+
+function gpsTimeBadge(v) {
+  if (!v.gps_time) return '<span class="text-[11px] font-bold text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">Không có tín hiệu</span>';
+  if (v.is_stale) return `<span class="text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-300 px-2 py-0.5 rounded-md" title="Tín hiệu cũ hơn 30 phút">⚠ ${escHtml(v.gps_time)}</span>`;
+  return `<span class="text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">${escHtml(v.gps_time)}</span>`;
+}
+
+function renderSourceStatus(stats) {
+  const warnEl = document.getElementById('dashSheetWarning');
+  if (warnEl) {
+    if (stats.sheet_warning) {
+      warnEl.classList.remove('hidden');
+      warnEl.querySelector('[data-msg]').innerText = stats.sheet_warning;
+    } else {
+      warnEl.classList.add('hidden');
+    }
+  }
+  const g = (stats.sources && stats.sources.gps) || {};
+  const gpsEl = document.getElementById('stat-gps-status');
+  const gpsSubEl = document.getElementById('stat-gps-sub');
+  if (gpsEl) {
+    gpsEl.innerText = g.newest_gps_time || 'Không có';
+    gpsEl.className = 'text-lg md:text-xl font-black mt-1.5 font-mono tracking-tight ' + ((g.stale_count || 0) > 0 ? 'text-slate-600' : 'text-emerald-700');
+  }
+  if (gpsSubEl) {
+    let msg = `${g.stale_count || 0}/${g.total || 0} xe tín hiệu cũ > 30 phút`;
+    if (!g.configured) msg = 'Chưa cấu hình tài khoản Bình Anh trên máy chủ';
+    else if (g.last_error) msg = 'Lỗi kết nối Bình Anh: ' + g.last_error;
+    gpsSubEl.innerText = msg;
+  }
+  const headerGps = document.getElementById('headerGpsStatus');
+  if (headerGps) headerGps.innerText = g.newest_gps_time ? `GPS: ${g.newest_gps_time}` : 'GPS: không có tín hiệu';
+  const sheetEl = document.getElementById('stat-sheet-time');
+  if (sheetEl) sheetEl.innerText = (stats.sources && stats.sources.sheets && stats.sources.sheets.sync_time) ? `Sheets đọc lúc ${stats.sources.sheets.sync_time}` : 'Sheets: chưa đọc được';
 }
 
 function formatPlateBadge(plate) {
@@ -618,101 +623,37 @@ function formatPlateBadge(plate) {
   }
 }
 
-function renderFuelAnalysisTable(items) {
-  const tbody = document.getElementById('fuelAnalysisTableBody');
+function renderGpsTable(items) {
+  const tbody = document.getElementById('gpsDayTableBody');
   if (!tbody) return;
-
   tbody.innerHTML = items.map(v => {
-    let alertBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Chuẩn</span>';
-    if (v.is_suspicious_drain) {
-      alertBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1 justify-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> ${v.drain_alert_text}</span>`;
-    } else if (v.drain_alert_type === 'over_norm') {
-      alertBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">${v.drain_alert_text}</span>`;
-    }
-
-    let cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] text-slate-400 block text-center font-medium">Đậu bãi</span>';
+    let cardBadge = '<span class="px-2 py-0.5 rounded text-[11px] text-slate-500 block text-center">Đậu bãi</span>';
     if (v.card_violation === 'running_no_card') {
-      cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse block text-center shadow-xs">🚨 Chưa quẹt thẻ</span>';
+      cardBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-black bg-rose-100 text-rose-700 border border-rose-300 block text-center">Chưa quẹt thẻ</span>';
     } else if (v.is_card_swiped) {
-      cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 block text-center">🟢 Đã quẹt thẻ</span>';
+      cardBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 block text-center">Đã quẹt thẻ</span>';
     } else if (v.daily_km > 0) {
-      cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 block text-center">⚠️ Chưa quẹt</span>';
+      cardBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200 block text-center">Chưa quẹt</span>';
     }
-
-    let stateBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Đậu bãi / Tắt máy</span>';
+    let stateBadge = '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-700 border border-slate-200">Đậu bãi / Tắt máy</span>';
     if (v.op_state === 'running') {
-      stateBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Xe đang chạy (${v.speed} km/h)</span>`;
+      stateBadge = `<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">Đang chạy ${v.speed} km/h</span>`;
     } else if (v.op_state === 'idling') {
-      stateBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span> Xe dừng nổ máy</span>';
+      stateBadge = '<span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-300">Dừng nổ máy</span>';
     }
-
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
-        <td class="py-3 px-4 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
-        <td class="py-3 px-4 text-center">${cardBadge}</td>
-        <td class="py-3 px-4 space-y-1">
+        <td data-label="Số xe" class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
+        <td data-label="Tài xế" class="py-3 px-4 font-medium text-slate-800">${escHtml(v.driver_name || getOfficialDriverName(v.plate_number))}</td>
+        <td data-label="Thẻ lái xe" class="py-3 px-4 text-center">${cardBadge}</td>
+        <td data-label="Trạng thái" class="py-3 px-4 space-y-1">
           <div>${stateBadge}</div>
-          <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${v.address}">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
-            <span class="truncate">${v.address || 'Bãi xe Trường Phát'}</span>
-          </div>
+          <div class="text-[11px] text-slate-600 truncate max-w-xs" title="${escHtml(v.address)}">${escHtml(v.address || '—')}</div>
         </td>
-        <td class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
-        <td class="py-3 px-4 text-right font-mono font-black text-amber-600">${v.consumed_liters} L</td>
-        <td class="py-3 px-4 text-center font-mono font-bold ${v.actual_norm > 42 ? 'text-red-600' : 'text-emerald-700'}">${v.daily_km > 0 ? v.actual_norm + ' L/100km' : '—'}</td>
-        <td class="py-3 px-4 text-center font-mono text-slate-500 font-bold">40.0 L/100km</td>
-        <td class="py-3 px-4 text-center">${alertBadge}</td>
-      </tr>
-    `;
+        <td data-label="Km hôm nay" class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
+        <td data-label="Giờ GPS" class="py-3 px-4 text-center">${gpsTimeBadge(v)}</td>
+      </tr>`;
   }).join('');
-}
-
-function renderFuelNormChart(normData) {
-  const chartEl = document.getElementById('fuelNormChart');
-  if (!chartEl) return;
-  const ctx = chartEl.getContext('2d');
-  if (fuelNormChart) fuelNormChart.destroy();
-
-  fuelNormChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: normData.map(d => d.plate),
-      datasets: [
-        {
-          label: 'Định mức thực tế (L/100km)',
-          data: normData.map(d => d.actual_norm),
-          backgroundColor: normData.map(d => d.actual_norm >= 46 ? '#ef4444' : (d.actual_norm > 42 ? '#f59e0b' : '#10b981')),
-          borderRadius: 6,
-        },
-        {
-          label: 'Vạch chuẩn quy chuẩn (40 L/100km)',
-          data: normData.map(() => 40.0),
-          type: 'line',
-          borderColor: '#3b82f6',
-          borderWidth: 2,
-          borderDash: [5, 5],
-          pointRadius: 0,
-          fill: false
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      scales: {
-        y: {
-          beginAtZero: false,
-          min: 30,
-          max: 55,
-          ticks: { callback: (v) => v + ' L' }
-        }
-      },
-      plugins: {
-        legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 10 } } }
-      }
-    }
-  });
 }
 
 function renderDailyKmChart(kmData) {
@@ -852,11 +793,8 @@ function renderCustomerBreakdownChart(customerData) {
   if (customerBreakdownChart) customerBreakdownChart.destroy();
 
   if (!customerData || customerData.length === 0) {
-    customerData = [
-      { customer: 'Khai Anh', trips: 9, percent: 75.0 },
-      { customer: 'Thuận An', trips: 2, percent: 16.7 },
-      { customer: 'Chủ hàng khác', trips: 1, percent: 8.3 }
-    ];
+    ctx.clearRect(0, 0, chartEl.width, chartEl.height);
+    return;
   }
 
   const colors = ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#06b6d4', '#64748b'];
@@ -892,82 +830,6 @@ function renderCustomerBreakdownChart(customerData) {
       cutout: '62%'
     }
   });
-}
-
-function renderWeeklyFuelTable(weeklyData) {
-  const tbody = document.getElementById('weeklyFuelTableBody');
-  if (!tbody) return;
-
-  const rangeEl = document.getElementById('weeklyRangeText');
-  if (rangeEl && weeklyData.week_range) rangeEl.innerText = weeklyData.week_range;
-  const avgNormEl = document.getElementById('weeklyAvgFleetNorm');
-  if (avgNormEl && weeklyData.avg_fleet_norm) avgNormEl.innerText = `${weeklyData.avg_fleet_norm} L/100km`;
-
-  const statKm = document.getElementById('stat-weekly-km');
-  if (statKm) statKm.innerText = `${(weeklyData.total_weekly_km || 0).toLocaleString('vi-VN')} km`;
-  const statAvgKm = document.getElementById('stat-weekly-avg-km');
-  if (statAvgKm) statAvgKm.innerText = `${(weeklyData.avg_daily_km || 0).toLocaleString('vi-VN')} km/ngày`;
-  const statFuel = document.getElementById('stat-weekly-fuel');
-  if (statFuel) statFuel.innerText = `${(weeklyData.total_weekly_fuel || 0).toLocaleString('vi-VN')} Lít`;
-  const statDrain = document.getElementById('stat-weekly-drain-count');
-  if (statDrain) {
-    const count = weeklyData.suspicious_trucks_count || 0;
-    statDrain.innerText = `${count} Xe`;
-    statDrain.className = count > 0 ? 'text-xl font-black text-rose-600 mt-1' : 'text-xl font-black text-emerald-600 mt-1';
-  }
-
-  const records = weeklyData.records || [];
-  tbody.innerHTML = records.map((r, idx) => {
-    let badgeClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-    if (r.status_type === 'drain') badgeClass = 'bg-rose-100 text-rose-700 border-rose-300 font-extrabold animate-pulse';
-    else if (r.status_type === 'warning') badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
-    else if (r.status_type === 'low') badgeClass = 'bg-slate-100 text-slate-600 border-slate-200';
-
-    const diffText = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
-    const diffClass = r.diff > 2 ? 'text-rose-600 font-bold' : (r.diff < 0 ? 'text-emerald-600 font-bold' : 'text-slate-600');
-
-    return `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-3.5 text-center font-bold text-slate-500">${idx + 1}</td>
-        <td class="py-3 px-3.5">${formatPlateBadge(r.plate_number)}</td>
-        <td class="py-3 px-3.5 font-bold text-slate-800">${getOfficialDriverName(r.plate_number, r.driver_name)}</td>
-        <td class="py-3 px-3.5 text-right font-black text-slate-800">${r.weekly_km.toLocaleString('vi-VN')} km</td>
-        <td class="py-3 px-3.5 text-right font-bold text-blue-600">${r.avg_daily_km} km</td>
-        <td class="py-3 px-3.5 text-right font-black text-amber-700">${r.weekly_liters.toLocaleString('vi-VN')} L</td>
-        <td class="py-3 px-3.5 text-center font-black ${r.actual_norm >= 45 ? 'text-rose-600' : 'text-slate-800'}">${r.actual_norm} L/100km</td>
-        <td class="py-3 px-3.5 text-center ${diffClass}">${diffText} L</td>
-        <td class="py-3 px-3.5 text-center">
-          <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeClass}">
-            ${r.status_label}
-          </span>
-        </td>
-      </tr>
-    `;
-  }).join('');
-}
-
-function renderTopDriversLeaderboard(drivers) {
-  const container = document.getElementById('topDriversLeaderboard');
-  if (!container) return;
-
-  const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-  container.innerHTML = drivers.map((d, idx) => `
-    <div class="p-3.5 rounded-2xl bg-gradient-to-br from-slate-50 to-indigo-50/40 border border-slate-200 shadow-xs space-y-1.5 hover:shadow-sm transition">
-      <div class="flex items-center justify-between">
-        <span class="text-base">${medals[idx] || (idx + 1)}</span>
-        <span class="font-mono font-black text-xs text-blue-700">${d.plate_number}</span>
-      </div>
-      <p class="font-black text-xs text-slate-800 truncate">${getOfficialDriverName(d.plate_number, d.driver_name)}</p>
-      <div class="flex items-baseline justify-between text-[11px] pt-1.5 border-t border-slate-200/60">
-        <span class="text-slate-500">Tổng tuần:</span>
-        <span class="font-black text-slate-800">${d.weekly_km.toLocaleString('vi-VN')} km</span>
-      </div>
-      <div class="flex items-baseline justify-between text-[10px]">
-        <span class="text-slate-500">Bình quân:</span>
-        <span class="font-bold text-blue-600">${d.avg_daily_km} km/ngày</span>
-      </div>
-    </div>
-  `).join('');
 }
 
 // CÀI ĐẶT TRANG TÍNH THÁNG 09
@@ -1072,144 +934,6 @@ async function refreshSheetDiscovery() {
 // Giữ tên hàm cũ để không lỗi nếu còn nơi gọi
 async function saveSheetConfig() { return refreshSheetDiscovery(); }
 
-// 2. TAB TRA CỨU PHẠT NGUỘI TOÀN ĐOÀN XE (CỤC CSGT)
-function renderTrafficFinesUI(json) {
-  if (!json) return;
-  const s = json.summary || {};
-
-  const cleanEl = document.getElementById('fines-count-clean');
-  const violEl = document.getElementById('fines-count-violated');
-  const warnEl = document.getElementById('fines-count-warning');
-  const amountEl = document.getElementById('fines-total-amount');
-  const lastCheckedEl = document.getElementById('finesLastCheckedText');
-  const badgeSidebar = document.getElementById('badgeFinesCount');
-
-  if (cleanEl) cleanEl.innerText = `${s.clean_vehicles || 0} Xe`;
-  if (violEl) violEl.innerText = `${s.violated_vehicles || 0} Xe`;
-  if (warnEl) warnEl.innerText = `${s.registry_warning_vehicles || 0} Xe`;
-  if (amountEl) amountEl.innerText = formatVND(s.total_fine_amount);
-  if (lastCheckedEl) lastCheckedEl.innerText = s.last_check_time || '';
-  if (badgeSidebar) {
-    if (s.violated_vehicles > 0) {
-      badgeSidebar.className = 'text-[10px] bg-red-500 text-white px-1.5 py-0.5 rounded font-black animate-pulse';
-      badgeSidebar.innerText = `${s.violated_vehicles} Xe Lỗi`;
-    } else {
-      badgeSidebar.className = 'text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-bold';
-      badgeSidebar.innerText = '26 Xe Sạch';
-    }
-  }
-
-  renderFinesTable(json.data || []);
-  if (window.lucide) lucide.createIcons();
-}
-
-async function loadTrafficFines() {
-  if (trafficFinesCache) {
-    renderTrafficFinesUI(trafficFinesCache);
-  }
-
-  try {
-    const res = await fetch(API_BASE + '/fines', { headers: getHeaders() });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi tra cứu phạt nguội');
-
-    trafficFinesCache = json;
-    renderTrafficFinesUI(json);
-  } catch (err) {
-    console.error('Error loading traffic fines:', err);
-  }
-}
-
-function renderFinesTable(list) {
-  const tbody = document.getElementById('finesTableBody');
-  if (!tbody) return;
-
-  tbody.innerHTML = list.map((v, idx) => {
-    let statBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Không vi phạm</span>';
-    let warningBadge = '<span class="text-emerald-600 font-bold text-[11px]">🟢 Đủ điều kiện đăng kiểm</span>';
-    let actionBtn = '<span class="text-slate-400 font-medium text-xs">Đã an toàn</span>';
-
-    if (v.has_violation) {
-      statBadge = '<span class="px-2.5 py-1 rounded-full text-[11px] font-black bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1 w-fit"><span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span> Có lỗi phạt nguội</span>';
-      warningBadge = '<span class="px-2 py-0.5 rounded bg-red-100 text-red-800 font-extrabold border border-red-300 text-[10px] animate-pulse">⚠️ Chặn Đăng Kiểm</span>';
-      actionBtn = `
-        <button onclick="resolveTrafficFine('${v.plate_number}')" class="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white rounded-lg text-xs font-bold transition shadow-sm flex items-center gap-1">
-          <i data-lucide="check" class="w-3.5 h-3.5"></i>
-          <span>Đã Nộp Phạt Xong</span>
-        </button>
-      `;
-    }
-
-    let violationsHtml = '<span class="text-slate-400 italic">Không có dữ liệu vi phạm trên hệ thống Cục CSGT</span>';
-    if (v.violations && v.violations.length > 0) {
-      violationsHtml = v.violations.map(vl => `
-        <div class="p-2 rounded-xl bg-red-50 border border-red-200 text-xs space-y-1">
-          <div class="flex items-center justify-between font-bold text-red-800">
-            <span>🚨 ${vl.behavior}</span>
-            <span class="text-rose-700 font-mono font-black">${formatVND(vl.fine_amount)}</span>
-          </div>
-          <p class="text-[11px] text-slate-600">📍 <strong>Vị trí:</strong> ${vl.location}</p>
-          <p class="text-[11px] text-slate-600">🕒 <strong>Thời gian:</strong> ${vl.violation_time} • <strong>Trạng thái:</strong> <span class="font-bold text-red-600">${vl.status}</span></p>
-          <p class="text-[10px] text-slate-500">🏢 <strong>Đơn vị:</strong> ${vl.enforcing_unit} (SĐT: ${vl.contact_phone})</p>
-          <p class="text-[10px] text-amber-700 font-bold bg-amber-50 p-1 rounded border border-amber-200">${vl.registry_warning_text}</p>
-        </div>
-      `).join('');
-    }
-
-    return `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs ${v.has_violation ? 'bg-red-50/40' : ''}">
-        <td class="py-3 px-4 text-center font-bold text-slate-400">${idx + 1}</td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
-        <td class="py-3 px-4 font-bold text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
-        <td class="py-3 px-4 text-center">${statBadge}</td>
-        <td class="py-3 px-4 max-w-md whitespace-normal leading-relaxed">${violationsHtml}</td>
-        <td class="py-3 px-4 text-center">${warningBadge}</td>
-        <td class="py-3 px-4 text-center">${actionBtn}</td>
-      </tr>
-    `;
-  }).join('');
-}
-
-async function triggerCheckAllFines() {
-  const icon = document.getElementById('finesScanIcon');
-  if (icon) icon.classList.add('animate-spin');
-
-  try {
-    const res = await fetch(API_BASE + '/fines/check-all', { method: 'POST', headers: getHeaders() });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi quét phạt nguội');
-
-    alert(`✅ ${json.message}\n• Xe sạch lỗi: ${json.summary.clean_vehicles}/26 xe\n• Xe có vi phạm: ${json.summary.violated_vehicles} xe`);
-    loadTrafficFines();
-    loadDashboard(selectedDate);
-  } catch (err) {
-    alert('Lỗi: ' + err.message);
-  } finally {
-    if (icon) icon.classList.remove('animate-spin');
-  }
-}
-
-async function resolveTrafficFine(plate) {
-  if (!confirm(`Bạn có chắc chắn xe ${plate} đã hoàn thành nộp phạt tại Kho Bạc và muốn gỡ bỏ cảnh báo phạt nguội?`)) {
-    return;
-  }
-
-  try {
-    const res = await fetch(`${API_BASE}/fines/${encodeURIComponent(plate)}/resolve`, {
-      method: 'POST',
-      headers: getHeaders()
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi cập nhật');
-
-    alert(`✅ ${json.message}`);
-    loadTrafficFines();
-    loadDashboard(selectedDate);
-  } catch (err) {
-    alert('Lỗi: ' + err.message);
-  }
-}
-
 // 3. TAB BẢNG KÊ (LỆNH ĐIỀU XE & BẢNG KÊ THỰC TẾ HÀNG NGÀY)
 const dailyTripsClientCache = {};
 
@@ -1233,7 +957,7 @@ function renderDailyTripsTable(data) {
     const isOff = t.status_code === 'driver_off';
 
     let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
-    let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
+    let liveAddr = t.gps_address || '—';
 
     if (isOff) {
       opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
@@ -1245,13 +969,13 @@ function renderDailyTripsTable(data) {
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
-        <td class="py-3 px-4">${typeBadge}</td>
-        <td class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
-        <td class="py-3 px-4 font-medium text-slate-700">${t.cargo_type || '—'}</td>
-        <td class="py-3 px-4 font-bold text-slate-900">${t.customer_name || '—'}</td>
-        <td class="py-3 px-4 space-y-1">
+        <td data-label="STT" class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
+        <td data-label="Số xe" class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(t.plate_number)}</td>
+        <td data-label="Loại" class="py-3 px-4">${typeBadge}</td>
+        <td data-label="Tuyến" class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${escHtml(t.route)}</td>
+        <td data-label="Hàng" class="py-3 px-4 font-medium text-slate-700">${escHtml(t.cargo_type || '—')}</td>
+        <td data-label="Chủ hàng" class="py-3 px-4 font-bold text-slate-900">${escHtml(t.customer_name || '—')}</td>
+        <td data-label="GPS" class="py-3 px-4 space-y-1">
           <div>${opBadge}</div>
           <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
             <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
@@ -1337,10 +1061,12 @@ async function loadGroupedVehicles() {
   }
 
   try {
-    const res = await fetch(API_BASE + '/vehicles/grouped', { headers: getHeaders() });
+    const res = await fetch(API_BASE + '/vehicles/fleet', { headers: getHeaders() });
     const json = await res.json();
     if (!res.ok) throw new Error(json.detail || 'Lỗi lấy dữ liệu xe');
 
+    json.ben_vehicles = (json.vehicles || []).filter(v => v.vehicle_type === 'Xe Ben');
+    json.thung_vehicles = (json.vehicles || []).filter(v => v.vehicle_type !== 'Xe Ben');
     groupedVehiclesClientCache = json;
     renderVehiclesGroup(json.ben_vehicles, 'benVehiclesTableBody');
     renderVehiclesGroup(json.thung_vehicles, 'thungVehiclesTableBody');
@@ -1354,28 +1080,12 @@ async function loadGroupedVehicles() {
 function renderVehiclesGroup(list, tbodyId) {
   const tbody = document.getElementById(tbodyId);
   if (!tbody) return;
-
-  const renderBadge = (doc) => {
-    if (!doc.date) return '<span class="text-slate-300 font-normal">—</span>';
-    if (doc.status === 'expired' || doc.status === 'red') {
-      return `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-red-100 text-red-700">${doc.date} (${doc.label})</span>`;
-    } else if (doc.status === 'yellow') {
-      return `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-100 text-amber-800">${doc.date} (${doc.label})</span>`;
-    } else {
-      return `<span class="px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700">${doc.date}</span>`;
-    }
-  };
-
   tbody.innerHTML = (list || []).map((v, idx) => `
     <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
       <td class="py-3 px-4 text-center font-bold text-slate-400">${idx + 1}</td>
-      <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${v.plate_number}</td>
-      <td class="py-3 px-4 font-mono font-bold text-slate-800">${v.trailer_number}</td>
-      <td class="py-3 px-4 text-center">${renderBadge(v.gdd_head)}</td>
-      <td class="py-3 px-4 text-center">${renderBadge(v.gdd_trailer)}</td>
-      <td class="py-3 px-4 text-center">${renderBadge(v.registration)}</td>
-      <td class="py-3 px-4 text-center">${renderBadge(v.insurance)}</td>
-      <td class="py-3 px-4 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Đang lưu hành</span></td>
+      <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(v.plate_number)}</td>
+      <td class="py-3 px-4 font-mono font-bold text-slate-800">${escHtml(v.trailer_number || '—')}</td>
+      <td class="py-3 px-4 text-slate-800">${escHtml(v.driver_name || 'Chưa phân công')}</td>
     </tr>
   `).join('');
 }
@@ -1410,7 +1120,7 @@ function renderDriversActivityUI(json) {
               </span>
             </div>
             <div class="text-[11px] font-bold text-slate-800">
-              Tài xế phụ trách: <span class="text-blue-700">${v.driver_assigned}</span> (${v.phone})
+              Tài xế phụ trách: <span class="text-blue-700">${escHtml(v.driver_assigned)}</span>${v.phone ? ` (${escHtml(v.phone)})` : ''} • GPS ${escHtml(v.gps_time || '—')}
             </div>
             <div class="text-[10px] text-rose-700 font-bold flex items-center gap-1">
               <i data-lucide="alert-triangle" class="w-3 h-3 shrink-0"></i>
@@ -1425,28 +1135,6 @@ function renderDriversActivityUI(json) {
     } else {
       noCardContainer.classList.add('hidden');
     }
-  }
-
-  const topContainer = document.getElementById('topRunnersContainer');
-  if (topContainer && json.top_runners) {
-    topContainer.innerHTML = json.top_runners.slice(0, 3).map((d, i) => {
-      const medals = ['🥇', '🥈', '🥉'];
-      return `
-        <div class="p-3.5 rounded-2xl bg-white/10 border border-white/15 backdrop-blur-md flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <span class="text-2xl">${medals[i] || '🎖️'}</span>
-            <div>
-              <h4 class="font-extrabold text-white text-sm">${d.full_name}</h4>
-              <p class="text-[11px] text-blue-200 font-mono">Xe: ${d.vehicle_plate}</p>
-            </div>
-          </div>
-          <div class="text-right">
-            <span class="text-lg font-black text-amber-300 font-mono">${d.daily_km} km</span>
-            <p class="text-[10px] text-emerald-300 font-bold">${d.distance_category}</p>
-          </div>
-        </div>
-      `;
-    }).join('');
   }
 
   renderDetailedDriversTable(json.drivers || []);
@@ -1484,52 +1172,25 @@ function filterDriversActivity() {
 function renderDetailedDriversTable(list) {
   const tbody = document.getElementById('driversDetailedTableBody');
   if (!tbody) return;
-
-  tbody.innerHTML = (list || []).map(d => {
-    let badgeColor = 'bg-slate-100 text-slate-600 border-slate-200';
-    if (d.distance_badge === 'purple') badgeColor = 'bg-purple-100 text-purple-800 border-purple-200';
-    if (d.distance_badge === 'blue') badgeColor = 'bg-blue-100 text-blue-800 border-blue-200';
-    if (d.distance_badge === 'emerald') badgeColor = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-
-    let gradeBadge = '<span class="px-2 py-0.5 rounded text-[11px] font-black bg-emerald-100 text-emerald-800">A+ (98%)</span>';
-    if (d.overall_rating < 90) {
-      gradeBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-700">${d.grade} (${d.overall_rating}%)</span>`;
-    } else {
-      gradeBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-black bg-blue-100 text-blue-800">${d.grade} (${d.overall_rating}%)</span>`;
-    }
-
-    return `
+  tbody.innerHTML = (list || []).map(d => `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4">
-          <div class="font-bold text-slate-900 text-sm leading-tight">${d.full_name}</div>
-          <div class="text-[11px] text-slate-500 font-mono">${d.phone} • Hạng ${d.license_class}</div>
+        <td data-label="Tài xế" class="py-3 px-4">
+          <div class="font-bold text-slate-900 text-sm leading-tight">${escHtml(d.full_name)}</div>
+          <div class="text-[11px] text-slate-500 font-mono">${escHtml(d.phone || '—')}</div>
         </td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${d.vehicle_plate}</td>
-        <td class="py-3 px-4 text-center">
+        <td data-label="Xe" class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(d.vehicle_plate)}</td>
+        <td data-label="Thẻ lái xe" class="py-3 px-4 text-center">
           ${d.is_card_swiped
-            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 inline-flex items-center gap-1">🟢 Đã quẹt</span>'
-            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-100 text-rose-700 border border-rose-300 animate-pulse inline-flex items-center gap-1">🚨 Chưa quẹt</span>'
-          }
+            ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Đã quẹt</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Chưa quẹt</span>'}
         </td>
-        <td class="py-3 px-4 text-right font-mono font-black text-blue-600 text-sm">${d.daily_km} km</td>
-        <td class="py-3 px-4 text-center">
-          <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold border ${badgeColor}">
-            ${d.distance_category}
-          </span>
-        </td>
-        <td class="py-3 px-4 space-y-0.5">
+        <td data-label="Km hôm nay" class="py-3 px-4 text-right font-mono font-black text-blue-600 text-sm">${d.daily_km} km</td>
+        <td data-label="Trạng thái" class="py-3 px-4 space-y-0.5">
           <div class="font-bold text-[11px] ${d.speed > 0 ? 'text-emerald-700' : 'text-slate-600'}">${d.movement_state}</div>
-          <div class="text-[10px] text-slate-500 truncate max-w-xs" title="${d.current_address}">📍 ${d.current_address}</div>
+          <div class="text-[11px] text-slate-500 truncate max-w-xs" title="${escHtml(d.current_address)}">${escHtml(d.current_address || '—')}</div>
         </td>
-        <td class="py-3 px-4 text-center font-bold text-blue-700">${d.productivity_score}%</td>
-        <td class="py-3 px-4 text-center text-slate-600 font-medium">${d.fuel_saving_note}</td>
-        <td class="py-3 px-4 text-center text-slate-600 font-medium">${d.safety_note}</td>
-        <td class="py-3 px-4 text-center">${gradeBadge}</td>
-        <td class="py-3 px-4 text-slate-700 text-[11px] leading-relaxed max-w-xs">${d.detailed_comment}</td>
-      </tr>
-    `;
-  }).join('');
-  if (window.lucide) lucide.createIcons();
+        <td data-label="Giờ GPS" class="py-3 px-4 text-center">${gpsTimeBadge(d)}</td>
+      </tr>`).join('');
 }
 
 // 6. TAB BẢO DƯỠNG THAY NHỚT (KHỚP 100% GOOGLE SHEET)
@@ -1581,6 +1242,11 @@ async function loadMaintenance() {
   try {
     const res = await fetch(API_BASE + '/maintenance/oil', { headers: getHeaders() });
     const list = await res.json();
+    if (!res.ok) {
+      const tbody = document.getElementById('maintenanceTableBody');
+      if (tbody) tbody.innerHTML = `<tr><td colspan="10" class="py-6 text-center text-rose-700 font-bold">${escHtml(list.detail || 'Không đọc được Google Sheets')}</td></tr>`;
+      return;
+    }
     maintenanceClientCache = list;
     renderMaintenanceUI(list);
   } catch (err) {
@@ -1608,7 +1274,7 @@ async function loadGpsLive() {
     if (!res.ok) throw new Error(json.detail || 'Lỗi GPS');
 
     gpsCache = json.data || [];
-    if (timeEl) timeEl.innerText = json.timestamp;
+    if (timeEl) timeEl.innerText = (json.status && json.status.newest_gps_time) || 'không có tín hiệu';
 
     const tbody = document.getElementById('gpsTableBody');
     if (tbody) {
@@ -1638,7 +1304,7 @@ async function loadGpsLive() {
             <td class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
             <td class="py-3 px-4 text-slate-700 max-w-sm truncate" title="${v.address}">${v.address || 'Đang cập nhật...'}</td>
             <td class="py-3 px-4 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
-            <td class="py-3 px-4 text-center font-mono text-slate-500 text-[11px]">${v.update_time}</td>
+            <td class="py-3 px-4 text-center">${gpsTimeBadge(v)}</td>
           </tr>
         `;
       }).join('');
@@ -1678,7 +1344,9 @@ async function silentRefreshLiveGps() {
     gpsCache = json.data || [];
     
     const timeEl = document.getElementById('gpsLastUpdateTime');
-    if (timeEl && json.timestamp) timeEl.innerText = json.timestamp;
+    if (timeEl && json.status) timeEl.innerText = json.status.newest_gps_time || 'không có tín hiệu';
+    const headerGps = document.getElementById('headerGpsStatus');
+    if (headerGps && json.status) headerGps.innerText = json.status.newest_gps_time ? `GPS: ${json.status.newest_gps_time}` : 'GPS: không có tín hiệu';
 
     const activeTabEl = document.querySelector('.tab-content:not(.hidden)');
     const activeTabId = activeTabEl ? activeTabEl.id.replace('tab-', '') : '';
@@ -1714,22 +1382,8 @@ async function silentRefreshLiveGps() {
 }
 
 async function triggerGpsSync() {
-  const icon = document.getElementById('gpsSyncIcon');
-  if (icon) icon.classList.add('animate-spin');
-
-  try {
-    const res = await fetch(API_BASE + '/gps/sync', { method: 'POST', headers: getHeaders() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Lỗi đồng bộ');
-
-    alert(data.message);
-    loadGpsLive();
-    loadDashboard(selectedDate);
-  } catch (err) {
-    alert('Lỗi: ' + err.message);
-  } finally {
-    if (icon) icon.classList.remove('animate-spin');
-  }
+  await loadGpsLive();
+  loadDashboard(selectedDate);
 }
 
 function renderTiresUI(tireData) {
@@ -1769,8 +1423,8 @@ function renderBargesUI(list) {
   tbody.innerHTML = list.map(b => {
     const isOwned = b.ownership_type === 'owned';
     const typeBadge = isOwned
-      ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-700">4 Sà Lan Nhà</span>'
-      : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">6 Sà Lan Thuê</span>';
+      ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">Sà lan nhà</span>'
+      : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800">Sà lan thuê</span>';
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
@@ -1811,123 +1465,7 @@ function closeModal(id) {
   document.getElementById(id).classList.add('hidden');
 }
 
-// 10. TƯỜNG LỬA 7 LỚP & AN NINH HỆ THỐNG (WAF SHIELD V5.0)
-async function loadSecurityStatus() {
-  try {
-    const res = await fetch(API_BASE + '/security/status', { headers: getHeaders() });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || 'Lỗi kiểm tra an ninh');
-
-    const attacksEl = document.getElementById('sec-attacks-count');
-    if (attacksEl) attacksEl.innerText = `${data.total_attacks_blocked || 0} Đợt`;
-
-    const blockedEl = document.getElementById('sec-blocked-count');
-    if (blockedEl) blockedEl.innerText = `${data.blocked_ips_count || 0} IP`;
-
-    const currentIpEl = document.getElementById('sec-current-ip');
-    if (currentIpEl) currentIpEl.innerText = `IP: ${data.client_ip || '127.0.0.1'}`;
-
-    // Render Ma Trận 7 Lớp Phòng Thủ
-    const layersContainer = document.getElementById('secLayersContainer');
-    if (layersContainer && data.layers) {
-      layersContainer.innerHTML = data.layers.map(l => `
-        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/90 hover:border-emerald-300 hover:bg-emerald-50/30 transition space-y-1.5 shadow-2xs">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-2">
-              <span class="w-5 h-5 rounded-full bg-emerald-600 text-white font-black text-[10px] flex items-center justify-center shrink-0">
-                ${l.layer}
-              </span>
-              <span class="font-extrabold text-slate-800 text-xs truncate">${l.name}</span>
-            </div>
-            <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300">
-              ● BẬT
-            </span>
-          </div>
-          <p class="text-[11px] text-slate-500 leading-relaxed">${l.desc}</p>
-        </div>
-      `).join('');
-    }
-
-    // Render Blocked IPs
-    const blockedContainer = document.getElementById('sec-blocked-list');
-    if (blockedContainer) {
-      if (data.blocked_ips && data.blocked_ips.length > 0) {
-        blockedContainer.innerHTML = data.blocked_ips.map(item => `
-          <div class="flex items-center justify-between p-2 rounded-lg bg-rose-50 border border-rose-200">
-            <div>
-              <span class="font-mono font-bold text-rose-700">${item.ip}</span>
-              <span class="text-[10px] text-slate-500 ml-2">(Còn ${Math.ceil(item.remaining_seconds / 60)} phút)</span>
-            </div>
-            <button onclick="unblockIp('${item.ip}')" class="px-2 py-1 bg-white border border-rose-300 text-rose-700 hover:bg-rose-100 rounded text-[10px] font-bold">
-              Gỡ Khóa
-            </button>
-          </div>
-        `).join('');
-      } else {
-        blockedContainer.innerHTML = '🟢 Hiện tại không có IP nào bị khóa. Toàn bộ kết nối an toàn.';
-      }
-    }
-
-    // Render Audit Logs
-    const tbody = document.getElementById('secAuditLogBody');
-    if (tbody) {
-      if (data.audit_logs && data.audit_logs.length > 0) {
-        tbody.innerHTML = data.audit_logs.map(log => {
-          let badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 An toàn</span>';
-          let categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">Thông tin</span>';
-
-          if (log.is_threat) {
-            badge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700 border border-rose-300 animate-pulse">🚨 ĐÃ CHẶN & KHÓA</span>';
-            if (log.category === 'honeypot_trapped') {
-              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-800">Bẫy Honeypot</span>';
-            } else if (log.category === 'sqli_blocked') {
-              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-800">SQLi / XSS Attack</span>';
-            } else if (log.category === 'scanners_blocked') {
-              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800">Bot Scanner</span>';
-            } else if (log.category === 'ddos_rate_limited') {
-              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-red-100 text-red-800">DDoS Rate Limit</span>';
-            } else {
-              categoryTag = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Brute-Force</span>';
-            }
-          }
-
-          return `
-            <tr class="hover:bg-slate-50 border-b border-slate-100">
-              <td class="py-2.5 px-3.5 text-slate-500">${log.timestamp}</td>
-              <td class="py-2.5 px-3.5 font-bold text-blue-700 font-mono">${log.ip}</td>
-              <td class="py-2.5 px-3.5 font-bold ${log.is_threat ? 'text-rose-600' : 'text-slate-800'}">${log.event_type}</td>
-              <td class="py-2.5 px-3.5">${categoryTag}</td>
-              <td class="py-2.5 px-3.5 text-slate-700 font-sans">${log.details}</td>
-              <td class="py-2.5 px-3.5 text-center">${badge}</td>
-            </tr>
-          `;
-        }).join('');
-      } else {
-        tbody.innerHTML = '<tr><td colspan="6" class="py-4 text-center text-slate-400">Chưa ghi nhận sự kiện bất thường nào. Tường lửa 7 lớp hoạt động ổn định.</td></tr>';
-      }
-    }
-    if (window.lucide) lucide.createIcons();
-  } catch (err) {
-    console.error('Error loading security status:', err);
-  }
-}
-
-async function unblockIp(ip) {
-  if (!confirm(`Bạn có chắc chắn muốn gỡ khóa IP ${ip} không?`)) return;
-  try {
-    const res = await fetch(API_BASE + '/security/unblock-ip', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ ip })
-    });
-    const json = await res.json();
-    alert(json.message);
-    loadSecurityStatus();
-  } catch (err) {
-    alert('Lỗi gỡ khóa IP: ' + err.message);
-  }
-}
-
+// ĐỔI MÃ PIN CẤP 2 (chỉ admin) — nằm trong hộp thoại Đổi mật khẩu
 async function handleUpdatePin(e) {
   e.preventDefault();
   const oldPin = document.getElementById('oldPinInput').value.trim();
@@ -1935,7 +1473,7 @@ async function handleUpdatePin(e) {
   const alertBox = document.getElementById('pinAlertBox');
 
   try {
-    const res = await fetch(API_BASE + '/security/update-pin', {
+    const res = await fetch(API_BASE + '/auth/update-pin', {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify({ old_pin: oldPin, new_pin: newPin })

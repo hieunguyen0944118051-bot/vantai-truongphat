@@ -42,7 +42,9 @@ def get_sheets_live_trips(
         clean_p = t["raw_plate"].replace("-", "").replace(".", "").replace(" ", "").upper()
         tel = gps_map.get(clean_p)
         if tel:
-            t["gps_address"] = tel["address"] or "Bãi xe Trường Phát"
+            t["gps_address"] = tel["address"] or ""
+            t["gps_time"] = tel.get("gps_time")
+            t["gps_stale"] = tel.get("is_stale", True)
             t["speed"] = tel["speed"]
             t["is_running"] = tel["speed"] > 0
             if tel["speed"] > 0:
@@ -55,10 +57,12 @@ def get_sheets_live_trips(
                 t["movement_state"] = "⚪ Xe đang đỗ (Tắt máy)"
                 t["op_badge_class"] = "bg-slate-100 text-slate-700"
         else:
-            t["gps_address"] = "Bãi xe Trường Phát / Đậu bãi"
+            t["gps_address"] = ""
+            t["gps_time"] = None
+            t["gps_stale"] = True
             t["speed"] = 0
             t["is_running"] = False
-            t["movement_state"] = "⚪ Xe đậu bãi"
+            t["movement_state"] = "Không có dữ liệu GPS"
             t["op_badge_class"] = "bg-slate-100 text-slate-600"
 
     return {"success": True, "data": res}
