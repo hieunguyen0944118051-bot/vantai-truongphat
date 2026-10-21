@@ -18,3 +18,10 @@ services:
         sync: false
       - key: BA_PASSWORD
         sync: false
+      # GĐ2 — ghi vào Google Sheets qua Apps Script (xem apps_script/HUONG_DAN.md). Thiếu thì app chỉ đọc.
+      - key: APPS_SCRIPT_URL
+        sync: false
+      - key: APPS_SCRIPT_KEY
+        sync: false
+      - key: XE_WRITE_ROLES    # vai trò được nhập/sửa (mặc định admin,manager)
+        sync: false

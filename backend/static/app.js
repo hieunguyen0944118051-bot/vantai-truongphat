@@ -409,7 +409,9 @@ function switchTab(tabId) {
     'maintenance': 'Bảo Dưỡng — Thay Nhớt Động Cơ (Google Sheets)',
     'gps': 'Giám Sát Xe (GPS Bình Anh)',
     'tires': 'Thay Vỏ & Bạt',
-    'barges': 'Đội Sà Lan'
+    'barges': 'Đội Sà Lan',
+    'xe': 'Xe & Chi Phí — Giấy tờ, Đổ dầu, Bảo dưỡng, Vỏ, Bạt, Công nợ (Google Sheets)',
+    'settings': 'Cài Đặt'
   };
   const titleEl = document.getElementById('pageTitle');
   if (titleEl) titleEl.innerText = titles[tabId] || 'Quản Lý Vận Tải';
@@ -422,6 +424,8 @@ function switchTab(tabId) {
   if (tabId === 'gps') loadGpsLive();
   if (tabId === 'tires') loadTires();
   if (tabId === 'barges') loadBarges();
+  if (tabId === 'xe') loadXe();
+  if (tabId === 'settings') renderSettings();
 
   setTimeout(() => {
     if (window.lucide) lucide.createIcons();
@@ -430,6 +434,22 @@ function switchTab(tabId) {
 
 // 1. DASHBOARD
 const dashboardStatsClientCache = {};
+let lastDashStats = null;
+
+function renderSettings() {
+  const u = document.getElementById('settingsUser');
+  if (u && currentUser) u.innerText = `${currentUser.full_name || currentUser.username} (${currentUser.role})`;
+  const box = document.getElementById('settingsSources');
+  if (!box) return;
+  const g = (lastDashStats && lastDashStats.sources && lastDashStats.sources.gps) || {};
+  const line = (ok, label, detail) => `<div class="flex justify-between gap-3 p-3 rounded-xl border ${ok ? 'bg-emerald-50 border-emerald-200' : 'bg-slate-50 border-slate-200'}"><span class="font-semibold">${label}</span><span class="text-right">${detail}</span></div>`;
+  box.innerHTML = [
+    line(!!g.configured && !g.last_error, 'GPS Bình Anh', g.configured ? (g.last_error ? 'Lỗi: ' + escHtml(g.last_error) : `tín hiệu mới nhất ${escHtml(g.newest_gps_time || '—')}`) : 'Chưa cấu hình tài khoản trên Render'),
+    line(!!(lastDashStats && !lastDashStats.sheet_warning), 'Sheets lệnh điều xe', lastDashStats ? (lastDashStats.sheet_warning ? escHtml(lastDashStats.sheet_warning) : `đọc lúc ${escHtml(lastDashStats.sources.sheets.sync_time || '—')}`) : 'Mở Tổng quan để kiểm tra'),
+    line(!!(typeof xeData !== 'undefined' && xeData), 'Sheets xe & chi phí', (typeof xeData !== 'undefined' && xeData) ? `đọc lúc ${escHtml(xeData.source.read_at)}` : 'Chưa đọc'),
+    line(!!(typeof xeData !== 'undefined' && xeData && xeData.write_enabled), 'Ghi vào Sheets', (typeof xeData !== 'undefined' && xeData && xeData.write_enabled) ? 'Đang bật' : 'Chưa bật (cần Apps Script — xem HUONG_DAN.md)'),
+  ].join('');
+}
 
 function renderDashboardStatsUI(stats) {
   if (!stats) return;
@@ -514,6 +534,11 @@ async function loadDashboard(dateStr) {
     const stats = await res.json();
     dashboardStatsClientCache[d] = stats;
     renderDashboardStatsUI(stats);
+    lastDashStats = stats;
+    if (typeof loadXe === 'function') {
+      if (xeData && !xeData.stale_error) renderDashTodo(xeData);
+      if (!xeData || Date.now() - (window.__xeLoadedAt || 0) > 180000) { window.__xeLoadedAt = Date.now(); loadXe(); }
+    }
   } catch (err) {
     console.error('Error loading dashboard stats', err);
   }
@@ -618,15 +643,15 @@ function renderGpsTable(items) {
     }
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
-        <td class="py-3 px-4 font-medium text-slate-800">${escHtml(v.driver_name || getOfficialDriverName(v.plate_number))}</td>
-        <td class="py-3 px-4 text-center">${cardBadge}</td>
-        <td class="py-3 px-4 space-y-1">
+        <td data-label="Số xe" class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
+        <td data-label="Tài xế" class="py-3 px-4 font-medium text-slate-800">${escHtml(v.driver_name || getOfficialDriverName(v.plate_number))}</td>
+        <td data-label="Thẻ lái xe" class="py-3 px-4 text-center">${cardBadge}</td>
+        <td data-label="Trạng thái" class="py-3 px-4 space-y-1">
           <div>${stateBadge}</div>
           <div class="text-[11px] text-slate-600 truncate max-w-xs" title="${escHtml(v.address)}">${escHtml(v.address || '—')}</div>
         </td>
-        <td class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
-        <td class="py-3 px-4 text-center">${gpsTimeBadge(v)}</td>
+        <td data-label="Km hôm nay" class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
+        <td data-label="Giờ GPS" class="py-3 px-4 text-center">${gpsTimeBadge(v)}</td>
       </tr>`;
   }).join('');
 }
@@ -932,7 +957,7 @@ function renderDailyTripsTable(data) {
     const isOff = t.status_code === 'driver_off';
 
     let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
-    let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
+    let liveAddr = t.gps_address || '—';
 
     if (isOff) {
       opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
@@ -944,13 +969,13 @@ function renderDailyTripsTable(data) {
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
-        <td class="py-3 px-4">${typeBadge}</td>
-        <td class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
-        <td class="py-3 px-4 font-medium text-slate-700">${t.cargo_type || '—'}</td>
-        <td class="py-3 px-4 font-bold text-slate-900">${t.customer_name || '—'}</td>
-        <td class="py-3 px-4 space-y-1">
+        <td data-label="STT" class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
+        <td data-label="Số xe" class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(t.plate_number)}</td>
+        <td data-label="Loại" class="py-3 px-4">${typeBadge}</td>
+        <td data-label="Tuyến" class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${escHtml(t.route)}</td>
+        <td data-label="Hàng" class="py-3 px-4 font-medium text-slate-700">${escHtml(t.cargo_type || '—')}</td>
+        <td data-label="Chủ hàng" class="py-3 px-4 font-bold text-slate-900">${escHtml(t.customer_name || '—')}</td>
+        <td data-label="GPS" class="py-3 px-4 space-y-1">
           <div>${opBadge}</div>
           <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
             <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
@@ -1149,22 +1174,22 @@ function renderDetailedDriversTable(list) {
   if (!tbody) return;
   tbody.innerHTML = (list || []).map(d => `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4">
+        <td data-label="Tài xế" class="py-3 px-4">
           <div class="font-bold text-slate-900 text-sm leading-tight">${escHtml(d.full_name)}</div>
           <div class="text-[11px] text-slate-500 font-mono">${escHtml(d.phone || '—')}</div>
         </td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(d.vehicle_plate)}</td>
-        <td class="py-3 px-4 text-center">
+        <td data-label="Xe" class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${escHtml(d.vehicle_plate)}</td>
+        <td data-label="Thẻ lái xe" class="py-3 px-4 text-center">
           ${d.is_card_swiped
             ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">Đã quẹt</span>'
             : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Chưa quẹt</span>'}
         </td>
-        <td class="py-3 px-4 text-right font-mono font-black text-blue-600 text-sm">${d.daily_km} km</td>
-        <td class="py-3 px-4 space-y-0.5">
+        <td data-label="Km hôm nay" class="py-3 px-4 text-right font-mono font-black text-blue-600 text-sm">${d.daily_km} km</td>
+        <td data-label="Trạng thái" class="py-3 px-4 space-y-0.5">
           <div class="font-bold text-[11px] ${d.speed > 0 ? 'text-emerald-700' : 'text-slate-600'}">${d.movement_state}</div>
           <div class="text-[11px] text-slate-500 truncate max-w-xs" title="${escHtml(d.current_address)}">${escHtml(d.current_address || '—')}</div>
         </td>
-        <td class="py-3 px-4 text-center">${gpsTimeBadge(d)}</td>
+        <td data-label="Giờ GPS" class="py-3 px-4 text-center">${gpsTimeBadge(d)}</td>
       </tr>`).join('');
 }
 

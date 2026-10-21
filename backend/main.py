@@ -11,7 +11,7 @@ import auth
 import models
 from database import Base, SessionLocal, engine
 from login_guard import SecurityHeadersMiddleware
-from routers import assistant, barges, dashboard, drivers, fuel, gps, maintenance, trips, users, vehicles
+from routers import assistant, barges, dashboard, drivers, fuel, gps, maintenance, trips, users, vehicles, xe
 from routers import auth as auth_router
 
 try:
@@ -34,7 +34,7 @@ if _allowed:
     app.add_middleware(CORSMiddleware, allow_origins=_allowed, allow_credentials=True,
                        allow_methods=["*"], allow_headers=["*"])
 
-for r in (auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps):
+for r in (auth_router, users, vehicles, barges, drivers, trips, fuel, dashboard, maintenance, assistant, gps, xe):
     app.include_router(r.router)
 if weighbridge:
     app.include_router(weighbridge.router)
