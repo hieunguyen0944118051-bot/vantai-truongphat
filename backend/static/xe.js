@@ -1,17 +1,14 @@
 // =====================================================================
-// MỤC "XE & CHI PHÍ" (GĐ2) — đọc Google Sheets, ghi qua Apps Script
+// XE & CHI PHÍ — đọc Google Sheets "ĐỔ DẦU - BẢO DƯỠNG - ĐĂNG KIỂM", ghi qua Apps Script
+// Hiển thị theo bố cục cũ: Đội xe & mooc, Bảo dưỡng, Thay vỏ & bạt, Đổ dầu, Công nợ & chi phí, Tổng quan
 // Màu trạng thái cố định: đỏ = quá/sắp hạn, vàng = gần hạn, xanh = ổn, xám = thiếu số liệu
 // =====================================================================
 let xeData = null;
-let xeSub = 'todo';
+let xeLoadedAt = 0;
+let xeLoading = null;
+let xePage = null;      // trang đang mở: vehicles | maintenance | tires | fuel | costs
 let xeMonth = null;
 let xePlate = '';
-let xeDocKind = '';
-
-const XE_SUBS = [
-  ['todo', 'Việc cần xử lý'], ['docs', 'Giấy tờ'], ['fuel', 'Đổ dầu'], ['maint', 'Bảo dưỡng'],
-  ['tires', 'Thay vỏ'], ['tarps', 'Thay bạt'], ['debts', 'Công nợ'], ['costs', 'Chi phí / tháng'], ['fleet', 'Danh sách xe'],
-];
 
 const ST = {
   overdue: { label: 'Quá hạn', cls: 'bg-red-600 text-white' },
@@ -20,72 +17,392 @@ const ST = {
   ok: { label: 'Ổn', cls: 'bg-emerald-100 text-emerald-800 border border-emerald-300' },
   missing: { label: 'Thiếu số liệu', cls: 'bg-slate-200 text-slate-700 border border-slate-300' },
 };
+const ST_TEXT = { overdue: 'text-red-700', soon: 'text-red-600', near: 'text-amber-700', ok: 'text-emerald-700', missing: 'text-slate-500' };
 
 // ---------- định dạng
 const money = v => (v === null || v === undefined || v === '') ? '—' : `${Math.round(Number(v)).toLocaleString('vi-VN')} đ`;
 const num = (v, d = 0) => (v === null || v === undefined || v === '') ? '—' : Number(v).toLocaleString('vi-VN', { maximumFractionDigits: d });
 const dmy = s => s ? s.slice(0, 10).split('-').reverse().join('/') : '—';
-const chip = st => { const s = ST[st] || ST.missing; return `<span class="inline-block px-2.5 py-1 rounded-lg text-xs font-bold whitespace-nowrap ${s.cls}">${s.label}</span>`; };
+const chip = st => { const s = ST[st] || ST.missing; return `<span class="inline-block px-2.5 py-1 rounded-lg text-[11px] font-bold whitespace-nowrap ${s.cls}">${s.label}</span>`; };
 const plateBtn = p => `<button type="button" onclick="openVehicleProfile('${escHtml(p)}')" class="font-mono font-black text-blue-700 underline decoration-dotted underline-offset-2 text-sm">${escHtml(p)}</button>`;
 const esc = v => escHtml(v ?? '');
 // Màu L/100km: đỏ = vượt định mức > 10%, xám = thấp bất thường (thường do số liệu), xanh = trong định mức
 const fuelCls = (v, n) => (v === null || v === undefined || !n) ? 'text-slate-500' : ((v - n) / n > 0.1 ? 'text-red-700' : ((v - n) / n < -0.1 ? 'text-slate-500' : 'text-emerald-700'));
 
-// ---------- tải dữ liệu
+// ---------- tải dữ liệu (cache 3 phút, nút "Làm mới" đọc lại ngay)
 async function loadXe(force = false) {
-  const box = document.getElementById('xeContent');
-  if (box && !xeData) box.innerHTML = '<p class="p-6 text-center text-slate-500">Đang đọc Google Sheets…</p>';
-  try {
-    const res = await fetch(`${API_BASE}/xe/data${force ? '?refresh=1' : ''}`, { headers: getHeaders() });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Không đọc được dữ liệu');
-    xeData = json;
-    if (!xeMonth) xeMonth = latestMonth();
-    renderXe();
-    renderDashTodo(json);
-  } catch (err) {
-    if (box) box.innerHTML = `<div class="p-5 rounded-2xl bg-red-50 border border-red-300 text-red-800 font-bold">${esc(err.message)}</div>`;
-  }
+  if (!force && xeData && Date.now() - xeLoadedAt < 180000) { renderXe(); return xeData; }
+  if (xeLoading && !force) return xeLoading;
+  xeLoading = (async () => {
+    try {
+      const res = await fetch(`${API_BASE}/xe/data${force ? '?refresh=1' : ''}`, { headers: getHeaders() });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || 'Không đọc được dữ liệu');
+      xeData = json;
+      xeLoadedAt = Date.now();
+      if (!xeMonth) xeMonth = latestMonth();
+      renderXe();
+      return json;
+    } catch (err) {
+      const box = xePage && document.getElementById(`xePage-${xePage}`);
+      if (box && !xeData) box.innerHTML = `<div class="p-5 rounded-2xl bg-red-50 border border-red-300 text-red-800 font-bold">Không đọc được Google Sheets: ${esc(err.message)}</div>`;
+      const todo = document.getElementById('dashTodoCard');
+      if (todo && !xeData) todo.innerHTML = `<p class="text-red-700 font-bold text-sm">Không đọc được Sheets giấy tờ / bảo dưỡng: ${esc(err.message)}</p>`;
+    } finally { xeLoading = null; }
+  })();
+  return xeLoading;
 }
+
+function showXePage(page) { xePage = page; if (xeData) renderXe(); loadXe(); }
 
 function latestMonth() {
   const ms = (xeData.fuel.rows || []).map(r => (r.date || '').slice(0, 7)).filter(Boolean).sort();
   return ms.length ? ms[ms.length - 1] : new Date().toISOString().slice(0, 7);
 }
-
 function monthsAvailable() {
   const s = new Set();
   [...xeData.fuel.rows, ...xeData.maint.log, ...xeData.tires, ...xeData.tarps].forEach(r => r.date && s.add(r.date.slice(0, 7)));
   return [...s].sort().reverse();
 }
 
-function switchXeSub(sub) { xeSub = sub; renderXe(); }
+const XE_PAGES = { vehicles: () => xeVehiclesPage(), maintenance: () => xeMaintPage(), tires: () => xeTiresPage(), fuel: () => xeFuelPage(), costs: () => xeCostsPage() };
 
 function renderXe() {
   if (!xeData) return;
-  const head = document.getElementById('xeHeader');
-  if (head) {
-    const src = xeData.source;
-    head.innerHTML = `
-      <div class="flex flex-wrap items-center gap-2 text-sm">
-        <span class="px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-700">Nguồn: Google Sheets • đọc lúc <b>${esc(src.read_at)}</b></span>
-        ${xeData.stale_error ? `<span class="px-2.5 py-1 rounded-lg bg-amber-100 border border-amber-300 text-amber-900">Đang hiện bản cũ — lỗi đọc mới: ${esc(xeData.stale_error)}</span>` : ''}
-        <span class="px-2.5 py-1 rounded-lg ${xeData.write_enabled ? 'bg-emerald-100 border border-emerald-300 text-emerald-800' : 'bg-slate-100 border border-slate-200 text-slate-600'}">
-          Ghi vào Sheets: <b>${xeData.write_enabled ? 'đang bật' : 'chưa bật'}</b></span>
-        <button onclick="loadXe(true)" class="ml-auto px-4 py-2.5 rounded-xl bg-slate-900 text-white font-bold text-sm active:scale-95">Làm mới</button>
-      </div>
-      ${src.missing_tabs.length ? `<p class="mt-2 text-sm text-red-700 font-bold">Không thấy tab: ${src.missing_tabs.join(', ')}</p>` : ''}`;
+  renderDashXe(xeData);
+  renderXeBadges(xeData);
+  if (xePage && XE_PAGES[xePage]) {
+    const box = document.getElementById(`xePage-${xePage}`);
+    if (box) box.innerHTML = xeSourceBar() + XE_PAGES[xePage]();
   }
-  const nav = document.getElementById('xeSubnav');
-  if (nav) {
-    nav.innerHTML = XE_SUBS.map(([k, label]) => `
-      <button onclick="switchXeSub('${k}')" class="shrink-0 px-4 py-2.5 rounded-xl text-sm font-bold border transition ${xeSub === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-700 border-slate-200'}">${label}</button>`).join('');
-  }
-  const box = document.getElementById('xeContent');
-  const fn = { todo: xeTodoHtml, docs: xeDocsHtml, fuel: xeFuelHtml, maint: xeMaintHtml, tires: xeTiresHtml,
-               tarps: xeTarpsHtml, debts: xeDebtsHtml, costs: xeCostsHtml, fleet: xeFleetHtml }[xeSub];
-  box.innerHTML = fn();
+  if (typeof renderFinesPage === 'function') renderFinesPage();
   if (window.lucide) lucide.createIcons();
+}
+
+function xeSourceBar() {
+  const src = xeData.source;
+  return `<div class="flex flex-wrap items-center gap-2 text-xs">
+      <span class="px-2.5 py-1.5 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold">Nguồn: Google Sheets ĐỔ DẦU - BẢO DƯỠNG - ĐĂNG KIỂM • đọc lúc <b class="font-mono">${esc(src.read_at)}</b></span>
+      ${xeData.stale_error ? `<span class="px-2.5 py-1.5 rounded-xl bg-amber-100 border border-amber-300 text-amber-900 font-semibold">Đang hiện bản cũ — lỗi đọc mới: ${esc(xeData.stale_error)}</span>` : ''}
+      <span class="px-2.5 py-1.5 rounded-xl font-semibold ${xeData.write_enabled ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-slate-100 border border-slate-200 text-slate-600'}">Ghi vào Sheets: <b>${xeData.write_enabled ? 'đang bật' : 'chưa bật'}</b></span>
+      <button onclick="loadXe(true)" class="ml-auto px-4 py-2 rounded-2xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 font-bold flex items-center gap-1.5 active:scale-95"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>Tải lại số liệu</button>
+    </div>
+    ${src.missing_tabs.length ? `<p class="text-sm text-red-700 font-bold">Không thấy tab: ${src.missing_tabs.join(', ')}</p>` : ''}`;
+}
+
+// Khung thẻ kiểu cũ: viền trên màu + tiêu đề in hoa + icon
+function oldCard({ icon, tone = 'blue', title, sub = '', right = '', body, top = '' }) {
+  const t = { blue: 'bg-blue-50 text-blue-600 border-blue-200', amber: 'bg-amber-50 text-amber-600 border-amber-200', orange: 'bg-orange-100 text-orange-700 border-orange-200',
+              emerald: 'bg-emerald-50 text-emerald-600 border-emerald-200', rose: 'bg-rose-50 text-rose-600 border-rose-200', indigo: 'bg-indigo-50 text-indigo-600 border-indigo-200', slate: 'bg-slate-100 text-slate-600 border-slate-200' }[tone];
+  return `<div class="glass-card p-6 md:p-7 rounded-[2rem] shadow-sm space-y-4 ${top}">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 rounded-2xl border ${t}"><i data-lucide="${icon}" class="w-5 h-5"></i></div>
+        <div><h3 class="font-black text-slate-900 text-sm md:text-base uppercase">${title}</h3>${sub ? `<p class="text-xs text-slate-500 mt-0.5">${sub}</p>` : ''}</div>
+      </div>
+      ${right ? `<div class="flex flex-wrap items-center gap-2">${right}</div>` : ''}
+    </div>
+    ${body}
+  </div>`;
+}
+
+// Bảng kiểu cũ (máy tính) — tự thành thẻ trên điện thoại (class rtable + data-label)
+function oldTable(cols, rows, empty = 'Không có dữ liệu', rowCls = () => '') {
+  if (!rows.length) return `<p class="p-6 text-center text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-sm">${empty}</p>`;
+  return `<div class="rtable-wrap overflow-x-auto rounded-2xl border border-slate-200/90 shadow-2xs">
+    <table class="rtable w-full text-left text-xs whitespace-nowrap">
+      <thead class="bg-slate-100/90 text-slate-700 font-extrabold uppercase tracking-wider border-b border-slate-200"><tr>
+        ${cols.map(c => `<th class="py-3.5 px-4 ${c[2] === 'right' ? 'text-right' : (c[2] === 'center' ? 'text-center' : '')}">${c[0]}</th>`).join('')}
+      </tr></thead>
+      <tbody class="divide-y divide-slate-100">
+        ${rows.map((r, i) => `<tr class="hover:bg-slate-50 transition text-xs ${rowCls(r)}">${cols.map(c => `<td data-label="${esc(c[0])}" class="py-3 px-4 align-top ${c[2] === 'right' ? 'text-right font-mono' : (c[2] === 'center' ? 'text-center' : '')}">${c[1](r, i)}</td>`).join('')}</tr>`).join('')}
+      </tbody>
+    </table></div>`;
+}
+
+// ---------- Badge số cảnh báo trên menu
+function renderXeBadges(d) {
+  const set = (id, n) => { const el = document.getElementById(id); if (!el) return; el.classList.toggle('hidden', !n); el.innerText = n ? `${n}` : ''; };
+  const docsBad = d.docs.filter(x => x.status === 'overdue' || x.status === 'soon').length;
+  set('badgeDocsAlert', docsBad);
+  const maintBad = [...d.maint.oil, ...d.maint.gearbox, ...d.maint.grease].filter(x => x.status === 'overdue' || x.status === 'soon').length;
+  set('badgeMaintAlert', maintBad);
+  set('badgeFuelAlert', fuelOverPlates(d).length);
+}
+
+// Xe mà lần đo gần nhất (giữa 2 lần đầy bình) vượt định mức > 10%
+function fuelOverPlates(d) {
+  return Object.entries(d.fuel.by_plate)
+    .filter(([, v]) => v.latest_l_per_100km !== null && v.norm && (v.latest_l_per_100km - v.norm) / v.norm > 0.1)
+    .map(([p, v]) => ({ plate: p, ...v }))
+    .sort((a, b) => (b.latest_l_per_100km - b.norm) / b.norm - (a.latest_l_per_100km - a.norm) / a.norm);
+}
+function fuelInfoForPlate(plate) {
+  if (!xeData) return null;
+  const e = Object.entries(xeData.fuel.by_plate).find(([k]) => samePlate(k, plate));
+  return e ? e[1] : null;
+}
+
+// =====================================================================
+// TỔNG QUAN: thẻ dầu, cảnh báo hao dầu, giấy tờ, việc cần xử lý, biểu đồ định mức
+// =====================================================================
+let fuelNormChart = null;
+function renderDashXe(d) {
+  // Thẻ 3: dầu đã đổ trong tháng gần nhất có số liệu
+  const m = latestMonth();
+  const rows = d.fuel.rows.filter(r => !r.cancelled && (r.date || '').startsWith(m));
+  const liters = rows.reduce((a, r) => a + (Number(r.liters) || 0), 0);
+  const amount = rows.reduce((a, r) => a + (Number(r.amount) || 0), 0);
+  const setText = (id, t) => { const el = document.getElementById(id); if (el) el.innerText = t; };
+  setText('stat-fuel-title', `Dầu Đã Đổ Tháng ${m.slice(5, 7)}/${m.slice(0, 4)}`);
+  setText('stat-consumed-fuel', `${num(liters)} Lít`);
+  const lag = d.todo.fuel_log_lag_days;
+  setText('stat-fuel-sub', `${money(amount)} • sổ nhập đến ${dmy(d.todo.fuel_log_last_date)}${lag > 3 ? ` (trễ ${lag} ngày)` : ''}`);
+
+  // Thẻ 4: xe đang hao dầu vượt định mức
+  const over = fuelOverPlates(d);
+  const drainEl = document.getElementById('stat-drain-count');
+  if (drainEl) { drainEl.innerText = `${over.length} Xe`; drainEl.className = `text-2xl md:text-3xl font-black mt-1.5 font-mono tracking-tight ${over.length ? 'text-red-600' : 'text-emerald-600'}`; }
+  const card4 = document.getElementById('card-drain-alert');
+  if (card4) card4.classList.toggle('border-t-red-500', !!over.length), card4.classList.toggle('border-t-emerald-500', !over.length);
+  const sub4 = document.getElementById('text-drain-sub');
+  if (sub4) sub4.innerHTML = over.length
+    ? `<span class="w-2 h-2 rounded-full bg-red-500 shrink-0"></span><span class="truncate">${over.slice(0, 3).map(o => `${esc(o.plate)} ${num(o.latest_l_per_100km, 1)}L`).join(' • ')}${over.length > 3 ? '…' : ''}</span>`
+    : '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Lần đo gần nhất trong định mức</span>';
+
+  // Thẻ 5: giấy tờ
+  const c = d.todo.counts;
+  const docsDue = d.docs.filter(x => ['overdue', 'soon', 'near'].includes(x.status));
+  const dOver = docsDue.filter(x => x.status === 'overdue').length, dSoon = docsDue.filter(x => x.status === 'soon').length, dNear = docsDue.filter(x => x.status === 'near').length;
+  const docsEl = document.getElementById('stat-docs-status');
+  if (docsEl) { docsEl.innerText = (dOver + dSoon) ? `${dOver + dSoon} Cảnh Báo` : 'Ổn'; docsEl.className = `text-2xl md:text-3xl font-black font-mono tracking-tight ${(dOver + dSoon) ? 'text-rose-600' : 'text-emerald-600'}`; }
+  setText('stat-docs-sub', `${dOver} quá hạn • ${dSoon} sắp hạn • ${dNear} gần hạn`);
+
+  // Định mức trên bảng GPS + vẽ lại bảng với cột dầu
+  const nb = document.getElementById('fuelNormBadge');
+  if (nb) nb.innerText = `Định mức: Ben ${num(d.todo.fuel_norms['Xe Ben'], 1)} • Thùng ${num(d.todo.fuel_norms['Xe Thùng'], 1)} L/100km`;
+  if (typeof lastDashStats !== 'undefined' && lastDashStats && typeof renderGpsTable === 'function') renderGpsTable(lastDashStats.gps_table || []);
+
+  renderDashTodo(d);
+  renderFuelNormChart(d);
+}
+
+function renderFuelNormChart(d) {
+  const el = document.getElementById('fuelNormChart');
+  if (!el || !window.Chart) return;
+  const list = Object.entries(d.fuel.by_plate).filter(([, v]) => v.latest_l_per_100km !== null).sort((a, b) => b[1].latest_l_per_100km - a[1].latest_l_per_100km);
+  if (fuelNormChart) fuelNormChart.destroy();
+  fuelNormChart = new Chart(el.getContext('2d'), {
+    type: 'bar',
+    data: {
+      labels: list.map(([p]) => p),
+      datasets: [
+        { label: 'L/100km gần nhất', data: list.map(([, v]) => v.latest_l_per_100km),
+          backgroundColor: list.map(([, v]) => ((v.latest_l_per_100km - v.norm) / v.norm > 0.1 ? '#dc2626' : ((v.latest_l_per_100km - v.norm) / v.norm < -0.1 ? '#94a3b8' : '#10b981'))), borderRadius: 6 },
+        { label: 'Định mức', data: list.map(([, v]) => v.norm), type: 'line', borderColor: '#f59e0b', backgroundColor: '#f59e0b', borderDash: [6, 4], pointRadius: 0, borderWidth: 2 },
+      ],
+    },
+    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, font: { size: 11, weight: 'bold' } } } },
+               scales: { x: { ticks: { font: { size: 10 }, maxRotation: 70, minRotation: 50 } }, y: { beginAtZero: true, title: { display: true, text: 'L/100km' } } } },
+  });
+}
+
+// Thẻ "Việc cần xử lý hôm nay" trên Tổng quan
+function renderDashTodo(d) {
+  const box = document.getElementById('dashTodoCard');
+  if (!box || !d) return;
+  const t = d.todo;
+  const items = t.items;
+  const row = i => `
+      <div class="flex flex-wrap items-center gap-2 text-xs p-2.5 rounded-xl bg-slate-50 border border-slate-200">
+        ${chip(i.level)}<span class="font-bold text-slate-800">${esc(i.category)}</span>${plateBtn(i.plate)}${i.subject !== i.plate ? `<span class="text-slate-500">(${esc(i.subject)})</span>` : ''}
+        <span class="ml-auto font-black ${ST_TEXT[i.level] || ''}">${esc(i.detail)}</span></div>`;
+  box.innerHTML = `
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div class="p-2.5 bg-rose-50 text-rose-600 rounded-2xl border border-rose-200"><i data-lucide="clipboard-list" class="w-5 h-5"></i></div>
+        <div><h3 class="font-black text-slate-900 text-sm md:text-base">VIỆC CẦN XỬ LÝ — GIẤY TỜ & BẢO DƯỠNG</h3>
+        <p class="text-xs text-slate-500">Nguồn: Google Sheets, đọc lúc ${esc(d.source.read_at)} • vàng ≤ ${d.thresholds.yellow} ngày, đỏ ≤ ${d.thresholds.red} ngày</p></div>
+      </div>
+      <div class="flex gap-2 text-[11px] font-black">
+        ${[['overdue', 'Quá hạn', t.counts.overdue], ['soon', 'Sắp hạn', t.counts.soon], ['near', 'Gần hạn', t.counts.near], ['missing', 'Thiếu số liệu', t.missing_count]]
+          .map(([s, l, n]) => `<span class="px-2.5 py-1.5 rounded-xl ${ST[s].cls}">${l}: ${n}</span>`).join('')}
+      </div>
+    </div>
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-2">${items.slice(0, 8).map(row).join('') || '<p class="text-emerald-700 font-bold text-sm">Không có giấy tờ / bảo dưỡng quá hạn hoặc sắp hạn.</p>'}</div>
+    ${items.length > 8 ? `<details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-blue-700">Xem thêm ${items.length - 8} việc</summary>
+      <div class="mt-2 grid grid-cols-1 lg:grid-cols-2 gap-2">${items.slice(8).map(row).join('')}</div></details>` : ''}
+    ${t.missing.length ? `<details class="mt-2"><summary class="cursor-pointer text-xs font-bold text-slate-600">Số liệu còn thiếu trên Sheets (${t.missing_count})</summary>
+      <div class="mt-2 space-y-1.5">${t.missing.map(mi => `<p class="text-xs text-slate-600"><b>${esc(mi.category)}</b> (${mi.count}): ${mi.plates.map(esc).join(' • ')}</p>`).join('')}</div></details>` : ''}`;
+  if (window.lucide) lucide.createIcons();
+}
+
+// =====================================================================
+// TRANG ĐỘI XE & MOOC — 2 khúc Ben / Thùng như bản cũ, hạn giấy tờ từ Sheets
+// =====================================================================
+const DOC_COLS = [
+  ['GĐĐ Đầu Kéo', 'Giấy đi đường – đầu kéo'], ['GĐĐ Rơ-Moóc', 'Giấy đi đường – romoóc'],
+  ['Đăng Kiểm Đầu Kéo', 'Đăng kiểm – đầu kéo'], ['Đăng Kiểm Rơ-Moóc', 'Đăng kiểm – romoóc'], ['Tem Đường Bộ', 'Tem đường bộ'],
+];
+function docCell(doc) {
+  if (!doc || !doc.expiry) return '<span class="text-slate-400 font-bold">Thiếu</span>';
+  const left = doc.days_left === null ? '' : (doc.days_left < 0 ? `quá ${-doc.days_left} ngày` : `còn ${doc.days_left} ngày`);
+  return `<div class="font-mono font-bold text-slate-800">${dmy(doc.expiry)}</div><div class="text-[11px] font-bold ${ST_TEXT[doc.status] || ''}">${left}</div>`;
+}
+function worstStatus(list) {
+  const order = ['overdue', 'soon', 'near', 'missing', 'ok'];
+  const sts = list.map(d => d.status);
+  return order.find(s => sts.includes(s)) || 'missing';
+}
+
+function xeVehiclesPage() {
+  const fleet = (typeof FLEET_LIST !== 'undefined' && FLEET_LIST.length) ? FLEET_LIST
+    : (xeData.dm.plates || []).map(p => ({ plate_number: p, vehicle_type: '', trailer_number: '', driver_name: '' }));
+  const docsOf = p => xeData.docs.filter(d => samePlate(d.plate, p));
+  const cols = [
+    ['STT', (r, i) => `<span class="font-bold text-slate-400">${i + 1}</span>`, 'center'],
+    ['Số Xe Đầu Kéo', r => plateBtn(r.plate_number)],
+    ['Số Rơ-Moóc', r => `<span class="font-mono font-bold text-slate-800">${esc(r.trailer_number || (docsOf(r.plate_number)[0] || {}).trailer || '—')}</span>`],
+    ...DOC_COLS.map(([label, kind]) => [label, r => docCell(docsOf(r.plate_number).find(d => d.kind === kind)), 'center']),
+    ['Tình Trạng Giấy Tờ', r => chip(worstStatus(docsOf(r.plate_number))), 'center'],
+  ];
+  const ben = fleet.filter(v => v.vehicle_type === 'Xe Ben');
+  const thung = fleet.filter(v => v.vehicle_type !== 'Xe Ben');
+  const thr = `Đối chiếu bảng theo dõi trên Google Sheets (cảnh báo: vàng ≤ ${xeData.thresholds.yellow} ngày, đỏ ≤ ${xeData.thresholds.red} ngày). Bấm biển số để xem hồ sơ xe.`;
+  return oldCard({ icon: 'truck', tone: 'orange', top: 'border-t-4 border-t-orange-500',
+      title: `ĐỘI XE BEN (${ben.length} XE) — THEO DÕI GIẤY ĐI ĐƯỜNG & ĐĂNG KIỂM`, sub: thr,
+      right: `<span class="px-3.5 py-1.5 bg-orange-50 text-orange-800 border border-orange-200 rounded-xl font-bold text-xs font-mono">${ben.length} Xe Ben</span>`,
+      body: oldTable(cols, ben) })
+    + oldCard({ icon: 'container', tone: 'blue', top: 'border-t-4 border-t-blue-500',
+      title: `ĐỘI XE THÙNG / CÔNG DÀI (${thung.length} XE) — THEO DÕI GIẤY ĐI ĐƯỜNG & ĐĂNG KIỂM`, sub: 'Đối chiếu bảng theo dõi trên Google Sheets',
+      right: `<span class="px-3.5 py-1.5 bg-blue-50 text-blue-800 border border-blue-200 rounded-xl font-bold text-xs font-mono">${thung.length} Xe Thùng</span>`,
+      body: oldTable(cols, thung) });
+}
+
+// =====================================================================
+// TRANG BẢO DƯỠNG THAY NHỚT
+// =====================================================================
+function xeMaintPage() {
+  const m = xeData.maint;
+  const kmCell = v => v === null || v === undefined ? '—' : (v < 0 ? `<b class="text-red-700">quá ${num(-v)} km</b>` : `<b class="${v <= 3000 ? (v <= 1000 ? 'text-red-600' : 'text-amber-700') : 'text-emerald-700'}">${num(v)}</b>`);
+  const oil = oldTable([
+    ['STT', (r, i) => `<span class="font-bold text-slate-400">${i + 1}</span>`, 'center'],
+    ['Số Xe Đầu Kéo', r => plateBtn(r.plate)], ['Định Mức', r => num(r.norm_km), 'right'],
+    ['Km Thay Gần Nhất', r => num(r.last_km), 'right'], ['Ngày Thay Gần Nhất', r => dmy(r.last_date), 'center'],
+    ['Km Hiện Tại', r => `<b class="text-slate-900">${num(r.current_km)}</b>${r.odo_source_date ? `<div class="text-[10px] text-slate-500">ODO sổ dầu ${dmy(r.odo_source_date)}</div>` : ''}`, 'right'],
+    ['Km Đến Hạn', r => `<span class="text-indigo-600 font-bold">${num(r.due_km)}</span>`, 'right'],
+    ['Còn Lại (Km)', r => kmCell(r.remaining_km), 'right'], ['Tình Trạng', r => chip(r.status), 'center'],
+    ['Ghi Chú Kỹ Thuật', r => `<span class="font-bold text-[11px] text-slate-700 whitespace-normal">${esc(r.warning || r.note || '')}</span>`],
+  ], m.oil.filter(plateOk));
+  const gear = oldTable([
+    ['Số Xe', r => plateBtn(r.plate)], ['Ngày Thay', r => dmy(r.last_date), 'center'], ['Km Lúc Thay', r => num(r.last_km), 'right'],
+    ['Còn Lại (Km)', r => kmCell(r.remaining_km), 'right'], ['Hạn Theo Ngày', r => dmy(r.due_date), 'center'], ['Tình Trạng', r => chip(r.status), 'center'],
+  ], m.gearbox.filter(plateOk));
+  const grease = oldTable([
+    ['Số Xe', r => plateBtn(r.plate)], ['Lần Gần Nhất', r => dmy(r.last_date), 'center'], ['Hạn Tiếp Theo', r => dmy(r.due_date), 'center'],
+    ['Còn Lại', r => r.days_left === null ? '—' : `${r.days_left} ngày`, 'right'], ['Tình Trạng', r => chip(r.status), 'center'],
+  ], m.grease.filter(plateOk));
+  const log = oldTable([
+    ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Hạng Mục', r => esc(r.item)], ['Km ODO', r => num(r.odo), 'right'],
+    ['Nội Dung', r => `<span class="whitespace-normal">${esc(r.content)}</span>`], ['Gara / NCC', r => esc(r.vendor)], ['Số Tiền', r => `<b>${money(r.amount)}</b>`, 'right'],
+    ['Thanh Toán', r => esc(r.payment || '—')], ['', r => rowActions('bao-duong', r)],
+  ], m.log.filter(r => monthOk(r) && plateOk(r)).slice().reverse(), 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '');
+  return oldCard({ icon: 'wrench', tone: 'amber', title: 'BẢO DƯỠNG ĐỊNH KỲ — THAY NHỚT ĐỘNG CƠ (15.000 KM)',
+      sub: 'Đồng bộ từ Google Sheets (tab BẢO DƯỠNG XE + MOOC). Km hiện tại = số lớn hơn giữa sheet và ODO mới nhất trong sổ dầu. Sắp hạn ≤ 1.000 km, gần hạn ≤ 3.000 km.',
+      right: filterBar(false, true) + writeButtons('bao-duong'), body: oil })
+    + oldCard({ icon: 'cog', tone: 'indigo', title: 'NHỚT HỘP SỐ (50.000 KM HOẶC 1 NĂM)', body: gear })
+    + oldCard({ icon: 'droplets', tone: 'slate', title: 'BÔI MỠ RƠ-MOÓC (1 NĂM)', body: grease })
+    + oldCard({ icon: 'notebook-pen', tone: 'blue', title: 'NHẬT KÝ BẢO DƯỠNG – SỬA CHỮA', right: filterBar(), body: log });
+}
+
+// =====================================================================
+// TRANG THAY VỎ & BẠT PHÙNG LĨNH — bảng theo quý như bản cũ + nhật ký
+// =====================================================================
+function xeTiresPage() {
+  const year = (xeMonth || new Date().toISOString()).slice(0, 4);
+  const live = xeData.tires.filter(r => !r.cancelled && (r.date || '').startsWith(year));
+  const byPlate = {};
+  live.forEach(r => {
+    const k = r.plate || '—';
+    const q = Math.floor((Number(r.date.slice(5, 7)) - 1) / 3);
+    byPlate[k] = byPlate[k] || { plate: k, q: [0, 0, 0, 0], total: 0, amount: 0 };
+    byPlate[k].q[q] += Number(r.quantity) || 0;
+    byPlate[k].total += Number(r.quantity) || 0;
+    byPlate[k].amount += Number(r.amount) || 0;
+  });
+  const qRows = Object.values(byPlate).sort((a, b) => b.total - a.total);
+  const qc = n => n ? `<b class="text-slate-800">${num(n)}</b>` : '<span class="text-slate-300">—</span>';
+  const quarter = oldTable([
+    ['Số Xe', r => plateBtn(r.plate)], ['Quý 1', r => qc(r.q[0]), 'center'], ['Quý 2', r => qc(r.q[1]), 'center'],
+    ['Quý 3', r => qc(r.q[2]), 'center'], ['Quý 4', r => qc(r.q[3]), 'center'],
+    [`Tổng Vỏ (${year})`, r => `<b class="text-blue-700">${num(r.total)} vỏ</b>`, 'right'], ['Tiền Vỏ', r => money(r.amount), 'right'],
+  ], qRows, `Chưa có dòng thay vỏ năm ${year}`);
+  const rows = xeData.tires.filter(r => monthOk(r) && plateOk(r)).slice().reverse();
+  const tires = oldTable([
+    ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Vị Trí', r => esc(r.position || '—')], ['Số Lượng', r => num(r.quantity), 'right'],
+    ['Loại / Hiệu', r => esc(r.brand)], ['Gara / NCC', r => esc(r.vendor)], ['Số Tiền', r => `<b>${money(r.amount)}</b>`, 'right'],
+    ['Thanh Toán', r => esc(r.payment || '—')], ['Ghi Chú', r => `<span class="whitespace-normal">${esc(r.note)}</span>`], ['', r => rowActions('thay-vo', r)],
+  ], rows, 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '');
+  const tarps = oldTable([
+    ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Nội Dung', r => `<span class="whitespace-normal">${esc(r.content)}</span>`], ['NCC', r => esc(r.vendor)],
+    ['Số HĐ', r => esc(r.invoice || '—')], ['Số Tiền', r => `<b>${money(r.amount)}</b>`, 'right'], ['Thanh Toán', r => esc(r.payment || '—')],
+    ['Ghi Chú', r => `<span class="whitespace-normal">${esc(r.note)}</span>`], ['', r => rowActions('thay-bat', r)],
+  ], xeData.tarps.filter(r => monthOk(r) && plateOk(r)).slice().reverse(), 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '');
+  const liveMonth = rows.filter(r => !r.cancelled);
+  return oldCard({ icon: 'disc', tone: 'amber', title: `THEO DÕI THAY VỎ XE — CẢ ĐỘI XE NĂM ${year}`, sub: 'Tổng hợp từ nhật ký THAY VỎ trên Google Sheets', body: quarter })
+    + oldCard({ icon: 'notebook-pen', tone: 'blue', title: 'NHẬT KÝ THAY VỎ', right: filterBar() + writeButtons('thay-vo'),
+      body: `<div class="grid grid-cols-2 gap-3">${stat('Số vỏ trong tháng', num(liveMonth.reduce((a, r) => a + (r.quantity || 0), 0)))}${stat('Tiền vỏ trong tháng', money(liveMonth.reduce((a, r) => a + (r.amount || 0), 0)))}</div>${tires}` })
+    + oldCard({ icon: 'umbrella', tone: 'emerald', title: 'MAY / SỬA BẠT — PHÙNG LĨNH', right: writeButtons('thay-bat'), body: tarps });
+}
+
+// =====================================================================
+// TRANG ĐỔ DẦU & ĐỊNH MỨC
+// =====================================================================
+function xeFuelPage() {
+  const t = xeData.todo;
+  const rows = xeData.fuel.rows.filter(r => monthOk(r) && plateOk(r)).slice().reverse();
+  const live = rows.filter(r => !r.cancelled);
+  const sum = k => live.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+  const debt = live.filter(r => (r.payment || '').startsWith('Công nợ')).reduce((a, r) => a + (r.amount || 0), 0);
+  const byPlate = Object.entries(xeData.fuel.by_plate).filter(([p]) => !xePlate || samePlate(p, xePlate))
+    .sort((a, b) => (b[1].latest_l_per_100km || 0) - (a[1].latest_l_per_100km || 0));
+  const lag = t.fuel_log_lag_days;
+  const norms = `Định mức: xe ben ${num(t.fuel_norms['Xe Ben'], 1)}, xe thùng ${num(t.fuel_norms['Xe Thùng'], 1)} L/100km (mức thực tế bình quân 07–09/2026).`;
+  const perPlate = oldTable([
+    ['Số Xe', r => plateBtn(r[0])], ['Số Lượt Đổ', r => num(r[1].fills), 'right'],
+    ['L/100km Gần Nhất', r => { const v = r[1].latest_l_per_100km, n = r[1].norm; return v === null ? '—' : `<b class="${fuelCls(v, n)}">${num(v, 1)}</b>`; }, 'right'],
+    ['Định Mức', r => num(r[1].norm, 1), 'right'], ['L/100km Bình Quân', r => num(r[1].avg_l_per_100km, 1), 'right'],
+    ['Cảnh Báo', r => { const v = r[1].latest_l_per_100km, n = r[1].norm; if (v === null || !n) return '<span class="text-slate-400">—</span>'; const p = (v - n) / n * 100;
+      return p > 10 ? `<span class="px-2 py-0.5 rounded-full text-[11px] font-black bg-red-100 text-red-700 border border-red-300">Vượt ${num(p, 1)}%</span>` : (p < -10 ? '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Thấp bất thường</span>' : '<span class="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700 border border-emerald-300">Trong định mức</span>'); }, 'center'],
+    ['ODO Mới Nhất', r => r[1].odo ? `${num(r[1].odo.odo)} <span class="text-[10px] text-slate-500">(${dmy(r[1].odo.date)})</span>` : '—', 'right'],
+  ], byPlate);
+  const alerts = oldTable([
+    ['Xe', r => plateBtn(r.plate)], ['Từ – Đến', r => `${dmy(r.from)} → ${dmy(r.to)}`], ['Km', r => num(r.km), 'right'],
+    ['Lít', r => num(r.liters, 1), 'right'], ['L/100km', r => `<b class="text-red-700">${num(r.l_per_100km, 1)}</b>`, 'right'], ['Định Mức', r => num(r.norm, 1), 'right'],
+    ['Lệch', r => `<b class="text-red-700">+${num(r.deviation_pct, 1)}%</b>`, 'right'],
+  ], t.fuel_alerts.filter(plateOk).slice().reverse(), 'Không có lần nào vượt định mức > 10%');
+  const log = oldTable([
+    ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Cây Dầu', r => esc(r.station)],
+    ['Số Lít', r => num(r.liters, 2), 'right'], ['Đơn Giá', r => money(r.price), 'right'], ['Thành Tiền', r => `<b>${money(r.amount)}</b>`, 'right'],
+    ['ODO', r => num(r.odo), 'right'], ['Bình', r => esc(r.tank)], ['Thanh Toán', r => esc(r.payment || '—')],
+    ['Kiểm Tra', r => r.flags.length ? r.flags.map(f => `<span class="inline-block mb-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-[11px] font-bold">${esc(f)}</span>`).join(' ') : '<span class="text-emerald-700 text-[11px] font-bold">OK</span>'],
+    ['', r => rowActions('do-dau', r)],
+  ], rows, 'Không có lượt đổ trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '');
+  return oldCard({ icon: 'gauge', tone: 'amber', title: 'ĐỊNH MỨC TIÊU HAO THEO TỪNG XE (GIỮA 2 LẦN ĐẦY BÌNH)', sub: norms,
+      right: `<span class="px-3 py-1.5 rounded-xl ${lag > 3 ? 'bg-red-50 text-red-700 border-red-200' : 'bg-emerald-50 text-emerald-800 border-emerald-200'} border font-bold text-xs">Sổ dầu nhập đến ${dmy(t.fuel_log_last_date)}${lag !== null ? ` • trễ ${lag} ngày` : ''}</span>`, body: perPlate })
+    + oldCard({ icon: 'alert-triangle', tone: 'rose', title: 'CẢNH BÁO HAO DẦU VƯỢT ĐỊNH MỨC > 10% (MỚI NHẤT TRƯỚC)', sub: 'Chỉ tính đoạn ≥ 300 km giữa 2 lần đổ đầy bình. Đoạn số liệu vô lý (nghi nhập sai) không tính vào đây.', body: alerts })
+    + oldCard({ icon: 'fuel', tone: 'orange', title: 'SỔ ĐỔ DẦU', right: filterBar() + writeButtons('do-dau'),
+      body: `<div class="grid grid-cols-2 lg:grid-cols-4 gap-3">${stat('Số lượt đổ', num(live.length))}${stat('Tổng số lít', num(sum('liters'), 1) + ' L')}${stat('Tổng tiền dầu', money(sum('amount')))}${stat('Còn nợ cây dầu', money(debt), debt ? 'text-red-600' : 'text-emerald-600')}</div>${log}` });
+}
+
+// =====================================================================
+// TRANG CÔNG NỢ & CHI PHÍ XE
+// =====================================================================
+function xeCostsPage() {
+  const total = xeData.debts.filter(g => g.unpaid > 0).reduce((a, g) => a + g.unpaid, 0);
+  return oldCard({ icon: 'wallet', tone: 'rose', title: 'CÔNG NỢ NHÀ CUNG CẤP (DẦU • VỎ • BẠT • GARA)', sub: 'Chọn các dòng đã trả rồi bấm "Đánh dấu đã TT" — app ghi vào cột THANH TOÁN trên Sheets.',
+      right: `<span class="px-3.5 py-1.5 bg-rose-50 text-rose-800 border border-rose-200 rounded-xl font-black text-sm font-mono">Còn nợ: ${money(total)}</span>`, body: xeDebtsHtml() })
+    + oldCard({ icon: 'bar-chart-3', tone: 'emerald', title: 'CHI PHÍ XE THEO THÁNG', sub: 'Dầu + bảo dưỡng + vỏ + bạt theo từng xe, kèm chi phí / km.', body: xeCostsHtml() });
 }
 
 // ---------- khối dùng chung
@@ -143,142 +460,6 @@ function rowActions(kind, r) {
     <button onclick="cancelXeRow('${kind}','${esc(r.uuid)}')" class="px-2.5 py-1.5 rounded-lg bg-red-50 border border-red-200 text-red-700 text-xs font-bold">Hủy</button></span>`;
 }
 
-// ---------- 1. Việc cần xử lý
-function xeTodoHtml() {
-  const t = xeData.todo;
-  const lag = t.fuel_log_lag_days;
-  return `
-  <div class="grid grid-cols-2 lg:grid-cols-5 gap-3">
-    ${stat('Quá hạn', t.counts.overdue, t.counts.overdue ? 'text-red-600' : 'text-emerald-600')}
-    ${stat('Sắp hạn', t.counts.soon, t.counts.soon ? 'text-red-600' : 'text-emerald-600', `≤ ${xeData.thresholds.red} ngày`)}
-    ${stat('Gần hạn', t.counts.near, t.counts.near ? 'text-amber-600' : 'text-emerald-600', `≤ ${xeData.thresholds.yellow} ngày`)}
-    ${stat('Thiếu số liệu', t.missing_count, 'text-slate-600')}
-    ${stat('Sổ dầu nhập đến', dmy(t.fuel_log_last_date), lag > 3 ? 'text-red-600' : 'text-slate-900', lag !== null ? `trễ ${lag} ngày` : '')}
-  </div>
-  <h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Việc cần xử lý — xếp theo mức độ</h3>
-  ${rlist(t.items, [
-    ['Mức', r => chip(r.level)], ['Hạng mục', r => esc(r.category)], ['Xe / romoóc', r => `${plateBtn(r.plate)}${r.subject !== r.plate ? ` <span class="text-slate-500 text-xs">(${esc(r.subject)})</span>` : ''}`],
-    ['Hạn', r => dmy(r.due)], ['Còn lại', r => `<b>${esc(r.detail)}</b>`],
-  ], 'Không có việc quá hạn / sắp hạn')}
-  ${t.fuel_alerts.length ? `<h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Hao dầu vượt định mức &gt; 10% (mới nhất trước)</h3>
-    <p class="text-sm text-slate-500 mb-2">Tính giữa 2 lần đổ đầy bình (≥ 300 km), từ sổ ĐỔ DẦU. Định mức: xe ben ${num(t.fuel_norms['Xe Ben'], 1)}, xe thùng ${num(t.fuel_norms['Xe Thùng'], 1)} L/100km (mức thực tế bình quân 07–09/2026).</p>
-    ${rlist(t.fuel_alerts.slice().reverse(), [
-      ['Xe', r => plateBtn(r.plate)], ['Từ – đến', r => `${dmy(r.from)} → ${dmy(r.to)}`], ['Km', r => num(r.km), 'right'],
-      ['Lít', r => num(r.liters, 1), 'right'], ['L/100km', r => `<b class="text-red-700">${num(r.l_per_100km, 1)}</b>`, 'right'], ['Định mức', r => num(r.norm, 1), 'right'],
-      ['Lệch', r => `${r.deviation_pct > 0 ? '+' : ''}${num(r.deviation_pct, 1)}%`, 'right'],
-    ])}` : ''}
-  <h3 class="mt-5 mb-2 font-black text-slate-900 text-lg">Số liệu còn thiếu</h3>
-  <div class="space-y-2">${t.missing.map(m => `
-    <details class="bg-white rounded-2xl border border-slate-200 p-4"><summary class="cursor-pointer font-bold text-slate-800 flex justify-between">
-      <span>${esc(m.category)}</span><span class="px-2.5 py-0.5 rounded-lg bg-slate-200 text-slate-700 text-sm">${m.count}</span></summary>
-      <p class="mt-2 text-sm text-slate-600 leading-relaxed">${m.plates.map(esc).join(' • ')}</p></details>`).join('') || '<p class="text-slate-500">Đủ số liệu</p>'}
-  </div>`;
-}
-
-// ---------- 2. Giấy tờ
-function xeDocsHtml() {
-  const kinds = [...new Set(xeData.docs.map(d => d.kind))];
-  const order = { overdue: 0, soon: 1, near: 2, missing: 3, ok: 4 };
-  const rows = xeData.docs.filter(d => (!xeDocKind || d.kind === xeDocKind) && plateOk(d))
-    .sort((a, b) => order[a.status] - order[b.status] || (a.days_left ?? 99999) - (b.days_left ?? 99999));
-  return `<div class="flex flex-wrap gap-2 items-center mb-3">
-      ${select('xeDocKind', kinds, xeDocKind, 'xeDocKind=this.value;renderXe()', 'Tất cả loại giấy')}
-      ${filterBar(false, true)}
-      <span class="text-sm text-slate-500">Ngưỡng từ sheet: vàng ≤ ${xeData.thresholds.yellow} ngày, đỏ ≤ ${xeData.thresholds.red} ngày. "Còn lại" do app tự tính từ ngày hạn.</span>
-    </div>
-    ${rlist(rows, [
-      ['Tình trạng', r => chip(r.status)], ['Loại', r => esc(r.kind)], ['Xe', r => plateBtn(r.plate)],
-      ['Romoóc', r => esc(r.trailer || '—')], ['Hạn', r => `<b>${dmy(r.expiry)}</b>`],
-      ['Còn lại', r => r.days_left === null ? '—' : (r.days_left < 0 ? `<b class="text-red-700">quá ${-r.days_left} ngày</b>` : `${r.days_left} ngày`), 'right'],
-      ['Ghi chú', r => esc(r.note)],
-    ])}`;
-}
-
-// ---------- 3. Đổ dầu
-function xeFuelHtml() {
-  const rows = xeData.fuel.rows.filter(r => monthOk(r) && plateOk(r)).slice().reverse();
-  const live = rows.filter(r => !r.cancelled);
-  const sum = (k) => live.reduce((a, r) => a + (Number(r[k]) || 0), 0);
-  const debt = live.filter(r => (r.payment || '').startsWith('Công nợ')).reduce((a, r) => a + (r.amount || 0), 0);
-  const byPlate = Object.entries(xeData.fuel.by_plate).filter(([p]) => !xePlate || samePlate(p, xePlate))
-    .sort((a, b) => (b[1].latest_l_per_100km || 0) - (a[1].latest_l_per_100km || 0));
-  return `<div class="flex flex-wrap gap-2 items-center justify-between mb-3">${filterBar()}<div class="flex gap-2 items-center">${writeButtons('do-dau')}</div></div>
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-      ${stat('Số lượt đổ', num(live.length))}${stat('Tổng số lít', num(sum('liters'), 1) + ' L')}
-      ${stat('Tổng tiền dầu', money(sum('amount')))}${stat('Còn nợ cây dầu', money(debt), debt ? 'text-red-600' : 'text-emerald-600')}
-    </div>
-    ${rlist(rows, [
-      ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Cây dầu', r => esc(r.station)],
-      ['Số lít', r => num(r.liters, 2), 'right'], ['Đơn giá', r => money(r.price), 'right'], ['Thành tiền', r => `<b>${money(r.amount)}</b>`, 'right'],
-      ['ODO', r => num(r.odo), 'right'], ['Bình', r => esc(r.tank)], ['Thanh toán', r => esc(r.payment || '—')],
-      ['Kiểm tra', r => r.flags.length ? r.flags.map(f => `<span class="inline-block mb-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 text-xs font-bold">${esc(f)}</span>`).join(' ') : '<span class="text-emerald-700 text-xs font-bold">OK</span>'],
-      ['', r => rowActions('do-dau', r)],
-    ], 'Không có lượt đổ trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '')}
-    <h3 class="mt-6 mb-2 font-black text-slate-900 text-lg">Tiêu hao theo xe (giữa 2 lần đầy bình)</h3>
-    ${rlist(byPlate, [
-      ['Xe', r => plateBtn(r[0])], ['Số lượt', r => num(r[1].fills), 'right'],
-      ['L/100km gần nhất', r => { const v = r[1].latest_l_per_100km, n = r[1].norm; return v === null ? '—' : `<b class="${fuelCls(v, n)}">${num(v, 1)}</b>`; }, 'right'],
-      ['Định mức', r => num(r[1].norm, 1), 'right'],
-      ['L/100km bình quân', r => num(r[1].avg_l_per_100km, 1), 'right'],
-      ['ODO mới nhất', r => r[1].odo ? `${num(r[1].odo.odo)} <span class="text-xs text-slate-500">(${dmy(r[1].odo.date)})</span>` : '—', 'right'],
-    ])}`;
-}
-
-// ---------- 4. Bảo dưỡng
-function xeMaintHtml() {
-  const m = xeData.maint;
-  const kmCell = (v) => v === null || v === undefined ? '—' : (v < 0 ? `<b class="text-red-700">quá ${num(-v)} km</b>` : `${num(v)} km`);
-  return `<div class="flex justify-end mb-3 gap-2 items-center">${writeButtons('bao-duong')}</div>
-    <h3 class="mb-2 font-black text-slate-900 text-lg">Thay nhớt máy (định mức theo sheet, thường 15.000 km)</h3>
-    <p class="text-sm text-slate-500 mb-2">KM hiện tại = số lớn hơn giữa sheet và ODO mới nhất trong sổ dầu. Sắp hạn ≤ 1.000 km, gần hạn ≤ 3.000 km.</p>
-    ${rlist(m.oil.filter(plateOk), [
-      ['Tình trạng', r => chip(r.status)], ['Xe', r => plateBtn(r.plate)], ['Định mức', r => num(r.norm_km), 'right'],
-      ['KM thay gần nhất', r => num(r.last_km), 'right'], ['Ngày', r => dmy(r.last_date)],
-      ['KM hiện tại', r => `${num(r.current_km)}${r.odo_source_date ? ` <span class="text-xs text-slate-500">(${dmy(r.odo_source_date)})</span>` : ''}`, 'right'],
-      ['Còn lại', r => kmCell(r.remaining_km), 'right'], ['Ghi chú', r => esc(r.warning || r.note)],
-    ])}
-    <h3 class="mt-6 mb-2 font-black text-slate-900 text-lg">Nhớt hộp số (50.000 km hoặc 1 năm)</h3>
-    ${rlist(m.gearbox.filter(plateOk), [
-      ['Tình trạng', r => chip(r.status)], ['Xe', r => plateBtn(r.plate)], ['Ngày thay', r => dmy(r.last_date)],
-      ['KM lúc thay', r => num(r.last_km), 'right'], ['Còn lại (km)', r => kmCell(r.remaining_km), 'right'],
-      ['Hạn theo ngày', r => dmy(r.due_date)],
-    ])}
-    <h3 class="mt-6 mb-2 font-black text-slate-900 text-lg">Bôi mỡ romoóc (1 năm)</h3>
-    ${rlist(m.grease.filter(plateOk), [
-      ['Tình trạng', r => chip(r.status)], ['Xe', r => plateBtn(r.plate)], ['Lần gần nhất', r => dmy(r.last_date)],
-      ['Hạn tiếp theo', r => dmy(r.due_date)], ['Còn lại', r => r.days_left === null ? '—' : `${r.days_left} ngày`, 'right'],
-    ])}
-    <h3 class="mt-6 mb-2 font-black text-slate-900 text-lg">Nhật ký bảo dưỡng – sửa chữa</h3>
-    <div class="mb-2">${filterBar()}</div>
-    ${rlist(m.log.filter(r => monthOk(r) && plateOk(r)).slice().reverse(), [
-      ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Hạng mục', r => esc(r.item)], ['KM ODO', r => num(r.odo), 'right'],
-      ['Nội dung', r => esc(r.content)], ['Gara/NCC', r => esc(r.vendor)], ['Số tiền', r => money(r.amount), 'right'],
-      ['Thanh toán', r => esc(r.payment || '—')], ['', r => rowActions('bao-duong', r)],
-    ], 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '')}`;
-}
-
-// ---------- 5–6. Vỏ / Bạt
-function xeTiresHtml() {
-  const rows = xeData.tires.filter(r => monthOk(r) && plateOk(r)).slice().reverse();
-  const live = rows.filter(r => !r.cancelled);
-  return `<div class="flex flex-wrap gap-2 items-center justify-between mb-3">${filterBar()}<div class="flex gap-2 items-center">${writeButtons('thay-vo')}</div></div>
-    <div class="grid grid-cols-2 gap-3 mb-4">${stat('Số vỏ trong tháng', num(live.reduce((a, r) => a + (r.quantity || 0), 0)))}${stat('Tiền vỏ trong tháng', money(live.reduce((a, r) => a + (r.amount || 0), 0)))}</div>
-    ${rlist(rows, [
-      ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Vị trí', r => esc(r.position || '—')], ['Số lượng', r => num(r.quantity), 'right'],
-      ['Loại/Hiệu', r => esc(r.brand)], ['Gara/NCC', r => esc(r.vendor)], ['Số tiền', r => money(r.amount), 'right'],
-      ['Thanh toán', r => esc(r.payment || '—')], ['Ghi chú', r => esc(r.note)], ['', r => rowActions('thay-vo', r)],
-    ], 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '')}`;
-}
-
-function xeTarpsHtml() {
-  const rows = xeData.tarps.filter(r => monthOk(r) && plateOk(r)).slice().reverse();
-  return `<div class="flex flex-wrap gap-2 items-center justify-between mb-3">${filterBar()}<div class="flex gap-2 items-center">${writeButtons('thay-bat')}</div></div>
-    ${rlist(rows, [
-      ['Ngày', r => dmy(r.date)], ['Xe', r => plateBtn(r.plate)], ['Nội dung', r => esc(r.content)], ['NCC', r => esc(r.vendor)],
-      ['Số HĐ', r => esc(r.invoice || '—')], ['Số tiền', r => money(r.amount), 'right'], ['Thanh toán', r => esc(r.payment || '—')],
-      ['Ghi chú', r => esc(r.note)], ['', r => rowActions('thay-bat', r)],
-    ], 'Không có dòng trong tháng này', r => r.cancelled ? 'opacity-50 line-through' : '')}`;
-}
 
 // ---------- 7. Công nợ
 function xeDebtsHtml() {
@@ -355,23 +536,6 @@ async function downloadXeExcel() {
   } catch (err) { xeToast(err.message, false); }
 }
 
-// ---------- 9. Danh sách xe
-function xeFleetHtml() {
-  const fuel = xeData.fuel.by_plate;
-  const docs = xeData.docs;
-  const worst = p => {
-    const order = ['overdue', 'soon', 'near', 'missing', 'ok'];
-    const sts = docs.filter(d => samePlate(d.plate, p)).map(d => d.status);
-    return order.find(s => sts.includes(s)) || 'missing';
-  };
-  const rows = (xeData.dm.plates || []).map(p => ({ plate: p }));
-  return rlist(rows, [
-    ['Xe', r => plateBtn(r.plate)], ['Giấy tờ', r => chip(worst(r.plate))],
-    ['ODO mới nhất', r => { const f = Object.entries(fuel).find(([k]) => samePlate(k, r.plate)); return f && f[1].odo ? `${num(f[1].odo.odo)} (${dmy(f[1].odo.date)})` : '—'; }, 'right'],
-    ['L/100km gần nhất', r => { const f = Object.entries(fuel).find(([k]) => samePlate(k, r.plate)); return f ? num(f[1].latest_l_per_100km, 1) : '—'; }, 'right'],
-    ['', r => `<button onclick="openVehicleProfile('${esc(r.plate)}')" class="px-3 py-2 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 font-bold text-sm">Hồ sơ xe</button>`],
-  ]);
-}
 
 // ---------- Hồ sơ 1 xe
 async function openVehicleProfile(plate) {
@@ -548,24 +712,3 @@ function xeToast(msg, ok) {
   el._t = setTimeout(() => el.classList.add('hidden'), 5000);
 }
 
-// ---------- Thẻ "Việc cần xử lý hôm nay" trên Tổng quan
-function renderDashTodo(d) {
-  const box = document.getElementById('dashTodoCard');
-  if (!box || !d) return;
-  const t = d.todo;
-  const top = t.items.slice(0, 6);
-  box.innerHTML = `
-    <div class="flex flex-wrap items-center justify-between gap-2">
-      <h3 class="font-black text-slate-900 text-base md:text-lg">VIỆC CẦN XỬ LÝ HÔM NAY</h3>
-      <button onclick="switchTab('xe'); switchXeSub('todo')" class="text-sm font-bold text-blue-700">Xem tất cả →</button>
-    </div>
-    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">
-      ${[['overdue', 'Quá hạn', t.counts.overdue], ['soon', 'Sắp hạn', t.counts.soon], ['near', 'Gần hạn', t.counts.near], ['missing', 'Thiếu số liệu', t.missing_count]]
-        .map(([s, l, n]) => `<div class="rounded-xl p-3 ${ST[s].cls}"><p class="text-xs font-bold">${l}</p><p class="text-2xl font-black">${n}</p></div>`).join('')}
-    </div>
-    <div class="mt-3 space-y-1.5">${top.map(i => `
-      <div class="flex flex-wrap items-center gap-2 text-[15px] p-2.5 rounded-xl bg-slate-50 border border-slate-200">
-        ${chip(i.level)}<span class="font-semibold">${esc(i.category)}</span>${plateBtn(i.plate)}
-        <span class="ml-auto font-bold">${esc(i.detail)}</span></div>`).join('') || '<p class="text-emerald-700 font-bold">Không có giấy tờ / bảo dưỡng quá hạn hoặc sắp hạn.</p>'}</div>
-    <p class="mt-2 text-xs text-slate-500">Nguồn: Google Sheets ĐỔ DẦU - BẢO DƯỠNG - ĐĂNG KIỂM, đọc lúc ${esc(d.source.read_at)}${t.fuel_log_lag_days !== null ? ` • sổ dầu nhập đến ${dmy(t.fuel_log_last_date)} (trễ ${t.fuel_log_lag_days} ngày)` : ''}</p>`;
-}
