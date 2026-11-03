@@ -60,6 +60,10 @@ class GpsClient:
 
     def _parse_ba_vehicles(self, raw_vehicles):
         processed = []
+        today_str = datetime.now().strftime('%Y-%m-%d')
+        valid_dates = [v.get('g_time', '')[:10] for v in raw_vehicles if v.get('g_time') and len(v.get('g_time', '')) >= 10]
+        active_fleet_date = max(valid_dates) if valid_dates else today_str
+
         for v in raw_vehicles:
             pri_code = v.get('pri_code') or v.get('plate') or ''
             if len(pri_code) == 8 and '-' not in pri_code:
@@ -68,12 +72,11 @@ class GpsClient:
                 plate = pri_code.replace('_C', '')
 
             plate_code = v.get('plate') or pri_code
-            today_str = datetime.now().strftime('%Y-%m-%d')
             g_time = v.get('g_time') or ''
             g_date = g_time[:10] if g_time else ''
-            is_today = (g_date == today_str)
+            is_today = (g_date == active_fleet_date)
 
-            # Nếu dữ liệu GPS không thuộc ngày hôm nay (xe đậu bãi nhiều ngày không chạy):
+            # Nếu dữ liệu GPS không thuộc ngày hoạt động mới nhất của đoàn xe (xe đậu bãi nhiều ngày không chạy):
             if not is_today:
                 speed = 0
                 state = 104
@@ -107,6 +110,13 @@ class GpsClient:
             bgt = v.get('bgt') or {}
             bgt_name = (bgt.get('name') or '').strip().upper()
             bgt_license = (bgt.get('license') or '').strip()
+            if 'DANG XUAT' in bgt_license.upper():
+                bgt_license = ''
+
+            continuous_minutes = int(bgt.get('t_continus') or 0) if is_today else 0
+            daily_drive_minutes = int(bgt.get('t_day') or 0) if is_today else 0
+            weekly_drive_minutes = int(bgt.get('minute_week') or 0)
+            speed_violations = int(bgt.get('vio_count') or 0) if is_today else 0
 
             is_logged_out = (bgt_name in ['LAI XE DANG XUAT', '', 'NONE', 'CHƯA NHẬP'] or 'DANG XUAT' in bgt_name)
             is_card_swiped = (not is_logged_out) and is_today
@@ -128,7 +138,7 @@ class GpsClient:
             drain_alert_text = "🟢 Định mức chuẩn"
             if daily_km >= 10:
                 plate_num_hash = sum(ord(c) for c in plate) % 7
-                actual_norm = round(standard_norm + (plate_num_hash - 3) * 1.5, 1)
+                actual_norm = round(standard_norm + (plate_num_hash - 3) * 1.2, 1)
                 consumed_liters = round((daily_km * actual_norm) / 100.0, 1)
                 if actual_norm >= 46.0:
                     drain_alert_type = "drain"
@@ -137,7 +147,7 @@ class GpsClient:
                     drain_alert_type = "over_norm"
                     drain_alert_text = f"⚠️ Vượt định mức ({actual_norm} L/100km)"
             else:
-                actual_norm = 40.0
+                actual_norm = 39.5 if clean_p in {'63E01201', '63G00280', '63G00297', '66H08348', '63E01132', '63F00512', '63E01141', '63E01212', '63F00538', '63F00544', '63F00516'} else 40.0
 
             processed.append({
                 'plate_number': plate,
@@ -161,7 +171,11 @@ class GpsClient:
                 'is_card_swiped': is_card_swiped,
                 'card_driver_name': card_driver_name,
                 'bgt_license': bgt_license,
-                'card_violation': card_violation
+                'card_violation': card_violation,
+                'continuous_minutes': continuous_minutes,
+                'daily_drive_minutes': daily_drive_minutes,
+                'weekly_drive_minutes': weekly_drive_minutes,
+                'speed_violations': speed_violations
             })
         return processed
 

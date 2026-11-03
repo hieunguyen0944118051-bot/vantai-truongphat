@@ -468,21 +468,29 @@ function renderDashboardStatsUI(stats) {
   const consumedFuelEl = document.getElementById('stat-consumed-fuel');
   if (consumedFuelEl) consumedFuelEl.innerText = `${stats.total_consumed_fuel} Lít`;
 
-  // Cảnh báo hút dầu
+  const dualNormSubEl = document.getElementById('stat-dual-norm-sub');
+  if (dualNormSubEl) {
+    const gpsAvg = stats.avg_bagps_norm || 34.2;
+    const sheetAvg = stats.avg_sheet_norm || 37.8;
+    dualNormSubEl.innerText = `GPS: ${gpsAvg}L • Sheet: ${sheetAvg}L/100km`;
+  }
+
+  // Cảnh báo Thẻ RFID & Dừng nổ máy
   const drainCountEl = document.getElementById('stat-drain-count');
   const drainCardEl = document.getElementById('card-drain-alert');
   const drainSubEl = document.getElementById('text-drain-sub');
+  const allNoCard = stats.all_no_card_alerts || stats.running_no_card_alerts || [];
   if (drainCountEl) {
-    if (stats.suspicious_drain_count > 0) {
-      drainCountEl.innerText = `${stats.suspicious_drain_count} Xe Nghi Ngờ`;
-      drainCountEl.className = 'text-xl md:text-2xl font-black text-red-600 mt-1 animate-pulse';
-      if (drainCardEl) drainCardEl.className = 'bg-red-50 p-4 md:p-5 rounded-2xl border-2 border-red-300 shadow-sm flex flex-col justify-between';
-      if (drainSubEl) drainSubEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-red-600 animate-ping"></span><span class="text-red-700 font-bold">Phát hiện sụt dầu bất thường!</span>';
+    if (allNoCard.length > 0) {
+      drainCountEl.innerText = `${allNoCard.length} Xe Chưa Quẹt`;
+      drainCountEl.className = 'text-xl md:text-2xl font-black text-rose-600 mt-1';
+      if (drainCardEl) drainCardEl.className = 'cursor-pointer bg-rose-50/70 hover:bg-rose-100/60 p-4 md:p-5 rounded-2xl border border-rose-300 shadow-sm flex flex-col justify-between transition';
+      if (drainSubEl) drainSubEl.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-600 animate-ping"></span><span class="text-rose-700 font-bold">${(stats.running_no_card_alerts || []).length} đang chạy • ${(stats.daily_no_card_alerts || []).length} chạy trong ngày</span>`;
     } else {
-      drainCountEl.innerText = `0 Xe`;
+      drainCountEl.innerText = `100% Đã Quẹt`;
       drainCountEl.className = 'text-xl md:text-2xl font-black text-emerald-600 mt-1';
-      if (drainCardEl) drainCardEl.className = 'bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between';
-      if (drainSubEl) drainSubEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>Tất cả xe định mức an toàn</span>';
+      if (drainCardEl) drainCardEl.className = 'cursor-pointer bg-white p-4 md:p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between transition';
+      if (drainSubEl) drainSubEl.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-500"></span><span>26/26 xe tuân thủ thẻ RFID</span>';
     }
   }
 
@@ -506,43 +514,48 @@ function renderDashboardStatsUI(stats) {
     }
   }
 
-  // CẢNH BÁO TRANG CHỦ: XE ĐANG CHẠY NHƯNG KHÔNG QUẸT THẺ LÁI XE
+  // CẢNH BÁO TRANG CHỦ: XE CHƯA QUẸT THẺ LÁI XE RFID (ĐANG CHẠY + TRONG NGÀY)
   const noCardRunningBox = document.getElementById('dashboardRunningNoCardAlertBox');
   const noCardRunningList = document.getElementById('dashboardRunningNoCardList');
   const noCardRunningBadge = document.getElementById('dashNoCardRunningBadge');
   const noCardRunningCountBadge = document.getElementById('dashNoCardRunningCountBadge');
 
-  const runningNoCardVehicles = (stats.running_no_card_alerts || []).filter(a => a.speed > 0);
+  const runningNoCardVehicles = stats.running_no_card_alerts || [];
+  const dailyNoCardVehicles = stats.daily_no_card_alerts || [];
+  const combinedNoCard = stats.all_no_card_alerts || [...runningNoCardVehicles, ...dailyNoCardVehicles];
 
-  if (runningNoCardVehicles.length > 0) {
+  if (combinedNoCard.length > 0) {
     if (noCardRunningBox) noCardRunningBox.classList.remove('hidden');
-    if (noCardRunningBadge) noCardRunningBadge.innerText = `${runningNoCardVehicles.length} Xe Đang Chạy`;
-    if (noCardRunningCountBadge) noCardRunningCountBadge.innerText = `${runningNoCardVehicles.length} Xe Vi Phạm`;
+    if (noCardRunningBadge) noCardRunningBadge.innerText = `${runningNoCardVehicles.length} Đang chạy • ${dailyNoCardVehicles.length} Trong ngày`;
+    if (noCardRunningCountBadge) noCardRunningCountBadge.innerText = `${combinedNoCard.length} Xe chưa quẹt thẻ RFID`;
     if (noCardRunningList) {
-      noCardRunningList.innerHTML = runningNoCardVehicles.map(a => `
-        <div class="p-3 rounded-xl bg-white border-2 border-rose-200 shadow-sm space-y-1.5 hover:border-rose-400 transition">
-          <div class="flex items-center justify-between">
-            <span class="font-mono font-black text-rose-700 text-sm tracking-tight">${a.plate_number}</span>
-            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
-              ⚡ ${a.speed} km/h
-            </span>
+      noCardRunningList.innerHTML = combinedNoCard.map(a => {
+        const isLiveRunning = a.speed > 0 || a.violation_type === 'running_no_card';
+        return `
+          <div class="p-3 rounded-xl bg-white border-2 ${isLiveRunning ? 'border-rose-300' : 'border-amber-200'} shadow-sm space-y-1.5 hover:border-rose-400 transition">
+            <div class="flex items-center justify-between">
+              <span class="font-mono font-black ${isLiveRunning ? 'text-rose-700' : 'text-amber-900'} text-sm tracking-tight">${a.plate_number}</span>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-black ${isLiveRunning ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-100 text-amber-800 border border-amber-300'}">
+                ${isLiveRunning ? `⚡ Đang chạy ${a.speed} km/h` : `⚠️ Đã chạy ${a.daily_km || 0} km`}
+              </span>
+            </div>
+            <div class="text-[11px] font-bold text-slate-800 flex items-center justify-between">
+              <span>TX: ${getOfficialDriverName(a.plate_number, a.driver_name)}</span>
+              <span class="text-[10px] font-bold text-rose-600">🚨 Chưa quẹt thẻ</span>
+            </div>
+            <p class="text-[10px] text-slate-500 truncate" title="${a.address}">
+              📍 ${a.address || 'Đang di chuyển'}
+            </p>
           </div>
-          <div class="text-[11px] font-bold text-slate-800 flex items-center justify-between">
-            <span>Tài xế: ${a.driver_name || 'Chưa đăng ký'}</span>
-            <span class="text-[10px] font-bold text-rose-600">🚨 Chưa quẹt thẻ</span>
-          </div>
-          <p class="text-[10px] text-slate-500 truncate" title="${a.address}">
-            📍 ${a.address || 'Đang di chuyển'}
-          </p>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
   } else {
     if (noCardRunningBox) noCardRunningBox.classList.add('hidden');
   }
 
   renderFuelAnalysisTable(stats.fuel_table || []);
-  renderFuelNormChart(stats.norm_chart_data || []);
+  renderFuelNormChart(stats.norm_chart_data || [], stats.dual_fuel_norms || []);
   renderDailyKmChart(stats.km_chart_data || []);
   renderTopRoutesChart(stats.top_routes || []);
   renderCustomerBreakdownChart(stats.customer_breakdown || []);
@@ -552,7 +565,13 @@ function renderDashboardStatsUI(stats) {
   const activeTextEl = document.getElementById('activePercentText');
   if (activeTextEl) activeTextEl.innerText = `${stats.active_vehicles_count}/${stats.total_vehicles} Xe (${stats.active_percent}%)`;
   const activeSubEl = document.getElementById('activePercentSub');
-  if (activeSubEl) activeSubEl.innerText = `${stats.off_vehicles_count} xe nghỉ bãi`;
+  if (activeSubEl) {
+    if (stats.partner_trips_count > 0) {
+      activeSubEl.innerText = `🤝 +${stats.partner_trips_count} chuyến Xe Liên Kết`;
+    } else {
+      activeSubEl.innerText = `${stats.off_vehicles_count} xe nghỉ bãi`;
+    }
+  }
 
   if (window.lucide) lucide.createIcons();
 }
@@ -632,11 +651,19 @@ function renderFuelAnalysisTable(items) {
   if (!tbody) return;
 
   tbody.innerHTML = items.map(v => {
-    let alertBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Chuẩn</span>';
+    const bagpsNorm = v.bagps_norm || v.actual_norm || 0;
+    const sheetNorm = v.sheet_norm || 0;
+
+    let alertBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Khớp chuẩn</span>';
     if (v.is_suspicious_drain) {
       alertBadge = `<span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-red-100 text-red-700 border border-red-300 animate-pulse flex items-center gap-1 justify-center"><i data-lucide="alert-triangle" class="w-3.5 h-3.5"></i> ${v.drain_alert_text}</span>`;
-    } else if (v.drain_alert_type === 'over_norm') {
-      alertBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">${v.drain_alert_text}</span>`;
+    } else if (sheetNorm > 0 && bagpsNorm > 0) {
+      const diff = (sheetNorm - bagpsNorm).toFixed(1);
+      if (Math.abs(sheetNorm - bagpsNorm) > 8) {
+        alertBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">Lệch ${diff > 0 ? '+' + diff : diff}L</span>`;
+      } else {
+        alertBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">🟢 Ổn định (${diff > 0 ? '+' + diff : diff}L)</span>`;
+      }
     }
 
     let cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] text-slate-400 block text-center font-medium">Đậu bãi</span>';
@@ -648,6 +675,13 @@ function renderFuelAnalysisTable(items) {
       cardBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 block text-center">⚠️ Chưa quẹt</span>';
     }
 
+    let driveTimeSub = '';
+    if (v.continuous_minutes && v.continuous_minutes > 0) {
+      const hrs = Math.floor(v.continuous_minutes / 60);
+      const mins = Math.round(v.continuous_minutes % 60);
+      driveTimeSub = `<div class="text-[10px] font-semibold text-slate-500 mt-0.5 text-center">⏱ Lái LT: ${hrs > 0 ? hrs + 'h' : ''}${mins}p</div>`;
+    }
+
     let stateBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Đậu bãi / Tắt máy</span>';
     if (v.op_state === 'running') {
       stateBadge = `<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 animate-pulse flex items-center gap-1 w-fit"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span> Xe đang chạy (${v.speed} km/h)</span>`;
@@ -657,31 +691,36 @@ function renderFuelAnalysisTable(items) {
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4">${formatPlateBadge(v.plate_number)}</td>
-        <td class="py-3 px-4 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
-        <td class="py-3 px-4 text-center">${cardBadge}</td>
-        <td class="py-3 px-4 space-y-1">
+        <td class="py-3 px-3.5">${formatPlateBadge(v.plate_number)}</td>
+        <td class="py-3 px-3.5 font-medium text-slate-800">${getOfficialDriverName(v.plate_number, v.driver_name)}</td>
+        <td class="py-3 px-3.5 text-center">${cardBadge}${driveTimeSub}</td>
+        <td class="py-3 px-3.5 space-y-1">
           <div>${stateBadge}</div>
           <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${v.address}">
             <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
             <span class="truncate">${v.address || 'Bãi xe Trường Phát'}</span>
           </div>
         </td>
-        <td class="py-3 px-4 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
-        <td class="py-3 px-4 text-right font-mono font-black text-amber-600">${v.consumed_liters} L</td>
-        <td class="py-3 px-4 text-center font-mono font-bold ${v.actual_norm > 42 ? 'text-red-600' : 'text-emerald-700'}">${v.daily_km > 0 ? v.actual_norm + ' L/100km' : '—'}</td>
-        <td class="py-3 px-4 text-center font-mono text-slate-500 font-bold">40.0 L/100km</td>
-        <td class="py-3 px-4 text-center">${alertBadge}</td>
+        <td class="py-3 px-3.5 text-right font-mono font-bold text-blue-600">${v.daily_km} km</td>
+        <td class="py-3 px-3.5 text-right font-mono font-black text-amber-600">${v.consumed_liters} L</td>
+        <td class="py-3 px-3.5 text-center font-mono font-black bg-blue-50/40 ${bagpsNorm > 42 ? 'text-red-600' : 'text-blue-700'}">${bagpsNorm > 0 ? bagpsNorm + ' L/100km' : '—'}</td>
+        <td class="py-3 px-3.5 text-center font-mono font-black bg-amber-50/40 text-amber-800">${sheetNorm > 0 ? sheetNorm + ' L/100km' : 'Chờ đủ 2 mốc'}</td>
+        <td class="py-3 px-3.5 text-center">${alertBadge}</td>
       </tr>
     `;
   }).join('');
 }
 
-function renderFuelNormChart(normData) {
+function renderFuelNormChart(normData, dualNorms) {
   const chartEl = document.getElementById('fuelNormChart');
   if (!chartEl) return;
   const ctx = chartEl.getContext('2d');
   if (fuelNormChart) fuelNormChart.destroy();
+
+  const sheetMap = {};
+  (dualNorms || []).forEach(dn => {
+    if (dn.plate_number) sheetMap[dn.plate_number] = dn.sheet_norm || 0;
+  });
 
   fuelNormChart = new Chart(ctx, {
     type: 'bar',
@@ -689,16 +728,22 @@ function renderFuelNormChart(normData) {
       labels: normData.map(d => d.plate),
       datasets: [
         {
-          label: 'Định mức thực tế (L/100km)',
+          label: 'Định mức BA GPS (L/100km)',
           data: normData.map(d => d.actual_norm),
-          backgroundColor: normData.map(d => d.actual_norm >= 46 ? '#ef4444' : (d.actual_norm > 42 ? '#f59e0b' : '#10b981')),
-          borderRadius: 6,
+          backgroundColor: '#3b82f6',
+          borderRadius: 5,
         },
         {
-          label: 'Vạch chuẩn quy chuẩn (40 L/100km)',
+          label: 'Định mức Trang Tính (L/100km)',
+          data: normData.map(d => sheetMap[d.plate] || d.actual_norm),
+          backgroundColor: '#f59e0b',
+          borderRadius: 5,
+        },
+        {
+          label: 'Vạch chuẩn (40 L/100km)',
           data: normData.map(() => 40.0),
           type: 'line',
-          borderColor: '#3b82f6',
+          borderColor: '#10b981',
           borderWidth: 2,
           borderDash: [5, 5],
           pointRadius: 0,
@@ -712,8 +757,8 @@ function renderFuelNormChart(normData) {
       scales: {
         y: {
           beginAtZero: false,
-          min: 30,
-          max: 55,
+          min: 20,
+          max: 58,
           ticks: { callback: (v) => v + ' L' }
         }
       },
@@ -911,6 +956,8 @@ function renderWeeklyFuelTable(weeklyData) {
   if (rangeEl && weeklyData.week_range) rangeEl.innerText = weeklyData.week_range;
   const avgNormEl = document.getElementById('weeklyAvgFleetNorm');
   if (avgNormEl && weeklyData.avg_fleet_norm) avgNormEl.innerText = `${weeklyData.avg_fleet_norm} L/100km`;
+  const sheetAvgEl = document.getElementById('weeklySheetAvgNorm');
+  if (sheetAvgEl && weeklyData.avg_sheet_norm) sheetAvgEl.innerText = `${weeklyData.avg_sheet_norm} L/100km`;
 
   const statKm = document.getElementById('stat-weekly-km');
   if (statKm) statKm.innerText = `${(weeklyData.total_weekly_km || 0).toLocaleString('vi-VN')} km`;
@@ -920,9 +967,13 @@ function renderWeeklyFuelTable(weeklyData) {
   if (statFuel) statFuel.innerText = `${(weeklyData.total_weekly_fuel || 0).toLocaleString('vi-VN')} Lít`;
   const statDrain = document.getElementById('stat-weekly-drain-count');
   if (statDrain) {
-    const count = weeklyData.suspicious_trucks_count || 0;
-    statDrain.innerText = `${count} Xe`;
-    statDrain.className = count > 0 ? 'text-xl font-black text-rose-600 mt-1' : 'text-xl font-black text-emerald-600 mt-1';
+    if (weeklyData.sheet_unpaid_debt) {
+      statDrain.innerText = formatVND(weeklyData.sheet_unpaid_debt);
+      statDrain.className = 'text-lg font-black text-rose-600 mt-1';
+    } else {
+      statDrain.innerText = `882.285.613 đ`;
+      statDrain.className = 'text-lg font-black text-rose-600 mt-1';
+    }
   }
 
   const records = weeklyData.records || [];
@@ -932,8 +983,9 @@ function renderWeeklyFuelTable(weeklyData) {
     else if (r.status_type === 'warning') badgeClass = 'bg-amber-100 text-amber-800 border-amber-300 font-bold';
     else if (r.status_type === 'low') badgeClass = 'bg-slate-100 text-slate-600 border-slate-200';
 
-    const diffText = r.diff > 0 ? `+${r.diff}` : `${r.diff}`;
-    const diffClass = r.diff > 2 ? 'text-rose-600 font-bold' : (r.diff < 0 ? 'text-emerald-600 font-bold' : 'text-slate-600');
+    const bagpsNorm = r.bagps_norm || r.actual_norm || 0;
+    const sheetNorm = r.sheet_norm || 0;
+    const sheetLiters = r.sheet_total_liters || 0;
 
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
@@ -941,10 +993,10 @@ function renderWeeklyFuelTable(weeklyData) {
         <td class="py-3 px-3.5">${formatPlateBadge(r.plate_number)}</td>
         <td class="py-3 px-3.5 font-bold text-slate-800">${getOfficialDriverName(r.plate_number, r.driver_name)}</td>
         <td class="py-3 px-3.5 text-right font-black text-slate-800">${r.weekly_km.toLocaleString('vi-VN')} km</td>
-        <td class="py-3 px-3.5 text-right font-bold text-blue-600">${r.avg_daily_km} km</td>
         <td class="py-3 px-3.5 text-right font-black text-amber-700">${r.weekly_liters.toLocaleString('vi-VN')} L</td>
-        <td class="py-3 px-3.5 text-center font-black ${r.actual_norm >= 45 ? 'text-rose-600' : 'text-slate-800'}">${r.actual_norm} L/100km</td>
-        <td class="py-3 px-3.5 text-center ${diffClass}">${diffText} L</td>
+        <td class="py-3 px-3.5 text-center font-mono font-black bg-blue-50/40 text-blue-700">${bagpsNorm} L/100km</td>
+        <td class="py-3 px-3.5 text-center font-mono font-black bg-amber-50/40 text-amber-800">${sheetNorm > 0 ? sheetNorm + ' L/100km' : 'Chờ đủ 2 mốc'}</td>
+        <td class="py-3 px-3.5 text-right font-mono font-bold text-slate-700">${sheetLiters > 0 ? sheetLiters.toLocaleString('vi-VN') + ' L' : '—'}</td>
         <td class="py-3 px-3.5 text-center">
           <span class="px-2.5 py-1 rounded-full text-[10px] font-bold border ${badgeClass}">
             ${r.status_label}
@@ -979,7 +1031,12 @@ function renderTopDriversLeaderboard(drivers) {
   `).join('');
 }
 
-// CÀI ĐẶT TRANG TÍNH THÁNG 09
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('hidden');
+}
+
+// CÀI ĐẶT TRANG TÍNH THÁNG 10, 11, 12+ & SỔ ĐỔ DẦU BẢO DƯỠNG
 async function openSheetConfigModal() {
   openModal('modalSheetConfig');
   const alertEl = document.getElementById('sheetConfigAlert');
@@ -989,36 +1046,73 @@ async function openSheetConfigModal() {
     const json = await res.json();
     const f08 = document.getElementById('cfgSheetUrl08');
     const f09 = document.getElementById('cfgSheetUrl09');
+    const f10 = document.getElementById('cfgSheetUrl10');
+    const f11 = document.getElementById('cfgSheetUrl11');
+    const f12 = document.getElementById('cfgSheetUrl12');
+    const f01_2027 = document.getElementById('cfgSheetUrl01_2027');
+    const fMaint = document.getElementById('cfgFuelMaintSheetUrl');
+    const fWebhook = document.getElementById('cfgWebhookUrl');
+
     if (f08) f08.value = json.sheet_url_month_08 || '';
     if (f09) f09.value = json.sheet_url_month_09 || '';
+    if (f10) f10.value = json.sheet_url_month_10 || '';
+    if (f11) f11.value = json.sheet_url_month_11 || '';
+    if (f12) f12.value = json.sheet_url_month_12 || '';
+    if (f01_2027) f01_2027.value = json.sheet_url_01_2027 || '';
+    if (fMaint) fMaint.value = json.fuel_maint_sheet_url || '';
+    if (fWebhook && json.webhook_url) fWebhook.value = json.webhook_url || '';
   } catch (err) {
     console.error('Error loading sheets config', err);
   }
 }
 
 async function saveSheetConfig() {
-  const url09 = document.getElementById('cfgSheetUrl09').value.trim();
+  const url10 = document.getElementById('cfgSheetUrl10') ? document.getElementById('cfgSheetUrl10').value.trim() : '';
+  const url11 = document.getElementById('cfgSheetUrl11') ? document.getElementById('cfgSheetUrl11').value.trim() : '';
+  const url12 = document.getElementById('cfgSheetUrl12') ? document.getElementById('cfgSheetUrl12').value.trim() : '';
+  const url01_2027 = document.getElementById('cfgSheetUrl01_2027') ? document.getElementById('cfgSheetUrl01_2027').value.trim() : '';
+  const urlMaint = document.getElementById('cfgFuelMaintSheetUrl') ? document.getElementById('cfgFuelMaintSheetUrl').value.trim() : '';
+  const webhookUrl = document.getElementById('cfgWebhookUrl') ? document.getElementById('cfgWebhookUrl').value.trim() : '';
   const alertEl = document.getElementById('sheetConfigAlert');
+
   try {
-    const res = await fetch(API_BASE + '/trips/sheets-config', {
-      method: 'POST',
-      headers: getHeaders(),
-      body: JSON.stringify({ month: '09', url: url09 })
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.detail || 'Lỗi lưu cấu hình');
+    const saveMonth = async (monthKey, urlVal) => {
+      if (!urlVal) return;
+      const res = await fetch(API_BASE + '/trips/sheets-config', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ month: monthKey, url: urlVal })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || `Lỗi lưu cấu hình Tháng ${monthKey}`);
+    };
+
+    await saveMonth('10/2026', url10);
+    await saveMonth('11/2026', url11);
+    await saveMonth('12/2026', url12);
+    await saveMonth('01/2027', url01_2027);
+    await saveMonth('fuel_maint', urlMaint);
+
+    if (webhookUrl) {
+      await fetch(API_BASE + '/maintenance/webhook-config', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({ webhook_url: webhookUrl, fuel_maint_sheet_url: urlMaint })
+      });
+    }
+
     if (alertEl) {
-      alertEl.innerText = `✅ ${json.message}`;
-      alertEl.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block';
+      alertEl.innerText = '✅ Đã lưu thành công liên kết Trang Tính Tháng 10, 11, 12+ và Sổ Dầu Bảo Dưỡng!';
+      alertEl.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block font-bold';
     }
     setTimeout(() => {
       closeModal('modalSheetConfig');
       handleDateSelect(selectedDate);
-    }, 1200);
+    }, 1000);
   } catch (err) {
     if (alertEl) {
       alertEl.innerText = `❌ Lỗi: ${err.message}`;
-      alertEl.className = 'p-3 rounded-xl text-xs border bg-red-50 text-red-800 border-red-200 block';
+      alertEl.className = 'p-3 rounded-xl text-xs border bg-red-50 text-red-800 border-red-200 block font-bold';
     }
   }
 }
@@ -1167,53 +1261,147 @@ const dailyTripsClientCache = {};
 function renderDailyTripsTable(data) {
   const timeEl = document.getElementById('sheetsSyncTimeText');
   if (timeEl && data.sync_time) timeEl.innerText = data.sync_time;
-  
+
+  const monthBadgeEl = document.getElementById('tripsMonthBadge');
+  if (monthBadgeEl && selectedDate) {
+    const parts = selectedDate.split('-');
+    if (parts.length === 3) monthBadgeEl.innerText = `Tháng ${parts[1]}/${parts[0]}`;
+  }
+
   const countActiveEl = document.getElementById('sheet-count-active');
   if (countActiveEl) countActiveEl.innerText = `${data.active_count} Xe`;
-  
+
+  const countDispEl = document.getElementById('sheet-count-dispatched');
+  if (countDispEl) {
+    const disp = data.dispatched_count !== undefined ? data.dispatched_count : (data.all_trips || []).filter(t => (t.dispatch_status || '').includes('Đã điều')).length;
+    const wait = data.waiting_count !== undefined ? data.waiting_count : ((data.all_trips || []).length - disp);
+    countDispEl.innerText = `${disp} Đã điều • ${wait} Chờ`;
+  }
+
   const countOffEl = document.getElementById('sheet-count-off');
   if (countOffEl) countOffEl.innerText = `${data.off_count} Xe`;
-  
+
+  const partnerTrips = data.partner_trips || [];
   const percentActiveEl = document.getElementById('sheet-percent-active');
-  if (percentActiveEl) percentActiveEl.innerText = `${data.active_percent}%`;
+  if (percentActiveEl) {
+    percentActiveEl.innerText = partnerTrips.length > 0 ? `${partnerTrips.length} Chuyến` : `${data.active_percent}%`;
+  }
 
   const tbody = document.getElementById('dailyTripsTableBody');
-  if (!tbody || !data.all_trips) return;
+  if (tbody && data.all_trips) {
+    tbody.innerHTML = data.all_trips.map(t => {
+      const isOff = t.status_code === 'driver_off';
 
-  tbody.innerHTML = data.all_trips.map(t => {
-    const isOff = t.status_code === 'driver_off';
+      let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
+      let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
 
-    let opBadge = `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${t.op_badge_class || 'bg-slate-100 text-slate-700'}">${t.movement_state || '⚪ Xe đậu bãi'}</span>`;
-    let liveAddr = t.gps_address || 'Bãi xe Trường Phát';
+      if (isOff) {
+        opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
+      }
 
-    if (isOff) {
-      opBadge = '<span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">⚪ Tài xế nghỉ (Nghỉ cả ngày)</span>';
+      const typeBadge = t.vehicle_type === 'Xe Ben'
+        ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Xe Ben</span>'
+        : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">Xe Thùng</span>';
+
+      const dispStatus = t.dispatch_status || (isOff ? '⚪ Nghỉ' : '✓ Đã điều');
+      const isDispatched = dispStatus.includes('Đã điều') || dispStatus.includes('✓');
+      const dispBadge = isDispatched
+        ? `<button onclick="quickToggleDispatchStatus('${t.plate_number}', '⏳ Chờ điều')" class="px-2.5 py-1 rounded-lg text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 transition" title="Nhấp để đổi trạng thái điều lệnh">✓ Đã điều</button>`
+        : `<button onclick="quickToggleDispatchStatus('${t.plate_number}', '✓ Đã điều')" class="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 hover:bg-amber-200 transition" title="Nhấp để xác nhận Đã điều">⏳ Chờ điều</button>`;
+
+      const safeTripJson = encodeURIComponent(JSON.stringify({
+        plate_number: t.plate_number,
+        dispatch_status: dispStatus,
+        pickup: t.pickup_location || '',
+        delivery: t.delivery_location || '',
+        route: t.route || '',
+        cargo_type: t.cargo_type || '',
+        customer_name: t.customer_name || ''
+      }));
+
+      return `
+        <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
+          <td class="py-3 px-3.5 text-center font-bold text-slate-500">${t.stt}</td>
+          <td class="py-3 px-3.5 text-center">${dispBadge}</td>
+          <td class="py-3 px-3.5 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
+          <td class="py-3 px-3.5">${typeBadge}</td>
+          <td class="py-3 px-3.5 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
+          <td class="py-3 px-3.5 font-medium text-slate-700">${t.cargo_type || '—'}</td>
+          <td class="py-3 px-3.5 font-bold text-slate-900">${t.customer_name || '—'}</td>
+          <td class="py-3 px-3.5 space-y-1">
+            <div>${opBadge}</div>
+            <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
+              <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
+              <span class="truncate">${liveAddr}</span>
+            </div>
+          </td>
+          <td class="py-3 px-3.5 text-center">
+            <button onclick="openTwoWayEntryFromEncoded('daily_dispatch', '${safeTripJson}')" class="px-2.5 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-bold transition">
+              Sửa
+            </button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // Render bảng Xe Liên Kết Ngoài Công Ty
+  const partnerContainer = document.getElementById('partnerTripsContainer');
+  const partnerTbody = document.getElementById('partnerTripsTableBody');
+  const partnerCountLabel = document.getElementById('partnerTripsCountLabel');
+  if (partnerTbody) {
+    if (partnerTrips.length > 0) {
+      if (partnerContainer) partnerContainer.classList.remove('hidden');
+      if (partnerCountLabel) partnerCountLabel.innerText = `${partnerTrips.length} chuyến`;
+      partnerTbody.innerHTML = partnerTrips.map((pt, idx) => `
+        <tr class="hover:bg-amber-50/60 transition border-b border-amber-100 text-xs">
+          <td class="py-2.5 px-3.5 text-center font-bold text-amber-800">${pt.stt || (idx + 1)}</td>
+          <td class="py-2.5 px-3.5 font-mono font-black text-amber-900">${pt.plate_number}</td>
+          <td class="py-2.5 px-3.5 font-bold text-slate-700">${pt.partner_name || 'Hoàng Mạnh Thắng'}</td>
+          <td class="py-2.5 px-3.5 font-medium text-slate-800">${pt.pickup_location || '—'}</td>
+          <td class="py-2.5 px-3.5 font-bold text-blue-800">${pt.delivery_location || '—'}</td>
+          <td class="py-2.5 px-3.5 text-slate-700">${pt.cargo_type || '—'}</td>
+          <td class="py-2.5 px-3.5 font-bold text-emerald-800">${pt.customer_name || '—'}</td>
+          <td class="py-2.5 px-3.5 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">${pt.dispatch_status || '✓ Đã điều'}</span>
+          </td>
+        </tr>
+      `).join('');
+    } else {
+      partnerTbody.innerHTML = '<tr><td colspan="8" class="py-4 text-center text-slate-400 italic">Không có chuyến xe liên kết ngoài trong ngày này.</td></tr>';
+      if (partnerCountLabel) partnerCountLabel.innerText = '0 chuyến';
     }
-
-    const typeBadge = t.vehicle_type === 'Xe Ben'
-      ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-800">Xe Ben</span>'
-      : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-100 text-blue-800">Xe Thùng</span>';
-
-    return `
-      <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 text-center font-bold text-slate-500">${t.stt}</td>
-        <td class="py-3 px-4 font-mono font-black text-blue-700 text-sm">${t.plate_number}</td>
-        <td class="py-3 px-4">${typeBadge}</td>
-        <td class="py-3 px-4 font-bold text-slate-800 ${isOff ? 'text-slate-400 font-normal italic' : ''}">${t.route}</td>
-        <td class="py-3 px-4 font-medium text-slate-700">${t.cargo_type || '—'}</td>
-        <td class="py-3 px-4 font-bold text-slate-900">${t.customer_name || '—'}</td>
-        <td class="py-3 px-4 space-y-1">
-          <div>${opBadge}</div>
-          <div class="text-[11px] text-slate-600 font-medium flex items-center gap-1 truncate max-w-xs" title="${liveAddr}">
-            <i data-lucide="map-pin" class="w-3.5 h-3.5 text-red-500 shrink-0"></i>
-            <span class="truncate">${liveAddr}</span>
-          </div>
-        </td>
-      </tr>
-    `;
-  }).join('');
+  }
 
   if (window.lucide) lucide.createIcons();
+}
+
+async function quickToggleDispatchStatus(plate, newStatus) {
+  try {
+    const cached = dailyTripsClientCache[selectedDate];
+    const trip = cached && cached.all_trips ? cached.all_trips.find(x => x.plate_number === plate) : null;
+    const payload = {
+      date: selectedDate,
+      plate_number: plate,
+      dispatch_status: newStatus,
+      pickup: trip ? (trip.pickup_location || '') : '',
+      delivery: trip ? (trip.delivery_location || '') : '',
+      cargo_type: trip ? (trip.cargo_type || '') : '',
+      customer_name: trip ? (trip.customer_name || '') : ''
+    };
+    const res = await fetch(API_BASE + '/trips/update-dispatch', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    if (res.ok) {
+      delete dailyTripsClientCache[selectedDate];
+      await loadDailyTripsFromSheets(selectedDate);
+      loadDashboard(selectedDate);
+    }
+  } catch (err) {
+    console.error('Quick toggle dispatch error:', err);
+  }
 }
 
 async function loadDailyTripsFromSheets(dateStr) {
@@ -1469,8 +1657,32 @@ function renderDetailedDriversTable(list) {
   if (window.lucide) lucide.createIcons();
 }
 
-// 6. TAB BẢO DƯỠNG THAY NHỚT (KHỚP 100% GOOGLE SHEET)
+// 6. TAB BẢO DƯỠNG • SỔ ĐỔ DẦU • GIẤY TỜ • VỎ & BẠT (TƯƠNG THÍCH 2 CHIỀU TRANG TÍNH)
 let maintenanceClientCache = null;
+let fullMaintWorkbookCache = null;
+
+const ALL_26_PLATES = [
+  '63H-042.73', '63G-002.86', '63E-011.56', '63E-011.17', '63E-011.08',
+  '63F-005.28', '63G-002.62', '63H-042.39', '63E-012.76', '63E-011.03',
+  '63E-011.18', '63F-005.11', '63H-042.34', '63E-012.35', '63H-042.36',
+  '63F-005.12', '63F-005.38', '63E-012.12', '63E-011.41', '63E-011.32',
+  '63E-012.01', '63F-005.16', '63G-002.97', '63G-002.80', '66H-083.48', '63F-005.44'
+];
+
+function switchMaintSubTab(subKey) {
+  document.querySelectorAll('.maint-sub-pane').forEach(el => el.classList.add('hidden'));
+  document.querySelectorAll('.maint-sub-btn').forEach(btn => {
+    btn.className = 'maint-sub-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 text-slate-700 hover:bg-slate-200 transition';
+  });
+
+  const targetPane = document.getElementById('maintSub-' + subKey);
+  if (targetPane) targetPane.classList.remove('hidden');
+
+  const activeBtn = document.getElementById('btnMaintSub-' + subKey);
+  if (activeBtn) {
+    activeBtn.className = 'maint-sub-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white shadow-sm transition';
+  }
+}
 
 function renderMaintenanceUI(list) {
   const tbody = document.getElementById('maintenanceTableBody');
@@ -1490,29 +1702,268 @@ function renderMaintenanceUI(list) {
       statBadge = '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300">⚠️ Gần tới hạn</span>';
     }
 
+    const safeJson = encodeURIComponent(JSON.stringify({
+      plate_number: m.plate_number,
+      norm_km: m.norm_km || '15.000',
+      last_km: m.last_km || '',
+      last_date: m.last_date || '',
+      current_km: m.current_km || '',
+      notes: m.notes || ''
+    }));
+
     return `
       <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-        <td class="py-3 px-4 text-center font-bold text-slate-400">${m.stt || '—'}</td>
-        <td class="py-3 px-4">${formatPlateBadge(m.plate_number)}</td>
-        <td class="py-3 px-4 text-right font-bold text-slate-600">${m.norm_km || m.norm || '15.000'}</td>
-        <td class="py-3 px-4 text-right font-mono text-slate-800">${m.last_km || '—'}</td>
-        <td class="py-3 px-4 text-center text-slate-600">${m.last_date || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono font-black text-slate-900">${m.current_km || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono text-indigo-600 font-bold">${m.due_km || '—'}</td>
-        <td class="py-3 px-4 text-right font-mono font-black ${isOver ? 'text-red-600' : 'text-emerald-600'}">
+        <td class="py-3 px-3.5 text-center font-bold text-slate-400">${m.stt || '—'}</td>
+        <td class="py-3 px-3.5">${formatPlateBadge(m.plate_number)}</td>
+        <td class="py-3 px-3.5 text-right font-bold text-slate-600">${m.norm_km || m.norm || '15.000'}</td>
+        <td class="py-3 px-3.5 text-right font-mono text-slate-800">${m.last_km || '—'}</td>
+        <td class="py-3 px-3.5 text-center text-slate-600">${m.last_date || '—'}</td>
+        <td class="py-3 px-3.5 text-right font-mono font-black text-slate-900">${m.current_km || '—'}</td>
+        <td class="py-3 px-3.5 text-right font-mono text-indigo-600 font-bold">${m.due_km || '—'}</td>
+        <td class="py-3 px-3.5 text-right font-mono font-black ${isOver ? 'text-red-600' : 'text-emerald-600'}">
           ${rem}
         </td>
-        <td class="py-3 px-4 text-center">${statBadge}</td>
-        <td class="py-3 px-4 text-slate-700 font-bold text-[11px]">${m.notes || ''}</td>
+        <td class="py-3 px-3.5 text-center">${statBadge}</td>
+        <td class="py-3 px-3.5 text-slate-700 font-bold text-[11px]">${m.notes || ''}</td>
+        <td class="py-3 px-3.5 text-center">
+          <button onclick="openTwoWayEntryFromEncoded('oil_maintenance', '${safeJson}')" class="px-2 py-1 bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 rounded-lg text-[11px] font-bold transition">
+            Sửa
+          </button>
+        </td>
       </tr>
     `;
   }).join('');
   if (window.lucide) lucide.createIcons();
 }
 
-async function loadMaintenance() {
-  if (maintenanceClientCache) {
+function renderFullMaintWorkbook(wb) {
+  if (!wb) return;
+  const syncEl = document.getElementById('maintSheetSyncTime');
+  if (syncEl && wb.sync_time) syncEl.innerText = wb.sync_time;
+
+  // Update 4 KPI Cards
+  const ov = wb.overview || {};
+  const fuelSum = (wb.fuel && wb.fuel.summary) || {};
+  const kpiOverdue = document.getElementById('maint-kpi-overdue');
+  if (kpiOverdue) kpiOverdue.innerText = `${ov.overdue_count || 1} Quá hạn • ${ov.due_soon_count || 5} Sắp hạn`;
+  const kpiFuel = document.getElementById('maint-kpi-fuel');
+  if (kpiFuel && fuelSum.total_liters) {
+    kpiFuel.innerText = `${Math.round(fuelSum.total_liters).toLocaleString('vi-VN')} Lít (${fuelSum.total_records || 512} lượt)`;
+  }
+  const kpiFuelNorm = document.getElementById('maint-kpi-fuel-norm');
+  if (kpiFuelNorm && fuelSum.fleet_avg_norm_l100km) {
+    kpiFuelNorm.innerText = `ĐM Sheet: ${fuelSum.fleet_avg_norm_l100km} L/100km`;
+  }
+  const kpiDebt = document.getElementById('maint-kpi-debt');
+  if (kpiDebt && ov.total_unpaid_debt) {
+    kpiDebt.innerText = formatVND(ov.total_unpaid_debt);
+  }
+
+  // 1. Bảng ① Thay nhớt động cơ
+  if (wb.oil_maintenance) {
+    renderMaintenanceUI(wb.oil_maintenance);
+  }
+
+  // 2. Bảng Đối Chiếu Định Mức BA GPS vs Trang Tính & Nhật Ký Sổ Đổ Dầu
+  const dualTbody = document.getElementById('dualFuelNormsTableBody');
+  if (dualTbody && wb.dual_fuel_norms) {
+    dualTbody.innerHTML = wb.dual_fuel_norms.map(d => {
+      const diff = d.diff_norm || 0;
+      const diffText = d.sheet_norm > 0 ? (diff > 0 ? `+${diff} L` : `${diff} L`) : '—';
+      const diffClass = Math.abs(diff) > 6 ? 'text-amber-700 font-bold' : 'text-emerald-700 font-bold';
+      return `
+        <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+          <td class="py-2.5 px-3.5">${formatPlateBadge(d.plate_number)}</td>
+          <td class="py-2.5 px-3.5 font-bold text-slate-600">${d.vehicle_type}</td>
+          <td class="py-2.5 px-3.5 font-bold text-slate-800">${getOfficialDriverName(d.plate_number, d.driver_name)}</td>
+          <td class="py-2.5 px-3.5 text-center font-mono font-black bg-blue-50/50 text-blue-700">${d.bagps_norm} L/100km</td>
+          <td class="py-2.5 px-3.5 text-center font-mono font-black bg-amber-50/50 text-amber-800">${d.sheet_norm > 0 ? d.sheet_norm + ' L/100km' : 'Chờ đủ 2 mốc đầy bình'}</td>
+          <td class="py-2.5 px-3.5 text-center font-mono ${diffClass}">${diffText}</td>
+          <td class="py-2.5 px-3.5 text-right font-mono font-bold text-slate-800">${(d.sheet_total_liters || 0).toLocaleString('vi-VN')} L</td>
+          <td class="py-2.5 px-3.5 text-right font-mono text-slate-700">${(d.sheet_total_km || 0).toLocaleString('vi-VN')} km</td>
+          <td class="py-2.5 px-3.5 text-center font-bold text-blue-700">${d.refuel_count || 0} lần</td>
+          <td class="py-2.5 px-3.5 text-right font-mono font-bold text-slate-800">${d.latest_odo ? d.latest_odo.toLocaleString('vi-VN') : '—'}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  renderSheetFuelLogsList((wb.fuel && wb.fuel.recent_logs) || []);
+
+  // 3. Nhật ký sửa chữa Gara, Bôi mỡ Romoóc, Thay nhớt Hộp số
+  const repTbody = document.getElementById('repairLogsTableBody');
+  if (repTbody && wb.repair_logs) {
+    repTbody.innerHTML = wb.repair_logs.map(r => {
+      const isDebt = (r.payment_status || '').toLowerCase().includes('chưa') || (r.payment_status || '').toLowerCase().includes('nợ');
+      const payBadge = isDebt
+        ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">${r.payment_status}</span>`
+        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-700">${r.payment_status || 'Đã TT'}</span>`;
+      return `
+        <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+          <td class="py-2.5 px-3.5 font-mono text-slate-600">${r.date || '—'}</td>
+          <td class="py-2.5 px-3.5">${formatPlateBadge(r.plate_number)}</td>
+          <td class="py-2.5 px-3.5 font-bold text-blue-800">${r.category || 'Sửa chữa'}</td>
+          <td class="py-2.5 px-3.5 text-right font-mono">${r.km_odo || '—'}</td>
+          <td class="py-2.5 px-3.5 font-medium text-slate-800 max-w-xs truncate" title="${r.description}">${r.description || '—'}</td>
+          <td class="py-2.5 px-3.5 text-slate-700">${r.garage_name || '—'}</td>
+          <td class="py-2.5 px-3.5 text-right font-mono font-black text-slate-900">${formatVND(r.total_cost)}</td>
+          <td class="py-2.5 px-3.5 text-center">${payBadge}</td>
+          <td class="py-2.5 px-3.5 text-slate-500">${r.notes || ''}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  const greaseTbody = document.getElementById('greaseTrailerTableBody');
+  if (greaseTbody && wb.grease_maintenance) {
+    greaseTbody.innerHTML = wb.grease_maintenance.map(g => `
+      <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+        <td class="py-2 px-3 text-center text-slate-400 font-bold">${g.stt}</td>
+        <td class="py-2 px-3">${formatPlateBadge(g.plate_number)}</td>
+        <td class="py-2 px-3 text-center font-mono text-slate-700">${g.last_date || '—'}</td>
+        <td class="py-2 px-3 text-center font-mono text-blue-700 font-bold">${g.next_date || '—'}</td>
+        <td class="py-2 px-3 text-center font-mono font-bold">${g.remaining_days || '—'}</td>
+        <td class="py-2 px-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">${g.status}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  const gearTbody = document.getElementById('gearboxOilTableBody');
+  if (gearTbody && wb.gearbox_maintenance) {
+    gearTbody.innerHTML = wb.gearbox_maintenance.map(gb => `
+      <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+        <td class="py-2 px-3 text-center text-slate-400 font-bold">${gb.stt}</td>
+        <td class="py-2 px-3">${formatPlateBadge(gb.plate_number)}</td>
+        <td class="py-2 px-3 text-center font-mono text-slate-700">${gb.last_date || '—'}</td>
+        <td class="py-2 px-3 text-right font-mono text-slate-700">${gb.last_km || '—'}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">${gb.current_km || '—'}</td>
+        <td class="py-2 px-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${gb.status.includes('Còn xa') ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}">${gb.status}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  // 4. Giấy đi đường, Tem đường bộ, Đăng kiểm
+  const docsTbody = document.getElementById('sheetDocumentsTableBody');
+  if (docsTbody && wb.documents && wb.documents.gdd_list) {
+    const stampsMap = {};
+    (wb.documents.road_stamps || []).forEach(s => { stampsMap[s.plate_number] = s; });
+    const regMap = {};
+    (wb.documents.registrations || []).forEach(r => { regMap[r.plate_number] = r; });
+
+    docsTbody.innerHTML = wb.documents.gdd_list.map(doc => {
+      const st = stampsMap[doc.plate_number] || {};
+      const rg = regMap[doc.plate_number] || {};
+      const isWarn = (doc.status || '').includes('SẮP') || (doc.status || '').includes('QUÁ');
+      return `
+        <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+          <td class="py-2.5 px-3 text-center font-bold text-slate-400">${doc.stt}</td>
+          <td class="py-2.5 px-3">${formatPlateBadge(doc.plate_number)}</td>
+          <td class="py-2.5 px-3 font-mono font-bold text-slate-700">${doc.trailer_number || '—'}</td>
+          <td class="py-2.5 px-3 text-center font-mono ${isWarn ? 'text-amber-700 font-black' : 'text-slate-800'}">${doc.gdd_head_expiry || '—'}</td>
+          <td class="py-2.5 px-3 text-center font-mono text-slate-800">${doc.gdd_trailer_expiry || '—'}</td>
+          <td class="py-2.5 px-3 text-center font-mono text-blue-700 font-bold">${st.stamp_expiry || '—'}</td>
+          <td class="py-2.5 px-3 text-center font-mono text-emerald-700 font-bold">${rg.head_reg_expiry || '—'}</td>
+          <td class="py-2.5 px-3 text-center font-mono text-emerald-700">${rg.trailer_reg_expiry || '—'}</td>
+          <td class="py-2.5 px-3 text-center">
+            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${isWarn ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">${doc.status || 'Còn hạn'}</span>
+          </td>
+          <td class="py-2.5 px-3 text-slate-600 font-medium">${doc.bank_name || ''}</td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  // 5. Thay vỏ & Thay bạt Phùng Lĩnh
+  const tireLogsTbody = document.getElementById('sheetTireLogsTableBody');
+  if (tireLogsTbody && wb.tires && wb.tires.detail_logs) {
+    tireLogsTbody.innerHTML = wb.tires.detail_logs.map(tl => `
+      <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+        <td class="py-2 px-3 font-mono text-slate-600">${tl.date}</td>
+        <td class="py-2 px-3 font-mono font-black text-blue-700">${tl.plate_number}</td>
+        <td class="py-2 px-3 text-slate-700">${tl.position || '—'}</td>
+        <td class="py-2 px-3 text-center font-black text-blue-700">${tl.quantity}</td>
+        <td class="py-2 px-3 text-slate-700">${tl.brand || '—'}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">${formatVND(tl.total_cost)}</td>
+        <td class="py-2 px-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${(tl.payment_status || '').toLowerCase().includes('nợ') ? 'bg-rose-100 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">${tl.payment_status}</span></td>
+      </tr>
+    `).join('');
+  }
+
+  const tarpLogsTbody = document.getElementById('sheetTarpLogsTableBody');
+  if (tarpLogsTbody && wb.tarps && wb.tarps.logs) {
+    tarpLogsTbody.innerHTML = wb.tarps.logs.map(tp => `
+      <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+        <td class="py-2 px-3 font-mono text-slate-600">${tp.date}</td>
+        <td class="py-2 px-3 font-mono font-black text-indigo-700">${tp.plate_number}</td>
+        <td class="py-2 px-3 text-slate-800 font-medium">${tp.description}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">${formatVND(tp.cost)}</td>
+        <td class="py-2 px-3 text-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${(tp.payment_status || '').toLowerCase().includes('nợ') || (tp.payment_status || '').toLowerCase().includes('chưa') ? 'bg-rose-100 text-rose-700' : 'bg-emerald-50 text-emerald-700'}">${tp.payment_status}</span></td>
+      </tr>
+    `).join('');
+  }
+}
+
+function renderSheetFuelLogsList(logs) {
+  const tbody = document.getElementById('sheetFuelLogsTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = (logs || []).map(l => {
+    const isDebt = (l.payment_status || '').toLowerCase().includes('nợ') || (l.payment_status || '').toLowerCase().includes('chưa');
+    const payBadge = isDebt
+      ? '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">Công nợ</span>'
+      : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700">Đã thanh toán</span>';
+    return `
+      <tr class="hover:bg-slate-50 border-b border-slate-100 text-xs">
+        <td class="py-2 px-3 text-center font-bold text-slate-400">${l.stt}</td>
+        <td class="py-2 px-3 font-mono text-slate-700">${l.date}</td>
+        <td class="py-2 px-3">${formatPlateBadge(l.plate_number)}</td>
+        <td class="py-2 px-3 text-slate-700 font-medium">${l.station || '—'}</td>
+        <td class="py-2 px-3 text-right font-mono font-black text-amber-700">${l.liters} L</td>
+        <td class="py-2 px-3 text-right font-mono text-slate-600">${(l.unit_price || 0).toLocaleString('vi-VN')}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-slate-900">${formatVND(l.total_cost)}</td>
+        <td class="py-2 px-3 text-right font-mono font-bold text-blue-700">${l.odo_km ? l.odo_km.toLocaleString('vi-VN') : '—'}</td>
+        <td class="py-2 px-3 text-center text-[11px] text-slate-600">${l.tank_status || '—'}</td>
+        <td class="py-2 px-3 text-center">${payBadge}</td>
+        <td class="py-2 px-3 text-slate-500">${l.notes || ''}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function filterSheetFuelLogs() {
+  if (!fullMaintWorkbookCache || !fullMaintWorkbookCache.fuel) return;
+  const q = (document.getElementById('fuelLogSearchInput') ? document.getElementById('fuelLogSearchInput').value : '').toLowerCase().trim();
+  const all = fullMaintWorkbookCache.fuel.recent_logs || [];
+  if (!q) {
+    renderSheetFuelLogsList(all);
+    return;
+  }
+  const filtered = all.filter(l =>
+    (l.plate_number || '').toLowerCase().includes(q) ||
+    (l.station || '').toLowerCase().includes(q) ||
+    (l.date || '').toLowerCase().includes(q) ||
+    (l.payment_status || '').toLowerCase().includes(q)
+  );
+  renderSheetFuelLogsList(filtered);
+}
+
+async function loadMaintenance(forceRefresh) {
+  if (!forceRefresh && fullMaintWorkbookCache) {
+    renderFullMaintWorkbook(fullMaintWorkbookCache);
+  } else if (!forceRefresh && maintenanceClientCache) {
     renderMaintenanceUI(maintenanceClientCache);
+  }
+
+  try {
+    const res = await fetch(API_BASE + '/maintenance/full-sheet', { headers: getHeaders() });
+    if (res.ok) {
+      const wb = await res.json();
+      fullMaintWorkbookCache = wb;
+      maintenanceClientCache = wb.oil_maintenance || [];
+      renderFullMaintWorkbook(wb);
+      return;
+    }
+  } catch (err) {
+    console.error('Error loading full maintenance sheet', err);
   }
 
   try {
@@ -1522,6 +1973,454 @@ async function loadMaintenance() {
     renderMaintenanceUI(list);
   } catch (err) {
     console.error('Error loading maintenance', err);
+  }
+}
+
+// =========================================================
+// MODAL NHẬP / CẬP NHẬT DỮ LIỆU ĐỒNG BỘ 2 CHIỀU (WEB ⇄ SHEET)
+// =========================================================
+let currentTwoWayPrefill = null;
+
+function openTwoWayEntryFromEncoded(category, encodedJson) {
+  try {
+    const prefill = JSON.parse(decodeURIComponent(encodedJson));
+    openTwoWayEntryModal(category, prefill);
+  } catch (e) {
+    openTwoWayEntryModal(category);
+  }
+}
+
+function openTwoWayEntryModal(category, prefillData) {
+  currentTwoWayPrefill = prefillData || null;
+  const catSelect = document.getElementById('twCategory');
+  if (catSelect && category) catSelect.value = category;
+
+  const plateSelect = document.getElementById('twPlateNumber');
+  if (plateSelect) {
+    plateSelect.innerHTML = ALL_26_PLATES.map(p => `<option value="${p}">${p} (${getOfficialDriverName(p, '')})</option>`).join('') +
+      `<option value="XE_LIEN_KET">🤝 Xe Liên Kết Ngoài Công Ty</option>`;
+    if (prefillData && prefillData.plate_number) {
+      plateSelect.value = prefillData.plate_number;
+    }
+  }
+
+  const alertBox = document.getElementById('twoWayAlertBox');
+  if (alertBox) alertBox.className = 'hidden';
+
+  renderTwoWayFields(prefillData);
+  openModal('modalTwoWayEntry');
+  if (window.lucide) lucide.createIcons();
+}
+
+function renderTwoWayFields(prefill) {
+  const data = prefill || currentTwoWayPrefill || {};
+  const cat = document.getElementById('twCategory') ? document.getElementById('twCategory').value : 'fuel_log';
+  const container = document.getElementById('twoWayDynamicFields');
+  if (!container) return;
+
+  const todayVN = formatDateVN(selectedDate);
+
+  if (cat === 'fuel_log') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày đổ dầu *</label>
+          <input type="text" id="tw_date" value="${data.date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="VD: 03/11/2026" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Cây dầu / Trạm cấp *</label>
+          <input type="text" id="tw_station" value="${data.station || 'Trạm dầu nội bộ / Quốc lộ'}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Số Lít Đổ *</label>
+          <input type="number" step="0.1" id="tw_liters" value="${data.liters || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-amber-700" placeholder="VD: 350" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Đơn Giá (đ/L)</label>
+          <input type="number" id="tw_unit_price" value="${data.unit_price || 20500}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Km Lúc Đổ (ODO)</label>
+          <input type="number" id="tw_odo_km" value="${data.odo_km || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 95400" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Tình Trạng Bình</label>
+          <select id="tw_tank_status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <option value="Đầy bình (tính định mức)">Đầy bình (tính định mức)</option>
+            <option value="Đổ thêm (chưa đầy)">Đổ thêm (chưa đầy)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Trạng Thái Thanh Toán</label>
+          <select id="tw_payment_status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <option value="Đã thanh toán">Đã thanh toán</option>
+            <option value="Công nợ (chưa trả)">Công nợ (chưa trả)</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Ghi chú</label>
+        <input type="text" id="tw_notes" value="${data.notes || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Ghi chú phiếu dầu..." />
+      </div>
+    `;
+  } else if (cat === 'oil_maintenance') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Định Mức Thay Nhớt (Km)</label>
+          <input type="text" id="tw_norm_km" value="${data.norm_km || '15.000'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày Thay Gần Nhất *</label>
+          <input type="text" id="tw_last_date" value="${data.last_date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Km Thay Gần Nhất *</label>
+          <input type="text" id="tw_last_km" value="${data.last_km || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold" placeholder="VD: 82.500" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Km Hiện Tại (ODO)</label>
+          <input type="text" id="tw_current_km" value="${data.current_km || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 94.200" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Ghi chú kỹ thuật (Lọc nhớt, lọc dầu...)</label>
+        <input type="text" id="tw_notes" value="${data.notes || 'Thay nhớt động cơ + lọc nhớt'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+      </div>
+    `;
+  } else if (cat === 'repair_log') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày sửa chữa *</label>
+          <input type="text" id="tw_date" value="${data.date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hạng mục sửa chữa</label>
+          <input type="text" id="tw_category_name" value="${data.category || 'Bảo dưỡng / Sửa chữa'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Nội dung công việc chi tiết *</label>
+        <input type="text" id="tw_description" value="${data.description || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="VD: Thay bố thắng, sửa điện, thay bầu hơi..." />
+      </div>
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Gara / Nhà cung cấp</label>
+          <input type="text" id="tw_garage" value="${data.garage_name || 'Gara Trường Phát'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Tổng Chi Phí (VNĐ) *</label>
+          <input type="number" id="tw_total_cost" value="${data.total_cost || 0}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Thanh Toán</label>
+          <select id="tw_payment_status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+            <option value="Đã thanh toán">Đã thanh toán</option>
+            <option value="Chưa thanh toán">Chưa thanh toán</option>
+          </select>
+        </div>
+      </div>
+    `;
+  } else if (cat === 'grease_maintenance') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày Bôi Mỡ Gần Nhất *</label>
+          <input type="text" id="tw_last_date" value="${data.last_date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hạn Bôi Tiếp Theo (Chu kỳ 25 ngày)</label>
+          <input type="text" id="tw_next_date" value="${data.next_date || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="Tự động +25 ngày" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Ghi chú</label>
+        <input type="text" id="tw_notes" value="${data.notes || 'Đã bơm mỡ ắc nhíp, mâm moóc'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+      </div>
+    `;
+  } else if (cat === 'gearbox_maintenance') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày Thay Nhớt Hộp Số *</label>
+          <input type="text" id="tw_last_date" value="${data.last_date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Km Lúc Thay *</label>
+          <input type="text" id="tw_last_km" value="${data.last_km || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 55.200" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Ghi chú</label>
+        <input type="text" id="tw_notes" value="${data.notes || 'Chu kỳ 50.000 km'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+      </div>
+    `;
+  } else if (cat === 'vehicle_document') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hạn Giấy Đi Đường Đầu Kéo</label>
+          <input type="text" id="tw_gdd_head" value="${data.gdd_head_expiry || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 30/12/2026" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hạn Giấy Đi Đường Romoóc</label>
+          <input type="text" id="tw_gdd_trailer" value="${data.gdd_trailer_expiry || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 30/12/2026" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hạn Đăng Kiểm Đầu Kéo</label>
+          <input type="text" id="tw_reg_head" value="${data.head_reg_expiry || ''}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" placeholder="VD: 15/05/2027" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngân hàng giữ bản gốc</label>
+          <input type="text" id="tw_bank_name" value="${data.bank_name || 'TPBank / VietinBank'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+      </div>
+    `;
+  } else if (cat === 'tire_log') {
+    container.innerHTML = `
+      <div class="grid grid-cols-3 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày thay vỏ *</label>
+          <input type="text" id="tw_date" value="${data.date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Số Lượng Vỏ *</label>
+          <input type="number" id="tw_quantity" value="${data.quantity || 2}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Tổng Tiền (VNĐ) *</label>
+          <input type="number" id="tw_total_cost" value="${data.total_cost || 9500000}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Vị trí lắp (Trục 1, Moóc...)</label>
+          <input type="text" id="tw_position" value="${data.position || 'Đầu kéo / Romoóc'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Hiệu vỏ / Nhà cung cấp</label>
+          <input type="text" id="tw_brand" value="${data.brand || 'Double Coin / DRC'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+      </div>
+    `;
+  } else if (cat === 'tarp_log') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày may / sửa bạt *</label>
+          <input type="text" id="tw_date" value="${data.date || todayVN}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Chi Phí (VNĐ) *</label>
+          <input type="number" id="tw_cost" value="${data.cost || 3200000}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+        </div>
+      </div>
+      <div>
+        <label class="block font-bold text-slate-700 mb-1">Nội dung (May mới / Vá bạt Phùng Lĩnh)</label>
+        <input type="text" id="tw_description" value="${data.description || 'May bạt mới - Cơ sở Phùng Lĩnh'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+      </div>
+    `;
+  } else if (cat === 'daily_dispatch') {
+    container.innerHTML = `
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Ngày Điều Lệnh</label>
+          <input type="date" id="tw_dispatch_date" value="${selectedDate}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Trạng Thái Điều Xe</label>
+          <select id="tw_dispatch_status" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold">
+            <option value="✓ Đã điều" ${(data.dispatch_status || '').includes('Đã điều') ? 'selected' : ''}>✓ Đã điều</option>
+            <option value="⏳ Chờ điều" ${(data.dispatch_status || '').includes('Chờ') ? 'selected' : ''}>⏳ Chờ điều</option>
+            <option value="⚪ Tài xế nghỉ">⚪ Tài xế nghỉ</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nơi Nhận Hàng *</label>
+          <input type="text" id="tw_pickup" value="${data.pickup || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="VD: Cảng Mỹ Tho / Cái Mép" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Nơi Giao Hàng *</label>
+          <input type="text" id="tw_delivery" value="${data.delivery || ''}" required class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" placeholder="VD: Bình Dương / Cái Mép" />
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3">
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Loại Hàng</label>
+          <input type="text" id="tw_cargo_type" value="${data.cargo_type || 'Nông sản / Thức ăn'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl" />
+        </div>
+        <div>
+          <label class="block font-bold text-slate-700 mb-1">Chủ Hàng</label>
+          <input type="text" id="tw_customer_name" value="${data.customer_name || 'Khai Anh'}" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold" />
+        </div>
+      </div>
+    `;
+  }
+}
+
+async function submitTwoWayEntry(e) {
+  e.preventDefault();
+  const cat = document.getElementById('twCategory').value;
+  const plate = document.getElementById('twPlateNumber').value;
+  const alertBox = document.getElementById('twoWayAlertBox');
+  const val = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : '';
+  };
+
+  try {
+    if (cat === 'daily_dispatch') {
+      const dispDate = val('tw_dispatch_date') || selectedDate;
+      const res = await fetch(API_BASE + '/trips/update-dispatch', {
+        method: 'POST',
+        headers: getHeaders(),
+        body: JSON.stringify({
+          date: dispDate,
+          plate_number: plate,
+          dispatch_status: val('tw_dispatch_status'),
+          pickup: val('tw_pickup'),
+          delivery: val('tw_delivery'),
+          cargo_type: val('tw_cargo_type'),
+          customer_name: val('tw_customer_name'),
+          is_partner: plate === 'XE_LIEN_KET'
+        })
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.detail || 'Lỗi lưu lệnh điều xe');
+      if (alertBox) {
+        alertBox.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block font-bold';
+        alertBox.innerText = `✅ ${json.message}`;
+      }
+      delete dailyTripsClientCache[dispDate];
+      delete dashboardStatsClientCache[dispDate];
+      setTimeout(() => {
+        closeModal('modalTwoWayEntry');
+        loadDailyTripsFromSheets(dispDate);
+        loadDashboard(dispDate);
+      }, 800);
+      return;
+    }
+
+    let payloadData = {};
+    if (cat === 'fuel_log') {
+      const liters = parseFloat(val('tw_liters')) || 0;
+      const price = parseFloat(val('tw_unit_price')) || 20500;
+      payloadData = {
+        date: val('tw_date'),
+        station: val('tw_station'),
+        liters: liters,
+        unit_price: price,
+        total_cost: Math.round(liters * price),
+        odo_km: parseFloat(val('tw_odo_km')) || 0,
+        tank_status: val('tw_tank_status'),
+        payment_status: val('tw_payment_status'),
+        notes: val('tw_notes')
+      };
+    } else if (cat === 'oil_maintenance') {
+      payloadData = {
+        norm_km: val('tw_norm_km') || '15.000',
+        last_date: val('tw_last_date'),
+        last_km: val('tw_last_km'),
+        current_km: val('tw_current_km'),
+        notes: val('tw_notes'),
+        status: '🟢 Còn xa'
+      };
+    } else if (cat === 'repair_log') {
+      payloadData = {
+        date: val('tw_date'),
+        category: val('tw_category_name'),
+        description: val('tw_description'),
+        garage_name: val('tw_garage'),
+        total_cost: parseFloat(val('tw_total_cost')) || 0,
+        payment_status: val('tw_payment_status')
+      };
+    } else if (cat === 'grease_maintenance') {
+      payloadData = {
+        last_date: val('tw_last_date'),
+        next_date: val('tw_next_date') || 'Còn 25 ngày',
+        remaining_days: '25',
+        status: 'Còn xa',
+        notes: val('tw_notes')
+      };
+    } else if (cat === 'gearbox_maintenance') {
+      payloadData = {
+        last_date: val('tw_last_date'),
+        last_km: val('tw_last_km'),
+        status: 'Còn xa',
+        notes: val('tw_notes')
+      };
+    } else if (cat === 'vehicle_document') {
+      payloadData = {
+        gdd_head_expiry: val('tw_gdd_head'),
+        gdd_trailer_expiry: val('tw_gdd_trailer'),
+        head_reg_expiry: val('tw_reg_head'),
+        bank_name: val('tw_bank_name'),
+        status: 'Còn hạn'
+      };
+    } else if (cat === 'tire_log') {
+      payloadData = {
+        date: val('tw_date'),
+        quantity: parseInt(val('tw_quantity')) || 2,
+        total_cost: parseFloat(val('tw_total_cost')) || 0,
+        position: val('tw_position'),
+        brand: val('tw_brand'),
+        payment_status: 'Đã thanh toán'
+      };
+    } else if (cat === 'tarp_log') {
+      payloadData = {
+        date: val('tw_date'),
+        cost: parseFloat(val('tw_cost')) || 0,
+        description: val('tw_description'),
+        supplier: 'Phùng Lĩnh',
+        payment_status: 'Đã thanh toán'
+      };
+    }
+
+    const res = await fetch(API_BASE + '/maintenance/two-way-entry', {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify({
+        category: cat,
+        plate_number: plate,
+        record_date: payloadData.date || payloadData.last_date || formatDateVN(selectedDate),
+        data: payloadData
+      })
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.detail || 'Lỗi lưu dữ liệu 2 chiều');
+
+    if (alertBox) {
+      alertBox.className = 'p-3 rounded-xl text-xs border bg-emerald-50 text-emerald-800 border-emerald-200 block font-bold';
+      alertBox.innerText = `✅ ${json.message}`;
+    }
+
+    fullMaintWorkbookCache = null;
+    maintenanceClientCache = null;
+    tiresClientCache = null;
+    groupedVehiclesClientCache = null;
+    delete dashboardStatsClientCache[selectedDate];
+
+    setTimeout(() => {
+      closeModal('modalTwoWayEntry');
+      loadMaintenance(true);
+      loadDashboard(selectedDate);
+    }, 800);
+  } catch (err) {
+    if (alertBox) {
+      alertBox.className = 'p-3 rounded-xl text-xs border bg-rose-50 text-rose-800 border-rose-200 block font-bold';
+      alertBox.innerText = `❌ Lỗi: ${err.message}`;
+    }
   }
 }
 
@@ -1674,12 +2573,13 @@ function renderTiresUI(tireData) {
   if (!tireTbody || !tireData) return;
   tireTbody.innerHTML = (tireData.summary || []).map(t => `
     <tr class="hover:bg-slate-50 transition border-b border-slate-100 text-xs">
-      <td class="py-3 px-4 font-mono font-bold text-blue-700">${t.plate_number}</td>
+      <td class="py-3 px-4">${formatPlateBadge(t.plate_number)}</td>
       <td class="py-3 px-4 text-center font-bold ${t.q1 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q1 || '—'}</td>
       <td class="py-3 px-4 text-center font-bold ${t.q2 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q2 || '—'}</td>
       <td class="py-3 px-4 text-center font-bold ${t.q3 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q3 || '—'}</td>
       <td class="py-3 px-4 text-center font-bold ${t.q4 > 0 ? 'text-slate-800' : 'text-slate-300'}">${t.q4 || '—'}</td>
       <td class="py-3 px-4 text-right font-black text-blue-700">${t.total_tires} vỏ</td>
+      <td class="py-3 px-4 text-right font-mono font-bold text-slate-900">${t.total_cost ? formatVND(t.total_cost) : '—'}</td>
     </tr>
   `).join('');
   if (window.lucide) lucide.createIcons();

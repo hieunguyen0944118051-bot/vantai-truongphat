@@ -297,3 +297,33 @@ class SystemSetting(Base):
     key = Column(String, primary_key=True, index=True)
     value = Column(Text, nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SheetSyncRecord(Base):
+    """
+    Bảng lưu trữ đồng bộ 2 chiều (Phần mềm ⇄ Google Trang Tính):
+    Cho phép nhập/chỉnh sửa trực tiếp trên phần mềm hoặc trên Trang Tính đều tương thích 100%.
+    category:
+      - 'oil_maintenance'    : Bảng ① Thay nhớt động cơ (15.000km / 35.000km)
+      - 'grease_maintenance' : Bảng ③ Bôi mỡ định kỳ Romoóc (45 ngày)
+      - 'gearbox_maintenance': Bảng ④ Thay nhớt hộp số (50.000km)
+      - 'repair_log'         : Bảng ② Nhật ký bảo dưỡng – sửa chữa gara
+      - 'vehicle_document'   : Giấy đi đường Đầu kéo/Romoóc, Tem đường bộ, Đăng kiểm
+      - 'fuel_log'           : Sổ đổ dầu & công nợ
+      - 'tire_log'           : Nhật ký thay vỏ xe
+      - 'tarp_log'           : Nhật ký may/sửa bạt xe Phùng Lĩnh
+      - 'daily_dispatch'     : Lệnh điều xe hằng ngày (Tháng 10, 11, 12+)
+    """
+    __tablename__ = "sheet_sync_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, index=True, nullable=False)
+    record_key = Column(String, index=True, nullable=True)   # plate_number hoặc date+plate_number
+    plate_number = Column(String, index=True, nullable=True)
+    record_date = Column(String, index=True, nullable=True)  # YYYY-MM-DD
+    payload_json = Column(Text, nullable=False)              # JSON chi tiết bản ghi
+    synced_to_sheet = Column(Boolean, default=False)
+    updated_by = Column(String, default="Phần mềm Web")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+

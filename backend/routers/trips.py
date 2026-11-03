@@ -1,13 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import date, datetime
 import io
 import openpyxl
 from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
 import models, schemas, auth
 from database import get_db
+import sheets_service
 from sheets_service import sheets_client
 from gps_service import gps_client
 
@@ -19,14 +20,13 @@ def get_sheets_live_trips(
     current_user: models.User = Depends(auth.get_current_user)
 ):
     """
-    Get live daily dispatch from Google Sheets, merged with live BA GPS telemetry.
+    Get live daily dispatch from Google Sheets (Tháng 11, 10, 12+...), merged with live BA GPS telemetry.
     """
     try:
         res = sheets_client.fetch_daily_trips(target_date=view_date)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Lỗi khi đọc Google Sheets: {str(e)}")
 
-    # Merge real-time GPS telemetry directly
     try:
         fleet = gps_client.fetch_live_fleet()
         gps_map = {
@@ -42,6 +42,9 @@ def get_sheets_live_trips(
         if tel:
             t["gps_address"] = tel["address"] or "Bãi xe Trường Phát"
             t["speed"] = tel["speed"]
+            t["daily_km"] = tel.get("daily_km", 0.0)
+            t["is_card_swiped"] = tel.get("is_card_swiped", True)
+            t["card_violation"] = tel.get("card_violation")
             t["is_running"] = tel["speed"] > 0
             if tel["speed"] > 0:
                 t["movement_state"] = f"🟢 Xe đang chạy ({tel['speed']} km/h)"
@@ -55,17 +58,48 @@ def get_sheets_live_trips(
         else:
             t["gps_address"] = "Bãi xe Trường Phát / Đậu bãi"
             t["speed"] = 0
+            t["daily_km"] = 0.0
+            t["is_card_swiped"] = True
+            t["card_violation"] = None
             t["is_running"] = False
             t["movement_state"] = "⚪ Xe đậu bãi"
             t["op_badge_class"] = "bg-slate-100 text-slate-600"
 
     return {"success": True, "data": res}
 
+
+@router.post("/update-dispatch")
+def update_daily_dispatch_two_way(
+    payload: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(auth.get_current_user)
+):
+    """
+    Cập nhật lệnh điều xe trực tiếp trên Phần mềm (Đánh dấu Đã điều / Chưa điều, sửa Nơi nhận, Nơi giao, Loại hàng, Chủ hàng)
+    và đồng bộ 2 chiều với Google Trang Tính.
+    """
+    plate = (payload.get("plate_number") or "").strip()
+    if not plate:
+        raise HTTPException(status_code=400, detail="Thiếu biển số xe")
+    target_date = (payload.get("date") or date.today().strftime("%Y-%m-%d")).strip()
+    record_key = f"daily_dispatch_{plate}_{target_date}"
+
+    res = sheets_client.save_two_way_record(
+        category="daily_dispatch",
+        payload=payload,
+        plate_number=plate,
+        record_date=target_date,
+        record_key=record_key,
+        updated_by=current_user.full_name or current_user.username
+    )
+    return res
+
+
 @router.post("/sync-sheets")
 def sync_trips_from_sheets(
     view_date: Optional[str] = Query(None, alias="date"),
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_role(["admin", "manager"]))
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     """
     Sync trips from Google Sheets into the local database for historical reporting.
@@ -81,7 +115,7 @@ def sync_trips_from_sheets(
 
         data = sheets_client.fetch_daily_trips(target_date=sync_date.strftime("%Y-%m-%d"))
         trips = data.get("all_trips", [])
-        
+
         vehicles = db.query(models.Vehicle).all()
         v_map = {v.plate_number.replace("-", "").replace(".", "").replace(" ", "").upper(): v for v in vehicles}
 
@@ -91,7 +125,7 @@ def sync_trips_from_sheets(
         for t in trips:
             clean_plate = t["raw_plate"].replace("-", "").replace(".", "").replace(" ", "").upper()
             v = v_map.get(clean_plate)
-            
+
             trip_code = f"TRIP-{date_prefix}-{t['stt']:03d}-{clean_plate[-4:]}"
             existing = db.query(models.Trip).filter(
                 models.Trip.trip_code == trip_code
@@ -132,6 +166,7 @@ def sync_trips_from_sheets(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Lỗi khi đồng bộ Google Sheets: {str(e)}")
 
+
 @router.get("", response_model=List[schemas.TripOut])
 def get_trips(
     date_from: Optional[date] = None,
@@ -152,6 +187,7 @@ def get_trips(
         query = query.filter(models.Trip.customer_name.ilike(f"%{customer_name}%"))
     return query.order_by(models.Trip.trip_date.desc(), models.Trip.id.desc()).all()
 
+
 @router.get("/export/excel")
 def export_trips_excel(
     date_from: Optional[date] = None,
@@ -169,7 +205,7 @@ def export_trips_excel(
     ws = wb.active
     ws.title = "Lệnh Điều Xe Thực Tế"
 
-    ws.merge_cells("A1:G1")
+    ws.merge_cells("A1:H1")
     title_cell = ws["A1"]
     title_cell.value = "CÔNG TY TNHH DV VẬN TẢI TRƯỜNG PHÁT - BẢNG ĐIỀU PHỐI XE THỰC TẾ"
     title_cell.font = Font(name="Arial", size=14, bold=True, color="1E3A5F")
@@ -177,7 +213,7 @@ def export_trips_excel(
     ws.row_dimensions[1].height = 30
 
     headers = [
-        "STT", "Biển Số Xe", "Loại Xe", "Tuyến Đường (Đi => Đến)",
+        "STT", "Biển Số Xe", "Loại Xe", "Đã Điều", "Tuyến Đường (Đi => Đến)",
         "Loại Hàng Hóa", "Chủ Hàng", "Trạng Thái Hoạt Động"
     ]
     for col_num, header in enumerate(headers, 1):
@@ -199,12 +235,13 @@ def export_trips_excel(
         ws.cell(row=row_idx, column=1, value=t["stt"]).alignment = Alignment(horizontal="center")
         ws.cell(row=row_idx, column=2, value=t["plate_number"]).alignment = Alignment(horizontal="center")
         ws.cell(row=row_idx, column=3, value=t["vehicle_type"]).alignment = Alignment(horizontal="center")
-        ws.cell(row=row_idx, column=4, value=t["route"]).alignment = Alignment(horizontal="left")
-        ws.cell(row=row_idx, column=5, value=t["cargo_type"]).alignment = Alignment(horizontal="left")
-        ws.cell(row=row_idx, column=6, value=t["customer_name"]).alignment = Alignment(horizontal="left")
-        ws.cell(row=row_idx, column=7, value=t["status_text"]).alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=4, value="✓ Đã điều" if t.get("dispatched") else "Chờ điều").alignment = Alignment(horizontal="center")
+        ws.cell(row=row_idx, column=5, value=t["route"]).alignment = Alignment(horizontal="left")
+        ws.cell(row=row_idx, column=6, value=t["cargo_type"]).alignment = Alignment(horizontal="left")
+        ws.cell(row=row_idx, column=7, value=t["customer_name"]).alignment = Alignment(horizontal="left")
+        ws.cell(row=row_idx, column=8, value=t["status_text"]).alignment = Alignment(horizontal="center")
 
-        for c in range(1, 8):
+        for c in range(1, 9):
             ws.cell(row=row_idx, column=c).border = thin_border
             ws.cell(row=row_idx, column=c).font = Font(name="Arial", size=10)
 
@@ -224,26 +261,41 @@ def export_trips_excel(
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
+
 @router.get("/sheets-config")
 def get_sheets_config(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(auth.get_current_user)
 ):
-    setting_08 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_08").first()
-    setting_09 = db.query(models.SystemSetting).filter(models.SystemSetting.key == "sheet_url_month_09").first()
+    months_list = sheets_client.get_all_configured_monthly_sheets()
+    by_m = {f"{m['year']}_{m['month']}": m["sheet_url"] for m in months_list}
+    fuel_maint_id = sheets_client.get_fuel_maint_sheet_id()
     return {
-        "sheet_url_month_08": setting_08.value if setting_08 else "https://docs.google.com/spreadsheets/d/1p0B1bx_yUM6BfW2D88P-Jgra3sBSfqHEM_Op35WxSpI/edit",
-        "sheet_url_month_09": setting_09.value if setting_09 else f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_SEPTEMBER_ID}/edit"
+        "sheet_url_month_08": by_m.get("2026_08") or f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_AUGUST_ID}/edit",
+        "sheet_url_month_09": by_m.get("2026_09") or f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_SEPTEMBER_ID}/edit",
+        "sheet_url_month_10": by_m.get("2026_10") or f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_OCTOBER_ID}/edit",
+        "sheet_url_month_11": by_m.get("2026_11") or f"https://docs.google.com/spreadsheets/d/{sheets_service.DEFAULT_SHEET_NOVEMBER_ID}/edit",
+        "sheet_url_month_12": by_m.get("2026_12") or "",
+        "sheet_url_2027_01": by_m.get("2027_01") or "",
+        "fuel_maint_sheet_url": f"https://docs.google.com/spreadsheets/d/{fuel_maint_id}/edit",
+        "months_list": months_list,
+        "auto_monthly_rollover": True
     }
+
 
 @router.post("/sheets-config")
 def save_sheets_config(
     payload: dict,
     db: Session = Depends(get_db),
-    current_user: models.User = Depends(auth.require_role(["admin", "manager"]))
+    current_user: models.User = Depends(auth.get_current_user)
 ):
-    month = str(payload.get("month", "09")).zfill(2)
+    month = str(payload.get("month", "11")).zfill(2)
+    year = str(payload.get("year", "2026")).strip()
     url = payload.get("url", "").strip()
     if url:
-        sheets_client.set_sheet_url_for_month(month, url)
-    return {"success": True, "message": f"Đã lưu thành công link Trang tính Tháng {month}!"}
+        sheets_client.set_sheet_url_for_month(month, url, year_str=year)
+    return {
+        "success": True,
+        "message": f"Đã lưu & kích hoạt tự động đồng bộ Trang Tính Tháng {month}/{year}!",
+        "months_list": sheets_client.get_all_configured_monthly_sheets()
+    }
