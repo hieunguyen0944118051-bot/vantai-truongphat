@@ -1,0 +1,10 @@
+.venv
+backend/venv
+**/__pycache__
+.git
+.module-cache
+backups
+backend/uploads
+backend/ocr_output
+backend/zalo_browser_profile
+backend/*.xlsx
