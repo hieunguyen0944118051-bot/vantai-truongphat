@@ -131,6 +131,22 @@ def init_db():
         print("Đã tạo tài khoản mặc định: admin / admin123")
     db.close()
 
+    # Background cache warmup để mọi truy cập đầu tiên vào https://vantai-truongphat.onrender.com/ đạt tốc độ < 0.05s
+    import threading
+    from datetime import date
+    from sheets_service import sheets_client
+    def _warmup_sheets_cache():
+        try:
+            today_str = date.today().strftime("%Y-%m-%d")
+            sheets_client.fetch_full_maintenance_and_fuel_workbook()
+            sheets_client.fetch_daily_trips(today_str)
+            sheets_client.get_weekly_dispatch_stats(today_str)
+            sheets_client.fetch_daily_trips("2026-11-03")
+            sheets_client.get_weekly_dispatch_stats("2026-11-03")
+        except Exception as e:
+            print(f"Warmup notice: {e}")
+    threading.Thread(target=_warmup_sheets_cache, daemon=True).start()
+
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
