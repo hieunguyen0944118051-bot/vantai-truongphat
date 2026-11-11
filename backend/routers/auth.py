@@ -53,6 +53,7 @@ async def login(
             key="access_token",
             value=access_token,
             httponly=True,
+            secure=request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https",
             samesite="lax",
             max_age=43200
         )

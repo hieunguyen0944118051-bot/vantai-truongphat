@@ -9,220 +9,182 @@ from gps_service import gps_client
 router = APIRouter(prefix="/api/drivers", tags=["Drivers"])
 
 # DANH SÁCH CHÍNH THỨC 25 TÀI XẾ + XE THEO FILE "DANH SÁCH XE (12.8.2026).xlsx"
-# Bao gồm: Họ tên, SĐT, Hạng bằng lái FC, GPLX, CCCD
+# Họ tên, SĐT, hạng bằng. Số GPLX / CCCD KHÔNG để trong code — đọc từ bảng drivers trong CSDL.
 OFFICIAL_DRIVERS = {
     "63E-011.56": {
         "name": "Nguyễn Văn Tuấn",
         "phone": "0974 406 941",
         "class": "FC",
-        "gplx": "790167009177",
-        "cccd": "040093001917",
         "mooc": "63R-011.90"
     },
     "63E-011.17": {
         "name": "Phan Hoàng Duy",
         "phone": "0901 077 345",
         "class": "FC",
-        "gplx": "790157272563",
-        "cccd": "083093002142",
         "mooc": "63R-012.16"
     },
     "63H-042.73": {
         "name": "Lâm Hoàng Tuấn",
         "phone": "0778 117 516",
         "class": "FC",
-        "gplx": "940229004107",
-        "cccd": "094097006574",
         "mooc": "63R-011.85"
     },
     "63G-002.86": {
         "name": "Nguyễn Xuân Về",
         "phone": "0395 557 714",
         "class": "FC",
-        "gplx": "740099013258",
-        "cccd": "089091013867",
         "mooc": "63R-012.25"
     },
     "63F-005.12": {
         "name": "Hoàng Quốc Bảo",
         "phone": "0792 961 140",
         "class": "FC",
-        "gplx": "310163002505",
-        "cccd": "044091011506",
         "mooc": "63R-012.03"
     },
     "63F-005.38": {
         "name": "Lý Minh Tới",
         "phone": "0971 307 737",
         "class": "FC",
-        "gplx": "920162000978",
-        "cccd": "092091001122",
         "mooc": "63R-011.94"
     },
     "63E-011.08": {
         "name": "Lý Minh Hoàng",
         "phone": "0904 079 178",
         "class": "FC",
-        "gplx": "790190267531",
-        "cccd": "094089007590",
         "mooc": "63R-012.11"
     },
     "63F-005.28": {
         "name": "Nguyễn Văn Hiếu",
         "phone": "0878 109 102",
         "class": "FC",
-        "gplx": "820073000222",
-        "cccd": "082080014752",
         "mooc": "63R-011.95"
     },
     "63E-012.12": {
         "name": "Mạch Đình Phước",
         "phone": "0938 256 639",
         "class": "FC",
-        "gplx": "750967000334",
-        "cccd": "052073022465",
         "mooc": "63R-012.15"
     },
     "63E-011.41": {
         "name": "Dương Thanh Sang",
         "phone": "0933 549 648",
         "class": "FC",
-        "gplx": "790164241059",
-        "cccd": "082089012194",
         "mooc": "63R-011.93"
     },
     "63G-002.62": {
         "name": "Nguyễn Thanh Tây",
         "phone": "0703 238 667",
         "class": "FC",
-        "gplx": "790144910111",
-        "cccd": "046082006178",
         "mooc": "63R-011.92"
     },
     "63H-042.39": {
         "name": "Kim Sô Phép",
         "phone": "0708 400 332",
         "class": "FC",
-        "gplx": "940189004832",
-        "cccd": "094200015057",
         "mooc": "63R-011.96"
     },
     "63E-011.32": {
         "name": "Đào Ngọc Kha",
         "phone": "0945 220 539",
         "class": "FC",
-        "gplx": "790138039277",
-        "cccd": "058092010536",
         "mooc": "63R-011.98"
     },
     "63E-012.01": {
         "name": "Lê Trọng Nghĩa",
         "phone": "0949 528 128",
         "class": "FC",
-        "gplx": "790163005852",
-        "cccd": "080084004172",
         "mooc": "63R-012.12"
     },
     "63F-005.16": {
         "name": "Phùng Phú Kim Toàn",
         "phone": "0986 853 754",
         "class": "FC",
-        "gplx": "790171115785",
-        "cccd": "080093006479",
         "mooc": "63R-011.86"
     },
     "63E-012.76": {
         "name": "Nguyễn Thanh Giàu",
         "phone": "0345 636 358",
         "class": "FC",
-        "gplx": "790170313630",
-        "cccd": "082093010788",
         "mooc": "63R-012.10"
     },
     "63E-011.03": {
         "name": "Lê Phương Linh",
         "phone": "0374 929 126",
         "class": "FC",
-        "gplx": "790141806556",
-        "cccd": "082093018526",
         "mooc": "63R-012.23"
     },
     "63E-011.18": {
         "name": "Lê Ngọc Quí",
         "phone": "0903 722 301",
         "class": "FC",
-        "gplx": "820029003923",
-        "cccd": "082081011834",
         "mooc": "63R-012.01"
     },
     "63F-005.11": {
         "name": "Bạch Tấn Trí",
         "phone": "0919 277 113",
         "class": "FC",
-        "gplx": "790123815389",
-        "cccd": "060090002999",
         "mooc": "63RM-007.44"
     },
     "63H-042.34": {
         "name": "Nguyễn Thành Hiếu",
         "phone": "0937 912 665",
         "class": "FC",
-        "gplx": "790164134391",
-        "cccd": "087092021046",
         "mooc": "63RM-007.43"
     },
     "63G-002.97": {
         "name": "Trần Trọng Ngân",
         "phone": "0984 731 739",
         "class": "FC",
-        "gplx": "790128000027",
-        "cccd": "083090008569",
         "mooc": "66RM-010.30"
     },
     "63E-012.35": {
         "name": "Lý Hoàng Thái",
         "phone": "0365 908 374",
         "class": "FC",
-        "gplx": "790110025050",
-        "cccd": "094092014528",
         "mooc": "66RM-010.32"
     },
     "63H-042.36": {
         "name": "Lê Văn Trọng",
         "phone": "0978 840 929",
         "class": "FC",
-        "gplx": "790133023459",
-        "cccd": "083086011897",
         "mooc": "66RM-010.34"
     },
     "63G-002.80": {
         "name": "Lê Trung Trực",
         "phone": "0358 426 114",
         "class": "FC",
-        "gplx": "790150234937",
-        "cccd": "082097011973",
         "mooc": "66RM-010.37"
     },
     "66H-083.48": {
         "name": "Trần Trọng Nghĩa",
         "phone": "0327 066 337",
         "class": "FC",
-        "gplx": "830144002196",
-        "cccd": "083092002095",
         "mooc": "66RM-010.38"
     },
     "63F-005.44": {
         "name": "Tài Xế Dự Phòng",
         "phone": "0913 567 890",
         "class": "FC",
-        "gplx": "790180543210",
-        "cccd": "082090123456",
         "mooc": "63R-012.30"
     }
 }
 
+def _mask(v, user):
+    """Số CCCD / GPLX: chỉ admin xem đủ, người khác chỉ thấy 3 số cuối."""
+    if not v or getattr(user, "role", "") == "admin":
+        return v
+    return "•" * max(len(v) - 3, 0) + v[-3:]
+
+
+def _driver_out(d, user):
+    out = schemas.DriverOut.model_validate(d, from_attributes=True)
+    out.national_id = _mask(out.national_id, user)
+    out.license_number = _mask(out.license_number, user)
+    return out
+
+
 DRIVER_VEHICLE_MAP = {
-    plate: (info["name"], info["phone"], info["class"], info["gplx"])
+    plate: (info["name"], info["phone"], info["class"], "")
     for plate, info in OFFICIAL_DRIVERS.items()
 }
 
@@ -246,6 +208,7 @@ def get_drivers_daily_activity(
         c_plate = g["plate_number"].replace("-", "").replace(".", "").replace(" ", "").upper()
         gps_map[c_plate] = g
 
+    _ids = {d.full_name: (d.license_number or "", d.national_id or "") for d in db.query(models.Driver).all()}
     drivers_activity = []
     for plate, info in OFFICIAL_DRIVERS.items():
         clean_p = plate.replace("-", "").replace(".", "").replace(" ", "").upper()
@@ -262,8 +225,8 @@ def get_drivers_daily_activity(
         name = info["name"]
         phone = info["phone"]
         lic_class = info["class"]
-        gplx = info["gplx"]
-        cccd = info["cccd"]
+        gplx, cccd = _ids.get(name, ("", ""))
+        gplx, cccd = _mask(gplx, current_user), _mask(cccd, current_user)
 
         # Phân loại cự ly tuyến
         if daily_km > 200:
@@ -401,7 +364,7 @@ def get_drivers_daily_activity(
 
 @router.get("", response_model=List[schemas.DriverOut])
 def get_drivers(db: Session = Depends(get_db), current_user: models.User = Depends(auth.get_current_user)):
-    return db.query(models.Driver).all()
+    return [_driver_out(d, current_user) for d in db.query(models.Driver).all()]
 
 @router.post("", response_model=schemas.DriverOut)
 def create_driver(data: schemas.DriverCreate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.require_role(["admin", "manager"]))):
@@ -416,7 +379,7 @@ def get_driver(id: int, db: Session = Depends(get_db), current_user: models.User
     d = db.query(models.Driver).filter(models.Driver.id == id).first()
     if not d:
         raise HTTPException(status_code=404, detail="Không tìm thấy tài xế")
-    return d
+    return _driver_out(d, current_user)
 
 @router.put("/{id}", response_model=schemas.DriverOut)
 def update_driver(id: int, data: schemas.DriverUpdate, db: Session = Depends(get_db), current_user: models.User = Depends(auth.require_role(["admin", "manager"]))):

@@ -66,9 +66,6 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> models.
         token = auth_header[7:].strip()
     if not token:
         token = request.cookies.get("access_token")
-    if not token:
-        # Fallback query param for image signed urls / print views
-        token = request.query_params.get("token")
 
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

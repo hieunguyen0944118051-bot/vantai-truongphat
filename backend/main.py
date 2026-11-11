@@ -17,7 +17,8 @@ except ImportError:
 from fastapi import Request
 Base.metadata.create_all(bind=engine)
 
-is_prod = os.environ.get("APP_ENV", "dev").lower() == "production"
+# Trang tài liệu API (/docs) chỉ mở khi chạy thử trên máy: APP_ENV=dev. Mặc định tắt trên máy chủ thật.
+is_prod = os.environ.get("APP_ENV", "production").lower() != "dev"
 
 app = FastAPI(
     title="Hệ Thống Quản Lý Vận Tải Xe Đầu Kéo & Sà Lan - Trường Phát",
@@ -35,6 +36,11 @@ async def add_security_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "SAMEORIGIN"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
     return response
 
 # 1. GZip Compression Middleware (Nén dữ liệu JSON/HTML/JS giảm 85% dung lượng, load nhanh gấp 5-10 lần)
@@ -44,13 +50,17 @@ app.add_middleware(GZipMiddleware, minimum_size=500)
 app.add_middleware(SecurityFirewallMiddleware)
 
 # 3. CORS Middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Chỉ cho các địa chỉ trong ALLOWED_ORIGINS gọi API từ trang khác (phân cách dấu phẩy).
+# App tự gọi chính nó không cần CORS, nên mặc định không mở cho trang nào.
+_origins = [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+if _origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_origins,
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+        allow_headers=["Authorization", "Content-Type", "X-Security-PIN"],
+    )
 
 app.include_router(auth_router.router)
 app.include_router(security.router)
@@ -74,10 +84,9 @@ static_path = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(static_path, exist_ok=True)
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-# Mount uploads folder
+# Thư mục uploads (ảnh chứng từ) KHÔNG mở công khai — chỉ xem qua API có kiểm tra đăng nhập.
 upload_path = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(upload_path, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=upload_path), name="uploads")
 
 @app.get("/")
 def serve_ui():
