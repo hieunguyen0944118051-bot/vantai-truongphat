@@ -11,3 +11,5 @@ backups/
 uploads/
 *.log
 
+*.pkl
+*_dump.html

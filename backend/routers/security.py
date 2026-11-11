@@ -5,6 +5,7 @@ from typing import Optional
 from database import get_db
 import models, auth
 from security_firewall import firewall_manager
+import security_pin
 
 router = APIRouter(prefix="/api/security", tags=["Security & Firewall"])
 
@@ -28,7 +29,7 @@ def get_security_status(
     pin_setting = db.query(models.SystemSetting).filter(
         (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
     ).first()
-    current_pin = pin_setting.value if pin_setting else "2626"
+    current_pin = security_pin.expected_pin(db) or ""
 
     blocked_list = [
         {"ip": ip, "remaining_seconds": max(0, int(expire_time - __import__("time").time()))}
@@ -80,7 +81,7 @@ def update_security_pin(
     pin_setting = db.query(models.SystemSetting).filter(
         (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
     ).first()
-    current_pin = pin_setting.value if pin_setting else "2626"
+    current_pin = security_pin.expected_pin(db) or ""
 
     if req.old_pin.strip() != current_pin:
         raise HTTPException(status_code=400, detail="Mã PIN hiện tại không chính xác!")

@@ -7,6 +7,7 @@ import models, schemas, auth
 from database import get_db
 from datetime import datetime, timedelta
 from security_firewall import firewall_manager
+import security_pin
 
 router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
@@ -26,45 +27,21 @@ async def login(
     clean_username = form_data.username.strip().lower()
     clean_password = form_data.password.strip()
 
-    # 1. Đảm bảo tài khoản admin luôn tồn tại và mật khẩu chính xác
     user = db.query(models.User).filter(models.User.username == clean_username).first()
-    if clean_username == "admin":
-        if not user:
-            user = models.User(
-                username="admin",
-                password_hash=auth.get_password_hash("admin123"),
-                full_name="Ban Giám Đốc (Trường Phát)",
-                role="admin",
-                salan_role="quan_tri",
-                companies="TP,TPL,NK",
-                is_active=True
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        elif not user.password_hash or not auth.verify_password(clean_password, user.password_hash):
-            if clean_password in ["admin123", "admin"]:
-                user.password_hash = auth.get_password_hash("admin123")
-                user.is_active = True
-                db.commit()
-                db.refresh(user)
 
-    # 2. Lấy mã PIN bảo mật cấp 2 (Mặc định 2626)
-    pin_setting = db.query(models.SystemSetting).filter(
-        (models.SystemSetting.key == "security_pin") | (models.SystemSetting.key == "security_pin_code")
-    ).first()
-    expected_pin = pin_setting.value.strip() if (pin_setting and pin_setting.value) else "2626"
+    # 2. Mã PIN cấp 2 (biến môi trường SECURITY_PIN hoặc giá trị trong CSDL — không có mã mặc định)
+    expected_pin = security_pin.expected_pin(db)
 
-    client_pin = request.headers.get("X-Security-PIN") or request.query_params.get("pin") or ""
+    client_pin = request.headers.get("X-Security-PIN") or ""
     client_pin = str(client_pin).strip()
 
     password_ok = bool(user and auth.verify_password(clean_password, user.password_hash))
-    pin_ok = bool(client_pin == expected_pin or client_pin == "2626")
+    pin_ok = bool(expected_pin) and bool(client_pin) and client_pin == expected_pin
+
+    if password_ok and pin_ok and not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Tài khoản đã bị khóa. Liên hệ quản trị.")
 
     if password_ok and pin_ok:
-        if not user.is_active:
-            user.is_active = True
-            db.commit()
 
         firewall_manager.unblock_ip(ip)
         firewall_manager.record_login_attempt(ip, clean_username, success=True)
@@ -91,42 +68,14 @@ async def login(
             }
         }
 
-    # Xác thực mật khẩu
-    password_ok = user and (
-        auth.verify_password(clean_password, user.password_hash) or
-        (clean_username == "admin" and clean_password in ["admin123", "admin"])
-    )
-
-    # Kiểm tra mã PIN: Phải nhập đúng mã PIN (2626)
-    pin_ok = bool(client_pin) and ((client_pin == expected_pin) or (client_pin == "2626"))
-
-    # NẾU ĐÚNG THÔNG TIN -> TỰ ĐỘNG GIẢI PHÓNG IP VÀ CHO VÀO NGAY LẬP TỨC
-    if password_ok and pin_ok:
-        if not user.is_active:
-            user.is_active = True
-            db.commit()
-
-        firewall_manager.unblock_ip(ip)
-        firewall_manager.record_login_attempt(ip, clean_username, success=True)
-
-        access_token = auth.create_access_token(data={"sub": user.username, "role": user.role})
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user.id,
-                "username": user.username,
-                "full_name": user.full_name,
-                "role": user.role
-            }
-        }
-
     # NẾU SAI THÔNG TIN -> Ghi nhận lỗi
     is_now_blocked = firewall_manager.record_login_attempt(ip, clean_username, success=False)
     if is_now_blocked or firewall_manager.is_ip_blocked(ip):
         detail_msg = "Địa chỉ IP đã bị tạm khóa do nhập sai nhiều lần. Vui lòng kiểm tra lại tài khoản, mật khẩu và mã PIN!"
     elif not password_ok:
         detail_msg = "Tên đăng nhập hoặc mật khẩu không chính xác!"
+    elif not expected_pin:
+        detail_msg = "Máy chủ chưa cấu hình mã PIN cấp 2 (SECURITY_PIN). Liên hệ quản trị."
     elif not client_pin:
         detail_msg = "Vui lòng nhập mã PIN bảo mật cấp 2!"
     else:

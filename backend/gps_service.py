@@ -41,17 +41,12 @@ import threading
 class GpsClient:
     def __init__(self):
         self.cj = http.cookiejar.CookieJar()
-        cookie_path = os.path.join(os.path.dirname(__file__), 'ba_session_cookies.pkl')
-        if os.path.exists(cookie_path):
-            try:
-                import pickle
-                with open(cookie_path, 'rb') as f:
-                    cookies = pickle.load(f)
-                    for c in cookies:
-                        self.cj.set_cookie(c)
-                self.last_login_time = datetime.now()
-            except Exception:
-                pass
+        self.last_login_time = None
+        # Tài khoản GPS Bình Anh: chỉ đặt trong biến môi trường BA_USERNAME / BA_PASSWORD trên Render
+        self.ba_username = os.environ.get("BA_USERNAME", "")
+        self.ba_password = os.environ.get("BA_PASSWORD", "")
+        if not (self.ba_username and self.ba_password):
+            print("[gps] Chưa đặt BA_USERNAME / BA_PASSWORD — không đăng nhập được GPS Bình Anh.")
         self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.cj))
         self.last_fetch_time = datetime.now()
         self._is_updating = False
@@ -232,6 +227,8 @@ class GpsClient:
         return fleet
 
     def _login(self):
+        if not (self.ba_username and self.ba_password):
+            raise RuntimeError("Chưa cấu hình tài khoản GPS Bình Anh (BA_USERNAME / BA_PASSWORD)")
         req_get = urllib.request.Request('https://gps.binhanh.vn/', headers={'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'})
         resp = self.opener.open(req_get)
         html_get = resp.read().decode('utf-8', errors='ignore')
@@ -247,8 +244,8 @@ class GpsClient:
             '__VIEWSTATE': vs,
             '__VIEWSTATEGENERATOR': vsg,
             '__EVENTVALIDATION': ev,
-            'UserLogin1$txtLoginUserName': 'truongphat68',
-            'UserLogin1$txtLoginPassword': '9Tx4Ym7Kp2Wv',
+            'UserLogin1$txtLoginUserName': self.ba_username,
+            'UserLogin1$txtLoginPassword': self.ba_password,
             'UserLogin1$hdfPassword': '',
             'UserLogin1$chkRememberMe': 'on',
             'UserLogin1$btnLogin': 'Đăng nhập'

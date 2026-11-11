@@ -10,7 +10,7 @@ def seed():
     if not db.query(models.User).filter_by(username="admin").first():
         admin = models.User(
             username="admin",
-            password_hash=auth.get_password_hash("admin123"),
+            password_hash=auth.get_password_hash(__import__("os").environ.get("ADMIN_PASSWORD") or __import__("secrets").token_urlsafe(12)),
             full_name="Ban Giám Đốc",
             role="admin"
         )

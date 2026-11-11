@@ -7,3 +7,16 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.12
+      # Bí mật — chỉ đặt giá trị trong Render > Environment, KHÔNG ghi vào file này
+      - key: JWT_SECRET        # khóa ký phiên đăng nhập (chuỗi ngẫu nhiên dài)
+        sync: false
+      - key: ADMIN_PASSWORD    # mật khẩu tài khoản admin
+        sync: false
+      - key: SECURITY_PIN      # mã PIN cấp 2
+        sync: false
+      - key: USER_PASSWORDS    # tùy chọn, 1 lần: "alex=...;moi=...;giamdoc=..." rồi xóa
+        sync: false
+      - key: BA_USERNAME       # tài khoản GPS Bình Anh
+        sync: false
+      - key: BA_PASSWORD
+        sync: false

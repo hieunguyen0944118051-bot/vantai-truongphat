@@ -8,7 +8,11 @@ from sqlalchemy.orm import Session
 import models
 from database import get_db
 
-SECRET_KEY = "antigravity-transport-secret-key-2026-super-secure"
+import os, secrets
+# Khóa ký phiên: đặt JWT_SECRET trên Render. Thiếu thì dùng khóa ngẫu nhiên (khởi động lại phải đăng nhập lại).
+SECRET_KEY = os.environ.get("JWT_SECRET") or secrets.token_urlsafe(48)
+if not os.environ.get("JWT_SECRET"):
+    print("[auth] CẢNH BÁO: chưa đặt JWT_SECRET — dùng khóa tạm.")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 12 # 12 hours according to Lenh 2
 
@@ -32,8 +36,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     except Exception as e:
         print(f"passlib.verify error: {e}")
 
-    # 3. Plaintext fallback if needed
-    return plain_password == hashed_password
+    # Không chấp nhận mật khẩu lưu dạng chữ thường (không mã hóa)
+    return False
 
 def get_password_hash(password: str) -> str:
     try:
