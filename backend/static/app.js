@@ -242,7 +242,7 @@ async function handleLogin(e) {
   formData.append('password', p);
 
   try {
-    const res = await fetch(API_BASE + '/auth/login?pin=' + encodeURIComponent(pin), {
+    const res = await fetch(API_BASE + '/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',

@@ -1283,11 +1283,23 @@ async def tai_tep_dinh_kem(
         "message": "Đã lưu tệp đính kèm thành công"
     }
 
+def _kiem_tra_quyen_chuyen(cur, chuyen_id, current_user):
+    """Chỉ cho xem chứng từ của chuyến thuộc công ty người dùng được phép."""
+    trip = cur.execute("SELECT cong_ty FROM salan_chuyen WHERE id = ?", (chuyen_id,)).fetchone()
+    allowed = current_user.get_allowed_companies()
+    if trip is None or (allowed is not None and trip["cong_ty"] not in allowed):
+        raise HTTPException(status_code=403, detail="Không có quyền xem chứng từ của chuyến này")
+
 @router.get("/chuyen/{chuyen_id}/tep-dinh-kem")
 def get_danh_sach_tep(chuyen_id: int, current_user: models.User = Depends(auth.get_current_user)):
     """Lấy danh sách tệp đính kèm của chuyến."""
     con = get_con()
     cur = con.cursor()
+    try:
+        _kiem_tra_quyen_chuyen(cur, chuyen_id, current_user)
+    except HTTPException:
+        con.close()
+        raise
     rows = cur.execute("""
     SELECT id, chuyen_id, loai_tep, ten_goc, duong_dan, kich_thuoc_bytes, mime_type, nguoi_tai, thoi_diem_tai
     FROM salan_tep_dinh_kem
@@ -1304,8 +1316,8 @@ def get_danh_sach_tep(chuyen_id: int, current_user: models.User = Depends(auth.g
 
 @router.get("/tep-dinh-kem/{tep_id}/xem")
 def xem_tep_dinh_kem(
-    tep_id: int, 
-    token: Optional[str] = None
+    tep_id: int,
+    current_user: models.User = Depends(auth.get_current_user)
 ):
     """Xem hoặc tải ảnh chứng từ."""
     con = get_con()
@@ -1316,9 +1328,15 @@ def xem_tep_dinh_kem(
         raise HTTPException(status_code=404, detail="Không tìm thấy tệp đính kèm hoặc tệp đã bị huỷ")
         
     tep = dict(row)
-    con.close()
-    
-    abs_path = os.path.join(os.path.dirname(UPLOAD_BASE_DIR), tep["duong_dan"])
+    try:
+        _kiem_tra_quyen_chuyen(cur, tep["chuyen_id"], current_user)
+    finally:
+        con.close()
+
+    base = os.path.realpath(os.path.dirname(UPLOAD_BASE_DIR))
+    abs_path = os.path.realpath(os.path.join(base, tep["duong_dan"]))
+    if not abs_path.startswith(base + os.sep):
+        raise HTTPException(status_code=400, detail="Đường dẫn tệp không hợp lệ")
     if not os.path.exists(abs_path):
         raise HTTPException(status_code=404, detail="File vật lý không tồn tại trên hệ thống lưu trữ")
         
@@ -1577,7 +1595,7 @@ def seed_du_lieu_chuan(current_user: models.User = Depends(auth.require_salan_ro
     return {"message": "Đã nạp thành công bộ dữ liệu danh mục & 3 chuyến mẫu thực tế"}
 
 @router.get("/phan-b/trang-thai")
-def get_phan_b_status():
+def get_phan_b_status(current_user: models.User = Depends(auth.get_current_user)):
     """Kiểm tra trạng thái kích hoạt của Phần B (Bảng kê chủ hàng & công nợ)."""
     return {
         "phan_b_bat": PHAN_B_BAT,
